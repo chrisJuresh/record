@@ -99,7 +99,57 @@ test("`parameters --json` reports what an Action declares and what it will run w
       value: "ease-in-out-cubic",
       overridden: false,
     },
+    {
+      name: "gifWidth",
+      kind: "number",
+      describes: "Width the GIF is encoded at, in pixels",
+      default: 640,
+      min: 120,
+      max: 1920,
+      value: 640,
+      overridden: false,
+    },
+    {
+      name: "gifFramerate",
+      kind: "number",
+      describes: "Frames per second the GIF plays at",
+      default: 20,
+      min: 5,
+      max: 50,
+      value: 20,
+      overridden: false,
+    },
   ]);
+});
+
+/**
+ * The GIF's size levers are Parameters rather than constants (ADR 0006), and
+ * they are not motion, so no Action declares them -- every Action carries them,
+ * and a new Action is tunable the moment it exists.
+ */
+test("every Action carries the Artifact Parameters, tunable without touching the module", async () => {
+  const { workspace, sidecar } = await tunable();
+
+  const reported = await parameters(workspace, "set", "demo", "peek", "gifWidth=480");
+
+  assert.deepEqual(
+    reported.parameters.slice(-2).map((parameter) => [parameter.name, parameter.value, parameter.overridden]),
+    [
+      ["gifWidth", 480, true],
+      ["gifFramerate", 20, false],
+    ],
+  );
+
+  assert.match(await readFile(sidecar, "utf8"), /gifWidth = 480/);
+  assert.doesNotMatch(
+    await readFile(join(workspace, "projects", "demo", "actions", "peek.ts"), "utf8"),
+    /gifWidth/,
+    "the Action says nothing about the GIF, and does not have to",
+  );
+
+  const refused = await record(workspace, "set", "demo", "peek", "gifWidth=4000");
+  assert.equal(refused.code, 1);
+  assert.match(refused.stderr, /'gifWidth' takes a number between 120 and 1920, not 4000/);
 });
 
 test("`set` writes an Override to the sidecar beside the Action, not into it", async () => {
@@ -113,6 +163,8 @@ test("`set` writes an Override to the sidecar beside the Action, not into it", a
       ["distance", 240, true],
       ["framerate", 20, false],
       ["easing", "linear", true],
+      ["gifWidth", 640, false],
+      ["gifFramerate", 20, false],
     ],
   );
 

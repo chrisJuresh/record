@@ -43,6 +43,12 @@ _Avoid_: still, shot, screenshot
 A finished file produced by a Run — an MP4, a WebM, or a GIF.
 _Avoid_: output, clip, asset, video, media
 
+**Embed snippet**:
+The video element a Run writes beside its Artifacts, naming both video sources,
+so that putting a clip on a page never requires remembering the element's
+attributes. Not itself an Artifact — nothing is encoded into it.
+_Avoid_: embed code, HTML snippet, player, markup
+
 **Latest**:
 The Artifacts of the most recent successful Run of an Action. What the UI shows
 and what Publishing copies.

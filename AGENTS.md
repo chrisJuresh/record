@@ -66,7 +66,9 @@ Recording needs the Project already answering on its base URL; starting one is
 not the tool's job yet. It also needs `chrome-headless-shell` and `ffmpeg`,
 which are found on this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG`
 name a copy. Frames land under `runs/<project>/<action>/` and are deleted as
-soon as they have been encoded.
+soon as they have been encoded, leaving the three Artifacts every Run produces —
+`<action>.mp4`, `<action>.webm` and `<action>.gif` (ADR 0006) — and
+`<action>.embed.html`, the video element naming both video sources.
 
 ## Writing an Action
 
@@ -133,6 +135,21 @@ each Parameter under its own name.
   `ease-out-cubic`, `ease-in-out-cubic`.
 
 `describes` is read by the person tuning the Action, so write it for them.
+
+### Parameters every Action carries
+
+Two Parameters arrive without being declared, because they describe how the
+Frames are encoded rather than what moves, and an Action describes motion:
+
+- `gifWidth` — 640, between 120 and 1920.
+- `gifFramerate` — 20, between 5 and 50.
+
+The GIF is the one Artifact that can balloon and the only one a README plays
+(ADR 0006), so its size levers are tunable per Action — `record set photos
+scroll-peek gifWidth=480` — without any Action mentioning them. **Declaring
+either name in an Action is refused**, because two declarations of one name
+leave no way to say which an Override meant. The video Artifacts keep the
+Project's `video_width` and the Timeline's framerate.
 
 ### The primitives
 

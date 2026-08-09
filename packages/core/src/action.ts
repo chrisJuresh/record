@@ -11,6 +11,7 @@
  */
 import { pathToFileURL } from "node:url";
 
+import { artifactParameters } from "./artifacts.js";
 import { RecordError } from "./errors.js";
 import type { EasingName, Timeline } from "./timeline.js";
 
@@ -67,6 +68,28 @@ const easingNames: readonly EasingName[] = [
   "ease-out-cubic",
   "ease-in-out-cubic",
 ];
+
+/**
+ * Every Parameter an Action runs with: the ones it declares, and the Artifact
+ * Parameters every Action carries whether it names them or not (ADR 0006). The
+ * carried ones come last, so that a listing reads as the Action first and what
+ * is done with its Frames after.
+ *
+ * An Action naming one of the carried Parameters is refused rather than allowed
+ * to shadow it, because two declarations of one name leave no way to say which
+ * an Override meant.
+ */
+export function allParameters(action: Action): Parameters {
+  for (const name of Object.keys(artifactParameters)) {
+    if (action.parameters[name] !== undefined) {
+      throw new RecordError(
+        `Parameter '${name}' is carried by every Action already, so declaring it would shadow it`,
+      );
+    }
+  }
+
+  return { ...action.parameters, ...artifactParameters };
+}
 
 /**
  * The Parameter values an Action runs with: what it declares, with Overrides
