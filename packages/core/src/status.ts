@@ -70,15 +70,29 @@ export async function readStatus(workspace: string, only?: string): Promise<Stat
   // Gathered from the finished report rather than as each Project is read, so
   // that what is warned about arrives in the order the Projects are reported in
   // however they happened to finish.
-  const warnings = projects
-    .filter((project) => project.commit === null)
-    .map(
-      (project) =>
-        `Project '${project.project}' has no commit to read at ${project.sourceRepository}, ` +
-        "so its Actions cannot be told Stale",
-    );
+  return { projects, warnings: projects.flatMap(warningsFor) };
+}
 
-  return { projects, warnings };
+/**
+ * What could not be told about a Project, so that "not Stale" is never quietly
+ * read as "current". An Action nobody has run is not one of these: having no
+ * Run at all is reported plainly rather than warned about.
+ */
+function warningsFor(project: ProjectStatus): string[] {
+  if (project.commit === null) {
+    return [
+      `Project '${project.project}' has no commit to read at ${project.sourceRepository}, ` +
+        "so its Actions cannot be told Stale",
+    ];
+  }
+
+  return project.actions
+    .filter((action) => action.lastRun !== null && action.lastRun.commit === null)
+    .map(
+      (action) =>
+        `'${action.action}' was last recorded when Project '${project.project}' had no commit ` +
+        "to read, so it cannot be told Stale",
+    );
 }
 
 /**

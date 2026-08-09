@@ -19,7 +19,7 @@ import { captureFrames } from "./capture.js";
 import { actionModule, readProject } from "./config.js";
 import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
-import { beginRun, historyDirectory, pruneHistory, writeRun } from "./history.js";
+import { beginRun, pruneHistory, writeRun } from "./history.js";
 import { ensureRunning } from "./lifecycle.js";
 import { readOverrides } from "./overrides.js";
 import { headCommit, repositoryOf } from "./repository.js";
@@ -173,7 +173,7 @@ export async function runAction(
     };
 
     await writeRun(report);
-    await pruneHistory(historyDirectory(workspace, projectName, actionName));
+    await pruneHistory(workspace, projectName, actionName);
 
     return report;
   } catch (failure) {

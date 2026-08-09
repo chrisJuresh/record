@@ -21,10 +21,17 @@ export function repositoryOf(workspace: string, project: ProjectConfig): string 
 }
 
 /**
- * The commit a repository is at, or nothing when there is none to read -- a
- * directory that is not a repository, or one nobody has committed to yet.
- * Staleness is a question being asked rather than work being done, so an
- * unreadable repository answers "unknown" instead of failing the command.
+ * The commit the repository *containing* a directory is at, or nothing when
+ * there is none to read -- a directory that is under no repository at all, one
+ * that is not there, or one nobody has committed to yet.
+ *
+ * Containing rather than being: git walks up, and so does this deliberately,
+ * because a Project is often one package of a larger repository and the commits
+ * worth comparing against are that repository's.
+ *
+ * Staleness is a question being asked rather than work being done, so a
+ * repository that cannot be read answers "unknown" instead of failing the
+ * command that only asked.
  */
 export async function headCommit(directory: string): Promise<string | null> {
   return execute("git", ["-C", directory, "rev-parse", "HEAD"]).then(

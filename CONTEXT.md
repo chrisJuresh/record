@@ -49,9 +49,15 @@ so that putting a clip on a page never requires remembering the element's
 attributes. Not itself an Artifact — nothing is encoded into it.
 _Avoid_: embed code, HTML snippet, player, markup
 
+**Run history**:
+The Runs of an Action still kept on this machine — the ten most recent, each
+with what it produced and the conditions it was produced under. Older Runs are
+pruned as newer ones succeed.
+_Avoid_: archive, log, past runs, versions
+
 **Latest**:
-The Artifacts of the most recent successful Run of an Action. What the UI shows
-and what Publishing copies.
+The Artifacts of the most recent successful Run of an Action, which is the
+newest Run in its history. What the UI shows and what Publishing copies.
 _Avoid_: current, head, newest
 
 ### Tuning and appearance

@@ -25,8 +25,12 @@ const recordFile = "run.json";
 /** What a Run's directory is named: an ISO instant a filesystem will take. */
 const idPattern = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
 
-/** How many instants are tried before two Runs beginning together is a failure. */
-const idAttempts = 100;
+/**
+ * How far past its own instant a Run will look for a name nobody has taken. Two
+ * Runs of one Action beginning within ten milliseconds of each other is not
+ * something to paper over any further than this.
+ */
+const idAttempts = 10;
 
 /** A Run that has somewhere to write, and knows what it will be called. */
 export type BegunRun = {
@@ -37,7 +41,7 @@ export type BegunRun = {
 };
 
 /** Where every retained Run of one Action is kept. */
-export function historyDirectory(workspace: string, project: string, action: string): string {
+function historyDirectory(workspace: string, project: string, action: string): string {
   return join(workspace, "runs", project, action);
 }
 
@@ -116,7 +120,12 @@ export async function readHistory(
  * fail a Run that has already produced its Artifacts, so what it could not
  * remove is left for the next Run to try again.
  */
-export async function pruneHistory(directory: string): Promise<void> {
+export async function pruneHistory(
+  workspace: string,
+  project: string,
+  action: string,
+): Promise<void> {
+  const directory = historyDirectory(workspace, project, action);
   const older = (await runIds(directory)).slice(retainedRuns);
 
   await Promise.all(

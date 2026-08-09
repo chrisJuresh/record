@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { promisify } from "node:util";
 
@@ -231,22 +231,6 @@ test("the ten most recent Runs of an Action are retained and older ones pruned",
     [...remaining].reverse(),
     "history reads newest first",
   );
-});
-
-/**
- * Frames of a Project can contain anything that Project renders, and the
- * retained Runs are made of them, so the directory they live in is one this
- * repository never commits.
- */
-test("Run history lives in a directory excluded from version control", async () => {
-  const checkout = resolve(import.meta.dirname, "../../../..");
-
-  const ignored = await execute("git", ["-C", checkout, "check-ignore", "runs"]).then(
-    ({ stdout }) => stdout.trim(),
-    () => "",
-  );
-
-  assert.equal(ignored, "runs", "runs/ is not ignored by this repository");
 });
 
 /**

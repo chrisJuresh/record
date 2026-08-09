@@ -8,6 +8,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { ffmpegExecutable } from "./encode.js";
+
 const execute = promisify(execFile);
 
 export type ToolVersions = {
@@ -23,7 +25,7 @@ export type ToolVersions = {
 export async function toolVersions(chrome: string): Promise<ToolVersions> {
   const [chromeVersion, ffmpegVersion] = await Promise.all([
     version(chrome, ["--version"], /([\d.]+)\s*$/),
-    version(process.env["RECORD_FFMPEG"] || "ffmpeg", ["-version"], /^ffmpeg version (\S+)/),
+    version(ffmpegExecutable(), ["-version"], /^ffmpeg version (\S+)/),
   ]);
 
   return { node: process.version, chrome: chromeVersion, ffmpeg: ffmpegVersion };

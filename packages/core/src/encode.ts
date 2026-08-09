@@ -210,8 +210,13 @@ function scale(encoding: Encoding): string {
   return `scale=${encoding.width}:${encoding.height}:flags=lanczos`;
 }
 
+/** The ffmpeg this machine encodes with: `$RECORD_FFMPEG` names one, or the one on PATH. */
+export function ffmpegExecutable(): string {
+  return process.env["RECORD_FFMPEG"] || "ffmpeg";
+}
+
 async function ffmpeg(args: readonly string[]): Promise<void> {
-  const executable = process.env["RECORD_FFMPEG"] || "ffmpeg";
+  const executable = ffmpegExecutable();
 
   const said = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
     const child = spawn(executable, [...args]);

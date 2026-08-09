@@ -97,7 +97,11 @@ nothing reads a Run's path off a template.
 `record status` says which Actions have gone **Stale**: the Project's
 `source_repository` has been committed to since that Action last ran. Only
 commits count — a working tree is edited all day, so uncommitted changes are
-deliberately not considered — and **staleness is reported, never acted on**.
+deliberately not considered — and **staleness is reported, never acted on**. The
+commits read are those of the repository *containing* `source_repository`, so a
+Project that is one package of a larger repository is compared against that
+repository. A Project under no repository at all cannot be told either way, and
+`status` warns rather than reporting its Actions as current.
 
 ## Writing an Action
 
