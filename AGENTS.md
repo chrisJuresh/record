@@ -8,10 +8,12 @@ anything that names a domain concept.
 
 A pnpm workspace of TypeScript packages, built with project references.
 
-- `packages/core/` — Timeline evaluation, Project configuration, the capture
-  engine and encoding.
+- `packages/core/` — Timeline evaluation, Project configuration, Project
+  lifecycle, the capture engine and encoding.
 - `packages/fixture-site/` — the static site every test records against, and the
-  harness that serves it on an ephemeral port.
+  harness that serves it on an ephemeral port. It also serves on a port of the
+  test's choosing, as its own process, so that a test can configure a Project
+  the tool has to start for itself.
 - `apps/cli/` — the `record` command. **The CLI is the real interface**: the
   server and the UI will reach the tool through these commands rather than
   around them, so a new operation is a command first.
@@ -62,13 +64,21 @@ pnpm record parameters photos scroll-peek
 checkout. Tests set it to a workspace of their own — **no test may depend on a
 real Project being present, and none may read the photo vault.**
 
-Recording needs the Project already answering on its base URL; starting one is
-not the tool's job yet. It also needs `chrome-headless-shell` and `ffmpeg`,
-which are found on this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG`
-name a copy. Frames land under `runs/<project>/<action>/` and are deleted as
-soon as they have been encoded, leaving the three Artifacts every Run produces —
-`<action>.mp4`, `<action>.webm` and `<action>.gif` (ADR 0006) — and
-`<action>.embed.html`, the video element naming both video sources.
+Recording health-checks the Project at its ready URL — `base_url` joined with
+`ready_path` — before anything else. A Project already answering is recorded as
+it stands and **left running**, because it is almost certainly the one you had
+open. One that is not answering is started from its `start_command` in its
+`working_directory`, waited for until `ready_timeout_ms` runs out, and stopped
+once the Run ends, however it ended. **Only a Project this tool started is ever
+stopped.**
+
+Recording also needs `chrome-headless-shell` and `ffmpeg`, which are found on
+this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG` name a copy. Frames
+land under `runs/<project>/<action>/` and are deleted as soon as they have been
+encoded, leaving the three Artifacts every Run produces — `<action>.mp4`,
+`<action>.webm` and `<action>.gif` (ADR 0006) — and `<action>.embed.html`, the
+video element naming both video sources. A Run that fails leaves the last good
+Run's Artifacts exactly as they were.
 
 ## Writing an Action
 

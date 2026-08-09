@@ -275,8 +275,13 @@ function asSummary(report: RunReport): string {
   const { captured, repeated } = report.frames;
   const seconds = (captured / report.framerate).toFixed(2);
 
+  const { readyUrl, started } = report.lifecycle;
+
   return [
     `${report.project} ${report.action}`,
+    started
+      ? `  started the Project at ${readyUrl}, and stopped it again`
+      : `  recorded the Project already answering at ${readyUrl}`,
     `  ${captured} Frames at ${report.framerate}fps (${seconds}s), ${repeated} repeated`,
     ...(report.overridden.length === 0
       ? []

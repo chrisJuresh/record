@@ -15,6 +15,7 @@ import { captureFrames } from "./capture.js";
 import { actionModule, readProject } from "./config.js";
 import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
+import { ensureRunning } from "./lifecycle.js";
 import { readOverrides } from "./overrides.js";
 import { evaluateTimeline, type EasingName } from "./timeline.js";
 
@@ -41,13 +42,25 @@ export type RunReport = {
   readonly artifacts: readonly Artifact[];
   /** Where the embed snippet naming both video Artifacts was written. */
   readonly embed: string;
+  /** What the Run did with the Project itself. */
+  readonly lifecycle: {
+    /** Where the Project was health-checked before recording began. */
+    readonly readyUrl: string;
+    /**
+     * Whether the Run started the Project rather than finding it answering,
+     * which is also whether it stopped it: a Project it did not start is a
+     * Project it leaves running.
+     */
+    readonly started: boolean;
+  };
 };
 
 /**
  * Runs one Action of one Project and returns what it produced.
  *
- * The Project is expected to already be answering; starting and stopping it is
- * a separate piece of work.
+ * A Project already answering is recorded as it stands and left running; one
+ * that is not is started for the Run and stopped again afterwards, whether the
+ * Run succeeded or not.
  */
 export async function runAction(
   workspace: string,
@@ -68,12 +81,19 @@ export async function runAction(
     throw new RecordError(`'${actionName}' declares a Timeline that produces no Frames`);
   }
 
+  // Before anything is written: a Project that will not come up costs nothing
+  // to find out about, and the last good Run's Artifacts are still the Latest.
+  const running = await ensureRunning(project);
+
   const produced = join(workspace, "runs", projectName, actionName);
   const frames = join(produced, "frames");
-  await rm(frames, { recursive: true, force: true });
-  await mkdir(produced, { recursive: true });
 
+  // Everything from here is inside the try, so that nothing between starting a
+  // Project and stopping it again can leave one running.
   try {
+    await rm(frames, { recursive: true, force: true });
+    await mkdir(produced, { recursive: true });
+
     const captured = await captureFrames({
       url: project.baseUrl,
       executable: await findHeadlessShell(),
@@ -109,6 +129,7 @@ export async function runAction(
       },
       artifacts: encoded.artifacts,
       embed: encoded.embed,
+      lifecycle: { readyUrl: running.readyUrl, started: running.started },
     };
   } finally {
     // Frames are the bulk of a Run by far, and their only purpose was to be
@@ -116,5 +137,9 @@ export async function runAction(
     // half-recorded pile behind either. Failing to sweep up must not replace
     // whatever went wrong -- the next Run clears them before it starts.
     await rm(frames, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
+
+    // A Project this Run started is stopped however the Run ended, and one it
+    // found already answering is left exactly as it was found.
+    await running.stop();
   }
 }

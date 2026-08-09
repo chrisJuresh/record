@@ -20,12 +20,17 @@ export type FixtureSite = {
   close(): Promise<void>;
 };
 
-export async function startFixtureSite(): Promise<FixtureSite> {
+/**
+ * Serves the fixture site, on an ephemeral port unless one is named. A port is
+ * named only by a Project the tool has to start itself, whose `project.toml`
+ * has to say where it will answer before it is running.
+ */
+export async function startFixtureSite(port = 0): Promise<FixtureSite> {
   const server = createServer((request, response) => {
     void handle(request, response);
   });
 
-  server.listen(0, "127.0.0.1");
+  server.listen(port, "127.0.0.1");
   await once(server, "listening");
 
   const address = server.address();
