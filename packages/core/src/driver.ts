@@ -17,6 +17,8 @@ import { setTimeout as after } from "node:timers/promises";
 import { connect, type Cdp } from "./cdp.js";
 import type { Viewport } from "./config.js";
 import { RecordError } from "./errors.js";
+import type { KeyStroke } from "./keys.js";
+import type { Point } from "./timeline.js";
 
 /**
  * The compositor reports no damage until it has painted once, so a fixed number
@@ -34,6 +36,16 @@ const launchTimeoutMs = 20_000;
 /** How long a browser asked to close politely is given before it is killed. */
 const closeTimeoutMs = 2_000;
 
+/** What each cursor event is called, and which buttons it leaves held. */
+const cursorEvents: Record<CursorEvent, Record<string, unknown>> = {
+  moved: { type: "mouseMoved", button: "none", buttons: 0, clickCount: 0 },
+  pressed: { type: "mousePressed", button: "left", buttons: 1, clickCount: 1 },
+  released: { type: "mouseReleased", button: "left", buttons: 0, clickCount: 1 },
+};
+
+/** What the cursor does at a point, in the terms the browser dispatches it in. */
+export type CursorEvent = "moved" | "pressed" | "released";
+
 export type FrameStepper = {
   /** Frames driven before the compositor first reported damage. */
   readonly primingFrames: number;
@@ -41,6 +53,10 @@ export type FrameStepper = {
   readonly repeatedFrames: number;
   /** Evaluates an expression in the page and returns its value. */
   evaluate(expression: string): Promise<unknown>;
+  /** Moves, presses or releases the cursor at a point in the viewport. */
+  cursor(event: CursorEvent, point: Point): Promise<void>;
+  /** Presses and releases one key, so the page sees a whole keystroke. */
+  keyStroke(stroke: KeyStroke): Promise<void>;
   /** Produces the next Frame and returns its PNG. Time only moves forward. */
   next(): Promise<Buffer>;
   close(): Promise<void>;
@@ -72,9 +88,22 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
     throw failure;
   }
 
+  /**
+   * Cursor moves the browser has been sent but not yet answered. It coalesces
+   * them and answers when it next draws, so awaiting one before the Frame it
+   * belongs to would cost fifteen seconds a Frame. Commands are processed in
+   * the order they were sent, so the move still reaches the page before the
+   * Frame that shows it -- only the acknowledgement waits.
+   */
+  const moving: Promise<unknown>[] = [];
+  const settled = () => Promise.all(moving.splice(0));
+
   // Asking the browser to close takes its renderer processes with it, which
   // killing the one process it was launched as does not.
   const shutDown = async () => {
+    // A move left unanswered by a Run that failed would be rejected by the
+    // socket closing under it, with nobody left to hear it.
+    await settled().catch(() => undefined);
     await cdp.send("Browser.close").catch(() => undefined);
     cdp.close();
     await stop(browser.process, profile);
@@ -141,6 +170,8 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
         repeated++;
       }
 
+      await settled();
+
       return latest;
     };
 
@@ -163,6 +194,37 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
           throw new RecordError(`the page rejected an expression: ${exception.text ?? "unknown"}`);
         }
         return (evaluated["result"] as { value?: unknown })?.value;
+      },
+      async cursor(event, point) {
+        const dispatched = send("Input.dispatchMouseEvent", {
+          ...cursorEvents[event],
+          x: point.x,
+          y: point.y,
+        });
+
+        if (event === "moved") {
+          moving.push(dispatched);
+          return;
+        }
+        await dispatched;
+      },
+      async keyStroke(stroke) {
+        const identity = {
+          key: stroke.key,
+          code: stroke.code,
+          windowsVirtualKeyCode: stroke.keyCode,
+          nativeVirtualKeyCode: stroke.keyCode,
+        };
+
+        // A key that inserts a character has to be dispatched as a keyDown
+        // carrying that text; one that does not must be a rawKeyDown, or
+        // Chromium treats the empty text as a character and inserts nothing.
+        await send("Input.dispatchKeyEvent", {
+          ...identity,
+          type: stroke.text === undefined ? "rawKeyDown" : "keyDown",
+          ...(stroke.text === undefined ? {} : { text: stroke.text }),
+        });
+        await send("Input.dispatchKeyEvent", { ...identity, type: "keyUp" });
       },
       async next() {
         const frame = await next();

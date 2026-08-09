@@ -2,12 +2,17 @@
  * The Timeline evaluation seam, from the end an Action sees it: a pure function
  * from an Action and its effective Parameters to a per-Frame list of page
  * states, with no browser anywhere near it.
+ *
+ * Which value an Action runs with -- its own default, or an Override laid over
+ * the top (ADR 0005) -- is decided here too, so that a wrong answer costs a
+ * millisecond rather than a recording.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { effectiveParameters, type Action } from "../src/action.js";
+import { effectiveParameters, overrideFrom, type Action } from "../src/action.js";
 import { RecordError } from "../src/errors.js";
+import { motion } from "../src/motion.js";
 import { evaluateTimeline } from "../src/timeline.js";
 
 const parameters = {
@@ -32,33 +37,27 @@ const parameters = {
 const peek: Action<typeof parameters> = {
   parameters,
   timeline({ distance, travel, framerate, easing }) {
-    return {
-      framerate,
-      startsAt: { scrollTop: 0 },
-      segments: [
-        { kind: "hold", durationMs: 200 },
-        { kind: "scroll-to", scrollTop: distance, durationMs: travel, easing },
-      ],
-    };
+    return motion({ framerate }).hold(200).scrollTo(distance, { durationMs: travel, easing });
   },
 };
 
-test("an Action and its effective Parameters decide every Frame's page state", () => {
-  const frames = evaluateTimeline(peek.timeline(effectiveParameters(peek.parameters)));
+/** The page state of every Frame the Action produces under the given Overrides. */
+function scrolls(overrides: Record<string, number | string> = {}): number[] {
+  const effective = effectiveParameters(peek.parameters, overrides);
 
+  return evaluateTimeline(peek.timeline(effective.values)).map((frame) => frame.scrollTop);
+}
+
+test("an Action and its effective Parameters decide every Frame's page state", () => {
   // 200ms of Hold then 500ms of travel, at 10fps.
-  assert.deepEqual(
-    frames.map((frame) => frame.scrollTop),
-    [0, 0, 0, 20, 40, 60, 80],
-  );
+  assert.deepEqual(scrolls(), [0, 0, 0, 20, 40, 60, 80]);
 });
 
 test("the effective Parameters are what the Action declares, under the names it declared them", () => {
   assert.deepEqual(effectiveParameters(peek.parameters), {
-    distance: 100,
-    travel: 500,
-    framerate: 10,
-    easing: "linear",
+    values: { distance: 100, travel: 500, framerate: 10, easing: "linear" },
+    overridden: [],
+    warnings: [],
   });
 });
 
@@ -74,4 +73,72 @@ test("a Parameter defaulting outside its own range fails naming the Parameter", 
       return true;
     },
   );
+});
+
+test("an Override replaces the declared default, and says which Parameter it replaced", () => {
+  const effective = effectiveParameters(peek.parameters, { distance: 240, easing: "ease-in-cubic" });
+
+  assert.equal(effective.values.distance, 240);
+  assert.equal(effective.values.easing, "ease-in-cubic");
+  assert.equal(effective.values.travel, 500, "an untouched Parameter keeps its default");
+  assert.deepEqual(effective.overridden, ["distance", "easing"]);
+  assert.deepEqual(effective.warnings, []);
+});
+
+test("an Override changes the Frames the Action produces", () => {
+  assert.deepEqual(scrolls({ distance: 200 }), [0, 0, 0, 40, 80, 120, 160]);
+});
+
+/**
+ * Tuning outlives the code it was tuning. A sidecar naming a Parameter a
+ * rewritten Action no longer declares costs a line of output rather than the
+ * Run -- but it is never passed over in silence, because an Override that
+ * quietly does nothing is worse than one that fails.
+ */
+test("an Override naming a Parameter the Action no longer declares is reported", () => {
+  const effective = effectiveParameters(peek.parameters, { distance: 240, wobble: 3 });
+
+  assert.equal(effective.values.distance, 240);
+  assert.deepEqual(effective.overridden, ["distance"]);
+  assert.deepEqual(effective.warnings, [
+    "Override 'wobble' names a Parameter this Action no longer declares",
+  ]);
+});
+
+test("an Override the declaration will not take falls back to the default, and says so", () => {
+  const outOfRange = effectiveParameters(peek.parameters, { distance: 4000 });
+
+  assert.equal(outOfRange.values.distance, 100);
+  assert.deepEqual(outOfRange.overridden, []);
+  assert.deepEqual(outOfRange.warnings, [
+    "Override 'distance' is 4000, outside the declared range 0..1000, so the declared default is used instead",
+  ]);
+
+  const notANumber = effectiveParameters(peek.parameters, { distance: "quite far" });
+
+  assert.equal(notANumber.values.distance, 100);
+  assert.match(notANumber.warnings[0] ?? "", /is 'quite far', which is not a number/);
+
+  const noSuchEasing = effectiveParameters(peek.parameters, { easing: "ease-in-quartic" });
+
+  assert.equal(noSuchEasing.values.easing, "linear");
+  assert.match(noSuchEasing.warnings[0] ?? "", /which is not one of linear, ease-in-cubic/);
+});
+
+/**
+ * A value being set is the one moment the person setting it is listening, so
+ * this is where a bad one is refused rather than warned about.
+ */
+test("an Override is checked against the declaration as it is set", () => {
+  assert.equal(overrideFrom(peek.parameters, "distance", "240"), 240);
+  assert.equal(overrideFrom(peek.parameters, "easing", "ease-out-cubic"), "ease-out-cubic");
+
+  const refuses = (name: string, value: string, expected: RegExp) =>
+    assert.throws(() => overrideFrom(peek.parameters, name, value), expected, `${name}=${value}`);
+
+  refuses("wobble", "3", /'wobble' is not a Parameter this Action declares/);
+  refuses("distance", "4000", /takes a number between 0 and 1000, not 4000/);
+  refuses("distance", "far", /takes a number, not 'far'/);
+  refuses("distance", "", /takes a number, not ''/);
+  refuses("easing", "springy", /takes one of linear, ease-in-cubic/);
 });

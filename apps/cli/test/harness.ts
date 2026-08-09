@@ -4,13 +4,14 @@
  * machine. No test may depend on a real Project being present.
  */
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 const cli = resolve(import.meta.dirname, "../src/main.js");
+const core = resolve(import.meta.dirname, "../../../../packages/core");
 
 const workspaces: string[] = [];
 
@@ -30,10 +31,19 @@ export async function record(workspace: string, ...args: string[]): Promise<Comm
   }
 }
 
-/** A workspace holding the given Projects, each with the given `project.toml`. */
+/**
+ * A workspace holding the given Projects, each with the given `project.toml`.
+ *
+ * An Action imports the motion primitives from `@record/core`, so the workspace
+ * has to be able to resolve the package the way a real one does -- otherwise
+ * the tests would only ever exercise Actions written without them.
+ */
 export async function workspaceWith(projects: Record<string, string>): Promise<string> {
   const workspace = await mkdtemp(join(tmpdir(), "record-cli-"));
   workspaces.push(workspace);
+
+  await mkdir(join(workspace, "node_modules", "@record"), { recursive: true });
+  await symlink(core, join(workspace, "node_modules", "@record", "core"), "junction");
 
   for (const [name, config] of Object.entries(projects)) {
     await mkdir(join(workspace, "projects", name), { recursive: true });

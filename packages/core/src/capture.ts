@@ -8,8 +8,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Viewport } from "./config.js";
-import { openFrameStepper } from "./driver.js";
-import type { PageState } from "./timeline.js";
+import { openFrameStepper, type FrameStepper } from "./driver.js";
+import { RecordError } from "./errors.js";
+import type { CursorState, PageEffect, PageState } from "./timeline.js";
 
 /**
  * Frames driven after the page is prepared and before the first Frame is kept,
@@ -94,8 +95,23 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
     const repeatedWhileSettling = stepper.repeatedFrames;
 
     const hashes: string[] = [];
+    let cursor: CursorState | null = null;
+
     for (const [index, state] of options.states.entries()) {
+      // The page is put where the Frame says it is, the cursor is carried to
+      // where the Frame says it is, and only then does the Frame's own work
+      // happen -- so a click lands on what the viewer can see it land on.
       await stepper.evaluate(`window.__recordScroller.scrollTop = ${state.scrollTop}`);
+
+      if (state.cursor !== null && (state.cursor.x !== cursor?.x || state.cursor.y !== cursor.y)) {
+        await stepper.cursor("moved", state.cursor);
+      }
+      cursor = state.cursor;
+
+      for (const effect of state.does) {
+        await apply(stepper, effect, state);
+      }
+
       const frame = await stepper.next();
 
       await writeFile(join(options.directory, frameFile(index)), frame);
@@ -110,6 +126,40 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
   } finally {
     await stepper.close();
   }
+}
+
+/** Does to the page what one Frame of the evaluated Timeline says is done to it. */
+async function apply(stepper: FrameStepper, effect: PageEffect, state: PageState): Promise<void> {
+  switch (effect.kind) {
+    case "cursor-press":
+      return stepper.cursor("pressed", clicking(state));
+    case "cursor-release":
+      return stepper.cursor("released", clicking(state));
+    case "key":
+      return stepper.keyStroke(effect.stroke);
+    case "evaluate":
+      await stepper.evaluate(effect.expression);
+      return;
+    case "require": {
+      // The Timeline decided how long to wait; all that is left is whether the
+      // wait was long enough, and a Run that carried on regardless would encode
+      // a clip of the thing never happening.
+      if (!(await stepper.evaluate(effect.condition))) {
+        throw new RecordError(
+          `the Action waited for ${effect.describes}, which never became true`,
+        );
+      }
+      return;
+    }
+  }
+}
+
+/** Where a click lands: wherever the Frame says the cursor is. */
+function clicking(state: PageState): CursorState {
+  if (state.cursor === null) {
+    throw new RecordError("a Frame clicks without the cursor being anywhere");
+  }
+  return state.cursor;
 }
 
 /** Digits in a Frame's number, which is what caps a Run at 100,000 Frames. */

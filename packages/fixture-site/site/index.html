@@ -6,6 +6,16 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <!--
+      Somewhere for an Action to click, type into and wait on. Fixed to the
+      top-left corner so that the coordinates an Action clicks at do not depend
+      on how the rest of the page happens to lay out.
+    -->
+    <section id="controls">
+      <button id="toggle" type="button">Toggle</button>
+      <input id="note" type="text" aria-label="Note" />
+      <p id="state">quiet</p>
+    </section>
     <header>
       <h1 id="heading">Fixture site</h1>
       <p id="tagline">Committed here so no test needs a real Project.</p>
@@ -29,5 +39,39 @@
       <section class="card"><h2>Sixteen</h2></section>
     </main>
     <footer id="footer">End of the fixture site.</footer>
+    <script>
+      // Inline so the fixture stays one file, and so nothing here can be
+      // recorded before it has been wired up.
+      (() => {
+        const state = document.getElementById("state");
+        const note = document.getElementById("note");
+
+        document.getElementById("toggle").addEventListener("click", () => {
+          document.body.classList.add("clicked");
+          state.textContent = "clicked";
+        });
+
+        note.addEventListener("input", () => {
+          state.textContent = `typed ${note.value}`;
+        });
+
+        // Counted here rather than on `input`, so that text pushed into the
+        // field without the keys being pressed is not mistaken for typing.
+        window.keystrokes = 0;
+
+        // Recorded at keydown, before the key itself has had any chance to
+        // change the field, so what is reported is what had been typed.
+        note.addEventListener("keydown", (event) => {
+          window.keystrokes += 1;
+
+          if (event.key === "Enter") {
+            window.entered = note.value;
+            state.textContent = `entered ${note.value}`;
+          }
+        });
+
+        window.fixtureReady = true;
+      })();
+    </script>
   </body>
 </html>

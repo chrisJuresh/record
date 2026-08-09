@@ -5,21 +5,28 @@
  * Everything a Run reports is something the operator can see for themselves --
  * the file it wrote, and the hashes of the Frames it wrote it from.
  */
-import { access, mkdir, rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { effectiveParameters, loadAction } from "./action.js";
 import { findHeadlessShell } from "./browser.js";
 import { captureFrames } from "./capture.js";
-import { readProject } from "./config.js";
+import { actionModule, readProject } from "./config.js";
 import { encodeMp4, videoDimensions, type Artifact } from "./encode.js";
 import { RecordError } from "./errors.js";
-import { evaluateTimeline } from "./timeline.js";
+import { readOverrides } from "./overrides.js";
+import { evaluateTimeline, type EasingName } from "./timeline.js";
 
 export type RunReport = {
   readonly project: string;
   readonly action: string;
   readonly framerate: number;
+  /** What the Action actually ran with, declarations and Overrides together. */
+  readonly parameters: Readonly<Record<string, number | EasingName>>;
+  /** Which of those came from an Override rather than the declaration. */
+  readonly overridden: readonly string[];
+  /** Overrides that could not be applied, reported rather than swallowed. */
+  readonly warnings: readonly string[];
   readonly frames: {
     readonly captured: number;
     /** Frames driven before the first Frame was kept, which must not vary between Runs. */
@@ -44,9 +51,14 @@ export async function runAction(
   actionName: string,
 ): Promise<RunReport> {
   const project = await readProject(workspace, projectName);
-  const action = await loadAction(await actionFile(workspace, projectName, actionName));
+  const action = await loadAction(await actionModule(workspace, projectName, actionName));
 
-  const timeline = action.timeline(effectiveParameters(action.parameters));
+  const effective = effectiveParameters(
+    action.parameters,
+    await readOverrides(workspace, projectName, actionName),
+  );
+
+  const timeline = action.timeline(effective.values);
   const states = evaluateTimeline(timeline);
   if (states.length === 0) {
     throw new RecordError(`'${actionName}' declares a Timeline that produces no Frames`);
@@ -79,6 +91,9 @@ export async function runAction(
       project: projectName,
       action: actionName,
       framerate: timeline.framerate,
+      parameters: effective.values,
+      overridden: effective.overridden,
+      warnings: effective.warnings,
       frames: {
         captured: states.length,
         priming: captured.priming,
@@ -94,15 +109,4 @@ export async function runAction(
     // whatever went wrong -- the next Run clears them before it starts.
     await rm(frames, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
   }
-}
-
-async function actionFile(workspace: string, project: string, action: string): Promise<string> {
-  const file = join(workspace, "projects", project, "actions", `${action}.ts`);
-
-  return access(file).then(
-    () => file,
-    () => {
-      throw new RecordError(`no Action named '${action}' is declared by Project '${project}'`);
-    },
-  );
 }
