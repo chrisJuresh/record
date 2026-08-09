@@ -26,8 +26,9 @@ A pnpm workspace of TypeScript packages, built with project references.
 - `runs/<project>/<action>/<run>/` — one directory per Run, named for the
   instant it began (ADR 0009). The ten most recent Runs of each Action are kept
   and older ones pruned. On this machine only, and never committed.
-- `spikes/` — throwaway evidence behind an ADR. Not the engine; nothing imports
-  it.
+- `spikes/` — throwaway evidence behind a decision: what an ADR was settled by,
+  and the prototype sheets a design choice was made from. Not the engine;
+  nothing imports it.
 
 External tool versions are recorded in [TOOLING.md](./TOOLING.md).
 

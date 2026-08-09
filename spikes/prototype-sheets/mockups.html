@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>record — candidate Mockups</title>
+<style>
+  :root {
+    --ink: #18181b;
+    --ink-dim: #5f5f6a;
+    --ink-faint: #8e8e99;
+    --line: #dcdce0;
+    --accent: #2f5fd0;
+
+    /* Set by the controls. */
+    --w: 1120px;
+    --shadow: 0 2px 6px rgba(0,0,0,.10), 0 18px 44px rgba(0,0,0,.16);
+
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body { margin: 0; background: #fff; color: var(--ink); font-size: 14px; line-height: 1.45; }
+
+  /* ---------------------------------------------------------------- sheet */
+
+  .sheet-head {
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .sheet-head h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+  .sheet-head p { margin: 6px 0 0; max-width: 78ch; color: var(--ink-dim); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 14px; align-items: center; }
+
+  fieldset {
+    border: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  legend { float: left; padding: 0 10px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+
+  .seg button {
+    appearance: none;
+    border: none;
+    border-left: 1px solid var(--line);
+    background: #fff;
+    font: inherit;
+    font-size: 13px;
+    padding: 5px 12px;
+    cursor: pointer;
+    color: var(--ink-dim);
+  }
+
+  .seg button:first-child { border-left: none; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+  label.toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-dim); cursor: pointer; }
+
+  /* --------------------------------------------------------------- stage */
+
+  .stage {
+    padding: 28px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--w), 1fr));
+    gap: 40px 32px;
+    justify-items: start;
+    align-items: start;
+    transition: background-color .15s;
+  }
+
+  .stage.backdrop-light { background: #ffffff; }
+  .stage.backdrop-page  { background: #f4f4f5; }
+  .stage.backdrop-dark  { background: #0d1117; }
+
+  .stage.backdrop-dark .caption strong { color: #e6edf3; }
+  .stage.backdrop-dark .caption .note { color: #8b949e; }
+
+  figure { margin: 0; width: var(--w); max-width: 100%; }
+
+  .caption { margin-bottom: 10px; }
+  .caption strong { font-size: 14px; }
+  .caption .note { display: block; color: var(--ink-dim); max-width: 70ch; margin-top: 2px; }
+
+  .no-shadow { --shadow: none; }
+
+  /* --------------------------------------------------------- the Mockups */
+
+  /* Every surround is drawn from the Mockup's own width, so a candidate looks
+     the same at README width as it does full size. Silhouettes are generic on
+     purpose -- Published clips are public, and nothing here should read as a
+     particular piece of hardware. */
+
+  .mock { width: 100%; }
+  .mock img { display: block; width: 100%; height: auto; }
+
+  /* None -- the Frames exactly as captured. */
+  .mock-none img { box-shadow: var(--shadow); }
+
+  /* Rounded -- the cheapest thing that is not nothing. */
+  .mock-rounded img {
+    border-radius: calc(var(--w) * 0.010);
+    box-shadow: var(--shadow);
+  }
+
+  /* Browser window. */
+  .mock-browser {
+    border-radius: calc(var(--w) * 0.011);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    background: #e9e9ec;
+  }
+
+  .mock-browser .bar {
+    height: calc(var(--w) * 0.034);
+    display: flex;
+    align-items: center;
+    gap: calc(var(--w) * 0.008);
+    padding: 0 calc(var(--w) * 0.013);
+    background: #e9e9ec;
+    border-bottom: 1px solid #d7d7dc;
+  }
+
+  .mock-browser .lights { display: flex; gap: calc(var(--w) * 0.006); }
+
+  .mock-browser .lights i {
+    width: calc(var(--w) * 0.0092);
+    height: calc(var(--w) * 0.0092);
+    border-radius: 50%;
+    background: #c4c4cb;
+    display: block;
+  }
+
+  .mock-browser .address {
+    flex: 1;
+    max-width: 58%;
+    height: calc(var(--w) * 0.019);
+    border-radius: 999px;
+    background: #f7f7f9;
+    border: 1px solid #d7d7dc;
+    margin-left: calc(var(--w) * 0.008);
+  }
+
+  .mock-browser.dark { background: #26262c; }
+  .mock-browser.dark .bar { background: #26262c; border-bottom-color: #35353d; }
+  .mock-browser.dark .lights i { background: #4a4a55; }
+  .mock-browser.dark .address { background: #1c1c21; border-color: #35353d; }
+
+  /* Laptop: a lid holding the screen, and a base wider than the lid. Every
+     candidate occupies the same total width, so the laptop's screen ends up
+     the smallest of the six -- which is exactly the cost being judged. */
+  .mock-laptop .lid {
+    width: 89%;
+    margin: 0 auto;
+    padding: calc(var(--w) * 0.013);
+    padding-bottom: calc(var(--w) * 0.020);
+    background: #2b2b31;
+    border-radius: calc(var(--w) * 0.012) calc(var(--w) * 0.012) calc(var(--w) * 0.004) calc(var(--w) * 0.004);
+    box-shadow: var(--shadow);
+  }
+
+  .mock-laptop .lid img { border-radius: calc(var(--w) * 0.002); }
+
+  .mock-laptop .base {
+    width: 100%;
+    height: calc(var(--w) * 0.017);
+    background: linear-gradient(#c9c9d0, #a9a9b3);
+    clip-path: polygon(0 0, 100% 0, 97.2% 100%, 2.8% 100%);
+    border-radius: 0 0 calc(var(--w) * 0.006) calc(var(--w) * 0.006);
+    position: relative;
+  }
+
+  /* The lip you push the lid open by. */
+  .mock-laptop .base::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14%;
+    height: calc(var(--w) * 0.005);
+    background: #94949f;
+    border-radius: 0 0 999px 999px;
+  }
+
+  /* Phone: portrait, so the still is centre-cropped. */
+  .mock-phone { display: flex; justify-content: flex-start; }
+
+  .mock-phone .body {
+    width: calc(var(--w) * 0.27);
+    aspect-ratio: 9 / 19;
+    padding: calc(var(--w) * 0.0055);
+    background: #26262c;
+    border-radius: calc(var(--w) * 0.028);
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+
+  .mock-phone .body img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: calc(var(--w) * 0.023);
+  }
+
+  .mock-phone .body::after {
+    content: "";
+    position: absolute;
+    top: calc(var(--w) * 0.013);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 22%;
+    height: calc(var(--w) * 0.0055);
+    border-radius: 999px;
+    background: rgba(255,255,255,.22);
+  }
+
+  .foot { padding: 24px 28px 60px; color: var(--ink-faint); max-width: 80ch; }
+</style>
+</head>
+<body>
+
+<header class="sheet-head">
+  <h1>record — candidate Mockups</h1>
+  <p id="provenance"></p>
+  <div class="controls">
+    <fieldset>
+      <legend>Backdrop</legend>
+      <div class="seg" id="backdrop">
+        <button type="button" data-value="light" aria-pressed="true">README light</button>
+        <button type="button" data-value="dark">README dark</button>
+        <button type="button" data-value="page">Neutral page</button>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Shown at</legend>
+      <div class="seg" id="size">
+        <button type="button" data-value="1120" aria-pressed="true">Web page — 1120px</button>
+        <button type="button" data-value="640">GIF default — 640px</button>
+      </div>
+    </fieldset>
+    <label class="toggle"><input type="checkbox" id="shadow" checked> Drop shadow</label>
+  </div>
+</header>
+
+<main class="stage backdrop-light" id="stage"></main>
+
+<p class="foot">
+  Throwaway. Record the choice in <code>spikes/prototype-sheets/README.md</code>,
+  then delete this sheet once the Mockup presets are built.
+</p>
+
+<script>
+// --------------------------------------------------------------- the still
+// A synthetic stand-in, so that this file can live in a public repository. Run
+// `node inline-still.mjs` to write out/mockups.html with a real still from a
+// Run of the photos clip baked in; that output stays on this machine.
+
+function placeholderStill() {
+  const tiles = [];
+  const tints = ["#3f4a63", "#4b4257", "#3a5350", "#54463f", "#414a55", "#4a4a52"];
+  for (let row = 0; row < 3; row += 1) {
+    for (let column = 0; column < 4; column += 1) {
+      tiles.push(
+        `<rect x="${86 + column * 322}" y="${140 + row * 236}" width="286" height="210" rx="8" ` +
+        `fill="${tints[(row * 4 + column) % tints.length]}"/>`
+      );
+    }
+  }
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900">` +
+    `<rect width="1440" height="900" fill="#22222a"/>` +
+    `<rect x="86" y="74" width="420" height="26" rx="6" fill="#565663"/>` +
+    tiles.join("") +
+    `<text x="720" y="872" fill="#6f6f80" font-family="sans-serif" font-size="26" text-anchor="middle">` +
+    `placeholder still — run inline-still.mjs for a real one</text></svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+const STILL = /* STILL:BEGIN */ placeholderStill() /* STILL:END */;
+const PROVENANCE = /* PROVENANCE:BEGIN */ "a synthetic placeholder, not a real capture" /* PROVENANCE:END */;
+
+// ---------------------------------------------------------------- candidates
+
+const CANDIDATES = [
+  {
+    name: "None",
+    note: "The Frames exactly as captured. Nothing to get wrong, and nothing to look at either — on a white README the edges dissolve into the page.",
+    markup: () => `<div class="mock mock-none"><img alt="still" src="${STILL}"></div>`,
+  },
+  {
+    name: "Rounded",
+    note: "Corners and a shadow, no surround. Reads as deliberate without claiming the clip is a screenshot of a browser. The cheapest candidate that is not nothing.",
+    markup: () => `<div class="mock mock-rounded"><img alt="still" src="${STILL}"></div>`,
+  },
+  {
+    name: "Browser window — light",
+    note: "A generic titlebar: three lights and an empty address pill, no logo and no tab strip. The empty address is the risk — it invites the question of what URL a local Project would show.",
+    markup: () => `
+      <div class="mock mock-browser">
+        <div class="bar"><span class="lights"><i></i><i></i><i></i></span><span class="address"></span></div>
+        <img alt="still" src="${STILL}">
+      </div>`,
+  },
+  {
+    name: "Browser window — dark",
+    note: "The same surround in dark. Worth judging separately: on a dark README the light one glows and on a light README the dark one sits as a heavy block.",
+    markup: () => `
+      <div class="mock mock-browser dark">
+        <div class="bar"><span class="lights"><i></i><i></i><i></i></span><span class="address"></span></div>
+        <img alt="still" src="${STILL}">
+      </div>`,
+  },
+  {
+    name: "Laptop",
+    note: "Lid, bezel and a base wider than the screen. Costs vertical space and shrinks the clip inside it, which is the whole problem at GIF width — check this one at 640px before liking it at 1120px.",
+    markup: () => `
+      <div class="mock mock-laptop">
+        <div class="lid"><img alt="still" src="${STILL}"></div>
+        <div class="base"></div>
+      </div>`,
+  },
+  {
+    name: "Phone",
+    note: "Portrait, so a 1440×900 still is centre-cropped to fit — a real phone Mockup means recording the Action at a phone viewport rather than cropping a desktop Run. Shown here cropped to make that obvious.",
+    markup: () => `
+      <div class="mock mock-phone">
+        <div class="body"><img alt="still" src="${STILL}"></div>
+      </div>`,
+  },
+];
+
+// ------------------------------------------------------------------ assembly
+
+const stage = document.getElementById("stage");
+
+stage.innerHTML = CANDIDATES.map((candidate) => `
+  <figure>
+    <figcaption class="caption">
+      <strong>${candidate.name}</strong>
+      <span class="note">${candidate.note}</span>
+    </figcaption>
+    ${candidate.markup()}
+  </figure>
+`).join("");
+
+document.getElementById("provenance").textContent =
+  "Every candidate surround around the same still — " + PROVENANCE + ". " +
+  "Judge each one at both widths and on both backdrops before choosing: a surround that " +
+  "reads well on a web page can be unreadable in a README-sized GIF.";
+
+function segment(id, apply) {
+  const group = document.getElementById(id);
+  group.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    for (const other of group.children) other.setAttribute("aria-pressed", String(other === button));
+    apply(button.dataset.value);
+  });
+}
+
+segment("backdrop", (value) => {
+  stage.className = "stage backdrop-" + value;
+});
+
+segment("size", (value) => {
+  document.documentElement.style.setProperty("--w", value + "px");
+});
+
+document.getElementById("shadow").addEventListener("change", (event) => {
+  document.documentElement.classList.toggle("no-shadow", !event.target.checked);
+});
+</script>
+</body>
+</html>
