@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>clock shim fixture</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #ffffff; }
+      .bar { height: 40px; width: 0; }
+      /* 1. CSS transition -- driven by the style engine */
+      #transition { background: #ff0000; transition: width 1000ms linear; }
+      #transition.go { width: 600px; }
+      /* 2. CSS keyframes -- driven by the animation clock */
+      @keyframes grow { from { width: 0px; } to { width: 600px; } }
+      #keyframes { background: #00ff00; animation: grow 1000ms linear forwards; }
+      /* 3. requestAnimationFrame -- driven by JS */
+      #raf { background: #0000ff; }
+      /* 4. setTimeout -- driven by the timer queue */
+      #timer { height: 40px; width: 200px; background: #ff00ff; }
+      #timer.fired { background: #00ffff; }
+      .row { height: 60px; }
+    </style>
+  </head>
+  <body>
+    <div class="row"><div class="bar" id="transition"></div></div>
+    <div class="row"><div class="bar" id="keyframes"></div></div>
+    <div class="row"><div class="bar" id="raf"></div></div>
+    <div class="row"><div id="timer"></div></div>
+    <script>
+      // Every mechanism animates the same thing: 0 -> 600px, linearly, over
+      // exactly 1000ms. If the clock advances coherently they stay in lockstep;
+      // if one is driven by wall-clock time instead, it visibly diverges.
+      const raf = document.getElementById("raf");
+      let start = null;
+      function tick(now) {
+        if (start === null) start = now;
+        const t = Math.min((now - start) / 1000, 1);
+        raf.style.width = 600 * t + "px";
+        if (t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+
+      // Start the transition on the same frame the rAF loop starts, so the two
+      // share an origin.
+      requestAnimationFrame(() => {
+        document.getElementById("transition").classList.add("go");
+      });
+
+      setTimeout(() => {
+        document.getElementById("timer").classList.add("fired");
+      }, 500);
+    </script>
+  </body>
+</html>

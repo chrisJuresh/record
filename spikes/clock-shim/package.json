@@ -1,0 +1,11 @@
+{
+  "name": "spike-clock-shim",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway spike proving ADR 0001: can Chromium's clock be stepped so that the page's own animation advances with a frame counter?",
+  "dependencies": {
+    "playwright": "^1.49.0",
+    "pngjs": "^7.0.0",
+    "ws": "^8.21.3"
+  }
+}
