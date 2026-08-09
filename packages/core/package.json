@@ -1,0 +1,17 @@
+{
+  "name": "@record/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Timeline evaluation, Project configuration, and (later) the capture engine.",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "dependencies": {
+    "smol-toml": "1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.16.0",
+    "typescript": "5.9.3"
+  }
+}

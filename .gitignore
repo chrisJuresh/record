@@ -4,3 +4,8 @@ node_modules/
 # contain anything that Project renders, so nothing here is committed by
 # accident -- see docs/adr/0007.
 out/
+runs/
+
+# Compiled output.
+dist/
+*.tsbuildinfo

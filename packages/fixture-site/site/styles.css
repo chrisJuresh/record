@@ -1,0 +1,63 @@
+/*
+ * Deliberately plain: no web fonts, no images, no gradients that dither
+ * differently between runs. Everything here has to render the same way twice.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0 48px 96px;
+  background: #101014;
+  color: #f2f2f5;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+header {
+  padding: 64px 0 32px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 40px;
+  letter-spacing: -0.5px;
+}
+
+#tagline {
+  margin: 0;
+  color: #9a9aa8;
+  font-size: 18px;
+}
+
+main {
+  display: grid;
+  gap: 24px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  height: 220px;
+  padding: 0 32px;
+  border: 1px solid #2a2a34;
+  border-radius: 12px;
+  background: #1a1a22;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.card:nth-child(even) {
+  background: #202029;
+}
+
+footer {
+  padding-top: 48px;
+  color: #9a9aa8;
+  font-size: 16px;
+}

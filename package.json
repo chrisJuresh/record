@@ -1,0 +1,17 @@
+{
+  "name": "record",
+  "private": true,
+  "type": "module",
+  "description": "A tool for producing short, repeatable video and image clips of locally-running websites.",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build",
+    "clean": "tsc --build --clean",
+    "test": "pnpm build && node --enable-source-maps --test \"packages/*/dist/test/*.test.js\" \"apps/*/dist/test/*.test.js\"",
+    "record": "node apps/cli/dist/src/main.js"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@11.9.0"
+}

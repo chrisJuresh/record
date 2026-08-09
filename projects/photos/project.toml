@@ -1,0 +1,21 @@
+# The photo vault's grid and triage website.
+
+base_url = "http://127.0.0.1:8770/"
+ready_path = "/"
+
+# Started only when the site is not already answering, and stopped again
+# afterwards. A grid the operator already had open is used as it stands.
+start_command = "python -m photolib.grid"
+working_directory = 'C:\Users\Chris\Documents\photos'
+
+# Read to report staleness. Never written to -- ADR 0003.
+source_repository = 'C:\Users\Chris\Documents\photos'
+
+# This Project renders a real photo library, so its Artifacts are not safe to
+# share until it grows a demo mode. Off is also the default -- ADR 0007.
+published = false
+
+[viewport]
+width = 1440
+height = 900
+device_scale_factor = 2
