@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>record — UI layout directions</title>
+<style>
+  /* Every direction shares one palette on purpose. What is being judged here is
+     where things sit and what the UI is organised around, not how it is
+     coloured -- a layout that works should not be rejected for a swatch. */
+  :root {
+    --page: #f4f4f5;
+    --panel: #ffffff;
+    --sunken: #ececee;
+    --line: #dcdce0;
+    --line-strong: #c3c3c9;
+    --ink: #18181b;
+    --ink-dim: #5f5f6a;
+    --ink-faint: #8e8e99;
+    --accent: #2f5fd0;
+    --accent-soft: #e5ecfb;
+    --stale: #b4560c;
+    --stale-soft: #fbeee2;
+    --radius: 8px;
+    --gap: 16px;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  /* ---------------------------------------------------------------- sheet */
+
+  .sheet-head {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    padding: 18px 28px 0;
+  }
+
+  .sheet-head h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+
+  .sheet-head p {
+    margin: 6px 0 14px;
+    max-width: 74ch;
+    color: var(--ink-dim);
+  }
+
+  .tabs { display: flex; gap: 4px; }
+
+  .tabs button {
+    appearance: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    background: none;
+    font: inherit;
+    color: var(--ink-dim);
+    padding: 9px 16px;
+    border-radius: 7px 7px 0 0;
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .tabs button:hover { background: var(--sunken); }
+
+  .tabs button[aria-selected="true"] {
+    background: var(--page);
+    border-color: var(--line);
+    color: var(--ink);
+    font-weight: 600;
+    margin-bottom: -1px;
+    padding-bottom: 10px;
+  }
+
+  .tabs .key {
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .direction { padding: 22px 28px 60px; }
+  .direction[hidden] { display: none; }
+
+  .verdict {
+    display: flex;
+    gap: 28px;
+    max-width: 110ch;
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+
+  .verdict div { flex: 1; }
+  .verdict h3 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+  .verdict p { margin: 0; color: var(--ink-dim); }
+
+  /* The app mock sits in its own box so each direction reads as a window
+     rather than as this sheet's own page. */
+  .app {
+    height: 720px;
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.05);
+  }
+
+  /* ------------------------------------------------------- shared furniture */
+
+  .topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    height: 46px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+
+  .wordmark { font-weight: 700; letter-spacing: -0.02em; }
+  .spacer { flex: 1; }
+
+  button.act {
+    appearance: none;
+    font: inherit;
+    font-size: 13px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    border-radius: 6px;
+    padding: 5px 11px;
+    cursor: default;
+  }
+
+  button.act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.act.small { padding: 3px 8px; font-size: 12px; }
+  button.act.icon { padding: 3px 7px; }
+
+  .pill {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+
+  .pill.stale { background: var(--stale-soft); border-color: #eccfae; color: var(--stale); }
+  .pill.published { background: var(--accent-soft); border-color: #c6d6f5; color: var(--accent); }
+  .pill.override { background: var(--sunken); }
+
+  .dot-stale {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--stale); flex: none;
+  }
+
+  .muted { color: var(--ink-dim); }
+  .faint { color: var(--ink-faint); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ------------------------------------------------------------- fake clip */
+
+  /* Stands in for an Artifact. Deliberately not a photograph of anything:
+     these directions are judged on arrangement, and a real Frame would pull
+     the eye. The Mockup sheet is where real Frames are looked at. */
+  .clip {
+    position: relative;
+    aspect-ratio: 8 / 5;
+    background: #23232a;
+    border-radius: 5px;
+    overflow: hidden;
+    flex: none;
+  }
+
+  .clip .page {
+    position: absolute;
+    inset: 0;
+    padding: 7% 6%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4%;
+    animation: peek 3.4s ease-in-out infinite;
+  }
+
+  .clip .page::before {
+    content: "";
+    grid-column: 1 / -1;
+    height: 10px;
+    border-radius: 3px;
+    background: #565663;
+  }
+
+  .clip .page i {
+    display: block;
+    aspect-ratio: 1;
+    border-radius: 3px;
+    background: #3c3c47;
+  }
+
+  .clip .page i:nth-child(3n) { background: #454552; }
+  .clip .page i:nth-child(4n) { background: #35353f; }
+
+  @keyframes peek {
+    0%, 14%   { transform: translateY(0); }
+    40%, 54%  { transform: translateY(-16%); }
+    80%, 100% { transform: translateY(0); }
+  }
+
+  .clip .badge {
+    position: absolute;
+    left: 6px; bottom: 6px;
+    font-size: 10px;
+    color: #d6d6dd;
+    background: rgba(0,0,0,.45);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  /* --------------------------------------------------------- A: rail+stage */
+
+  .a-body { flex: 1; display: grid; grid-template-columns: 232px 1fr 268px; min-height: 0; }
+
+  .rail {
+    border-right: 1px solid var(--line);
+    background: var(--sunken);
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  .rail .project {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px 4px;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+  }
+
+  .rail .action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 22px;
+    cursor: default;
+  }
+
+  .rail .action.selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .rail .action span.name { flex: 1; }
+
+  .stage { overflow-y: auto; padding: 18px 22px; min-width: 0; }
+
+  .stage-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .stage-head h2 { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
+
+  .stage .clip { max-width: 620px; margin: 14px 0 10px; }
+
+  .artifacts { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+
+  .params {
+    border-left: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 14px;
+    background: var(--panel);
+  }
+
+  .params h3, .bench h3, .drawer h3 {
+    margin: 0 0 10px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+  }
+
+  .param { margin-bottom: 13px; }
+
+  .param .row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .param label { font-size: 13px; }
+  .param .value { font-size: 12px; }
+  .param .describes { font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+
+  input[type="range"] { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
+  select { font: inherit; font-size: 12px; width: 100%; padding: 3px; margin-top: 4px; }
+
+  .param.overridden label::after {
+    content: "•";
+    color: var(--accent);
+    margin-left: 5px;
+  }
+
+  /* ------------------------------------------------------ B: contact sheet */
+
+  .b-body { flex: 1; overflow-y: auto; padding: 18px 22px 28px; background: var(--page); }
+
+  .b-project { margin-bottom: 26px; }
+
+  .b-project-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 10px;
+  }
+
+  .b-project-head h2 { margin: 0; font-size: 15px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: var(--gap); }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px;
+    cursor: default;
+  }
+
+  .card.open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card .meta { display: flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 13px; }
+  .card .meta .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .sub { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+
+  .drawer {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 20px;
+  }
+
+  .drawer .clip { max-width: 520px; }
+
+  /* ------------------------------------------------------------- C: feed */
+
+  .c-body { flex: 1; overflow-y: auto; background: var(--page); }
+
+  .c-column { max-width: 860px; margin: 0 auto; padding: 0 20px 40px; }
+
+  .c-project-head {
+    position: sticky;
+    top: 0;
+    background: var(--page);
+    padding: 16px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border-bottom: 1px solid var(--line);
+    z-index: 2;
+  }
+
+  .c-project-head h2 { margin: 0; font-size: 15px; }
+
+  .c-row {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .c-row .right { min-width: 0; }
+  .c-row .head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .c-row .head h3 { margin: 0; font-size: 14px; }
+
+  .inline-params { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 20px; }
+
+  .inline-param {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dotted var(--line);
+    font-size: 12px;
+  }
+
+  .inline-param.overridden { font-weight: 600; }
+  .inline-param.overridden .v { color: var(--accent); }
+
+  /* ------------------------------------------------------- D: compare bench */
+
+  .d-body { flex: 1; display: grid; grid-template-columns: 210px 1fr; min-height: 0; }
+
+  .d-list { border-right: 1px solid var(--line); background: var(--sunken); overflow-y: auto; }
+
+  .d-search {
+    padding: 8px;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: var(--sunken);
+  }
+
+  .d-search input {
+    font: inherit;
+    font-size: 12px;
+    width: 100%;
+    padding: 4px 7px;
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    background: #fff;
+  }
+
+  .d-list .action {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .d-list .action.selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .d-list .action .qual { font-size: 11px; color: var(--ink-faint); }
+
+  .d-main { display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 0; }
+
+  .compare { padding: 16px 18px; overflow: auto; min-height: 0; }
+  .compare-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .compare-head h2 { margin: 0; font-size: 16px; }
+
+  /* Capped so that both Runs and the scrubber under them are on screen at
+     once -- being able to see the pair without scrolling is the whole point of
+     this direction. */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 880px; }
+  .pair figcaption { font-size: 12px; color: var(--ink-dim); margin-bottom: 5px; display: flex; gap: 8px; align-items: baseline; }
+  .pair figure { margin: 0; }
+
+  .scrubber { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+  .scrubber input { flex: 1; }
+
+  .bench {
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    padding: 12px 18px 14px;
+  }
+
+  .bench-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 18px; }
+
+  .foot {
+    padding: 22px 28px 60px;
+    color: var(--ink-faint);
+    max-width: 80ch;
+  }
+</style>
+</head>
+<body>
+
+<header class="sheet-head">
+  <h1>record — UI layout directions</h1>
+  <p>
+    Four arrangements of the same tool, over the same fake Projects and Actions.
+    Nothing here is wired to anything: every clip is a synthetic placeholder and
+    every control is inert. Judge where things sit and what each direction is
+    organised around — Mockups are chosen on the other sheet, and the palette is
+    deliberately identical throughout.
+  </p>
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+</header>
+
+<main id="directions"></main>
+
+<p class="foot">
+  Throwaway. Record the choice in <code>spikes/prototype-sheets/README.md</code>,
+  then delete this sheet once the UI is built.
+</p>
+
+<script>
+// ------------------------------------------------------------------ fake data
+// One set, rendered by every direction, so the comparison is of arrangement
+// rather than of content.
+
+const PARAMETERS = [
+  { name: "holdIn",       describes: "Still at the top before anything moves",   value: 400,  unit: "ms", min: 0,   max: 2000, def: 400 },
+  { name: "distance",     describes: "How far down the page travels",            value: 240,  unit: "px", min: 20,  max: 2000, def: 180 },
+  { name: "travel",       describes: "How long each leg of the travel takes",    value: 900,  unit: "ms", min: 100, max: 5000, def: 900 },
+  { name: "holdMid",      describes: "Still at the far end before turning back", value: 250,  unit: "ms", min: 0,   max: 2000, def: 250 },
+  { name: "holdOut",      describes: "Still at the top again once returned",     value: 400,  unit: "ms", min: 0,   max: 2000, def: 400 },
+  { name: "framerate",    describes: "Frames per second",                        value: 60,   unit: "",   min: 10,  max: 120,  def: 60 },
+  { name: "easing",       describes: "How the travel accelerates and settles",   value: "ease-in-out-cubic", options: ["linear", "ease-in-cubic", "ease-out-cubic", "ease-in-out-cubic"], def: "ease-in-out-cubic" },
+  { name: "gifWidth",     describes: "Width of the GIF Artifact",                value: 480,  unit: "px", min: 120, max: 1920, def: 640 },
+  { name: "gifFramerate", describes: "Frames per second of the GIF Artifact",    value: 20,   unit: "",   min: 5,   max: 50,   def: 20 },
+];
+
+const PROJECTS = [
+  {
+    name: "photos", published: false, viewport: "1440×900 @2×",
+    actions: [
+      { name: "scroll-peek",    stale: true,  seconds: 2.85, ran: "2 hours ago",  overrides: 2 },
+      { name: "open-lightbox",  stale: true,  seconds: 3.40, ran: "2 hours ago",  overrides: 0 },
+      { name: "filter-by-year", stale: false, seconds: 4.10, ran: "6 days ago",   overrides: 1 },
+    ],
+  },
+  {
+    name: "notes", published: true, viewport: "1440×900 @2×",
+    actions: [
+      { name: "type-and-save",  stale: false, seconds: 5.20, ran: "yesterday",    overrides: 3 },
+      { name: "sidebar-toggle", stale: false, seconds: 1.90, ran: "yesterday",    overrides: 0 },
+    ],
+  },
+  {
+    name: "ledger", published: true, viewport: "1280×800 @2×",
+    actions: [
+      { name: "month-scrub",    stale: true,  seconds: 3.05, ran: "11 days ago",  overrides: 1 },
+      { name: "add-entry",      stale: false, seconds: 6.40, ran: "11 days ago",  overrides: 2 },
+      { name: "export-csv",     stale: false, seconds: 2.20, ran: "11 days ago",  overrides: 0 },
+    ],
+  },
+];
+
+const SELECTED = { project: "photos", action: "scroll-peek" };
+
+// --------------------------------------------------------------- fragments
+
+const clip = (badge = "latest") => `
+  <div class="clip">
+    <div class="page">${"<i></i>".repeat(12)}</div>
+    <span class="badge">${badge}</span>
+  </div>
+`;
+
+const staleDot = (a) => (a.stale ? '<span class="dot-stale" title="Stale"></span>' : "");
+
+const overridePill = (n) =>
+  n ? `<span class="pill override num">${n} override${n === 1 ? "" : "s"}</span>` : "";
+
+const topbar = (right) => `
+  <div class="topbar">
+    <span class="wordmark">record</span>
+    <span class="faint">3 Projects · 8 Actions · <span class="num">3</span> Stale</span>
+    <span class="spacer"></span>
+    ${right}
+  </div>
+`;
+
+const paramControl = (p) => {
+  const overridden = p.value !== p.def;
+  const control =
+    p.options
+      ? `<select disabled>${p.options.map((o) => `<option ${o === p.value ? "selected" : ""}>${o}</option>`).join("")}</select>`
+      : `<input type="range" min="${p.min}" max="${p.max}" value="${p.value}" disabled>`;
+  return `
+    <div class="param ${overridden ? "overridden" : ""}">
+      <div class="row">
+        <label>${p.name}</label>
+        <span class="value num ${overridden ? "" : "faint"}">${p.value}${p.unit || ""}</span>
+      </div>
+      ${control}
+      <div class="describes">${p.describes}${overridden ? ` · default ${p.def}${p.unit || ""}` : ""}</div>
+    </div>
+  `;
+};
+
+// ------------------------------------------------------------ A: rail+stage
+
+const directionA = () => `
+  <div class="app">
+    ${topbar(`
+      <button class="act small">Publish…</button>
+      <button class="act small primary">Run everything</button>
+    `)}
+    <div class="a-body">
+      <nav class="rail">
+        ${PROJECTS.map((p) => `
+          <div class="project">
+            <span>${p.name}</span>
+            ${p.published ? '<span class="pill published">pub</span>' : ""}
+          </div>
+          ${p.actions.map((a) => `
+            <div class="action ${p.name === SELECTED.project && a.name === SELECTED.action ? "selected" : ""}">
+              ${staleDot(a)}
+              <span class="name">${a.name}</span>
+              <span class="faint num">${a.seconds.toFixed(1)}s</span>
+            </div>
+          `).join("")}
+        `).join("")}
+      </nav>
+
+      <section class="stage">
+        <div class="stage-head">
+          <h2>scroll-peek</h2>
+          <span class="pill stale">Stale</span>
+          <span class="spacer"></span>
+          <button class="act small">Run Project</button>
+          <button class="act small primary">Run Action</button>
+        </div>
+        <div class="muted">photos · 1440×900 @2× · last run 2 hours ago · commit <span class="num">a91c4f2</span></div>
+        ${clip("Latest")}
+        <div class="artifacts">
+          <button class="act small">mp4</button>
+          <button class="act small">webm</button>
+          <button class="act small">gif <span class="faint num">3.9 MB</span></button>
+          <button class="act small">Copy embed</button>
+          <span class="spacer"></span>
+          <button class="act small">Compare with previous</button>
+        </div>
+      </section>
+
+      <aside class="params">
+        <h3>Parameters</h3>
+        ${PARAMETERS.map(paramControl).join("")}
+        <button class="act small">Reset all to defaults</button>
+      </aside>
+    </div>
+  </div>
+`;
+
+// --------------------------------------------------------- B: contact sheet
+
+const directionB = () => `
+  <div class="app">
+    ${topbar(`
+      <button class="act small">Publish…</button>
+      <button class="act small primary">Run everything</button>
+    `)}
+    <div class="b-body">
+      ${PROJECTS.map((p) => `
+        <section class="b-project">
+          <div class="b-project-head">
+            <h2>${p.name}</h2>
+            ${p.published ? '<span class="pill published">Published</span>' : '<span class="pill">Not published</span>'}
+            <span class="faint">${p.viewport}</span>
+            <span class="spacer"></span>
+            <button class="act small">Settings</button>
+            <button class="act small">Run Project</button>
+          </div>
+          <div class="cards">
+            ${p.actions.map((a) => `
+              <article class="card ${p.name === SELECTED.project && a.name === SELECTED.action ? "open" : ""}">
+                ${clip(a.stale ? "stale" : "latest")}
+                <div class="meta">
+                  ${staleDot(a)}
+                  <span class="name">${a.name}</span>
+                  <span class="faint num">${a.seconds.toFixed(1)}s</span>
+                </div>
+                <div class="sub">${a.ran}${a.overrides ? ` · ${a.overrides} override${a.overrides === 1 ? "" : "s"}` : ""}</div>
+              </article>
+            `).join("")}
+            ${p.name === SELECTED.project ? `
+              <div class="drawer">
+                <div>
+                  <div class="stage-head">
+                    <h2>scroll-peek</h2>
+                    <span class="pill stale">Stale</span>
+                    <span class="spacer"></span>
+                    <button class="act small">Compare</button>
+                    <button class="act small primary">Run Action</button>
+                  </div>
+                  ${clip("Latest")}
+                  <div class="artifacts">
+                    <button class="act small">mp4</button>
+                    <button class="act small">webm</button>
+                    <button class="act small">gif <span class="faint num">3.9 MB</span></button>
+                    <button class="act small">Copy embed</button>
+                  </div>
+                </div>
+                <div>
+                  <h3>Parameters</h3>
+                  ${PARAMETERS.slice(0, 5).map(paramControl).join("")}
+                  <button class="act small">Show all 9</button>
+                </div>
+              </div>
+            ` : ""}
+          </div>
+        </section>
+      `).join("")}
+    </div>
+  </div>
+`;
+
+// ---------------------------------------------------------------- C: feed
+
+const inlineParam = (p) => `
+  <div class="inline-param ${p.value !== p.def ? "overridden" : ""}">
+    <span>${p.name}</span>
+    <span class="v num">${p.value}${p.unit || ""}</span>
+  </div>
+`;
+
+const directionC = () => `
+  <div class="app">
+    ${topbar(`
+      <button class="act small">Publish…</button>
+      <button class="act small primary">Run everything</button>
+    `)}
+    <div class="c-body">
+      <div class="c-column">
+        ${PROJECTS.map((p) => `
+          <div class="c-project-head">
+            <h2>${p.name}</h2>
+            ${p.published ? '<span class="pill published">Published</span>' : '<span class="pill">Not published</span>'}
+            <span class="spacer"></span>
+            <button class="act small">Run Project</button>
+          </div>
+          ${p.actions.map((a) => `
+            <div class="c-row">
+              ${clip(a.stale ? "stale" : "latest")}
+              <div class="right">
+                <div class="head">
+                  ${staleDot(a)}
+                  <h3>${a.name}</h3>
+                  ${a.stale ? '<span class="pill stale">Stale</span>' : ""}
+                  <span class="spacer"></span>
+                  <button class="act small">Compare</button>
+                  <button class="act small primary">Run</button>
+                </div>
+                <div class="muted" style="margin-bottom:8px">
+                  ${a.seconds.toFixed(1)}s · ${a.ran} · mp4 / webm / gif
+                </div>
+                <div class="inline-params">
+                  ${PARAMETERS.map(inlineParam).join("")}
+                </div>
+              </div>
+            </div>
+          `).join("")}
+        `).join("")}
+      </div>
+    </div>
+  </div>
+`;
+
+// ------------------------------------------------------- D: compare bench
+
+const directionD = () => `
+  <div class="app">
+    ${topbar(`
+      <button class="act small">Publish…</button>
+      <button class="act small primary">Run everything</button>
+    `)}
+    <div class="d-body">
+      <nav class="d-list">
+        <div class="d-search"><input type="search" placeholder="Filter Actions…" disabled></div>
+        ${PROJECTS.flatMap((p) => p.actions.map((a) => `
+          <div class="action ${p.name === SELECTED.project && a.name === SELECTED.action ? "selected" : ""}">
+            ${staleDot(a)}
+            <span>${a.name}</span>
+            <span class="spacer"></span>
+            <span class="qual">${p.name}</span>
+          </div>
+        `)).join("")}
+      </nav>
+
+      <div class="d-main">
+        <section class="compare">
+          <div class="compare-head">
+            <h2>photos / scroll-peek</h2>
+            <span class="pill stale">Stale</span>
+            ${overridePill(2)}
+            <span class="spacer"></span>
+            <button class="act small">Copy embed</button>
+            <button class="act small primary">Run Action</button>
+          </div>
+          <div class="pair">
+            <figure>
+              <figcaption>
+                <strong>Previous</strong>
+                <span class="num">6 days ago · a3f0d18</span>
+              </figcaption>
+              ${clip("previous")}
+            </figure>
+            <figure>
+              <figcaption>
+                <strong>Latest</strong>
+                <span class="num">2 hours ago · a91c4f2</span>
+              </figcaption>
+              ${clip("latest")}
+            </figure>
+          </div>
+          <div class="scrubber">
+            <button class="act icon small">▶</button>
+            <input type="range" min="0" max="171" value="68" disabled>
+            <span class="faint num">frame 68 / 171 · 1.13s</span>
+          </div>
+        </section>
+
+        <section class="bench">
+          <h3>Parameters — 2 changed from their defaults</h3>
+          <div class="bench-grid">
+            ${PARAMETERS.map(paramControl).join("")}
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+`;
+
+// ------------------------------------------------------------- directions
+
+const DIRECTIONS = [
+  {
+    id: "a",
+    title: "Rail and stage",
+    gist: "A tree of Projects and Actions on the left, one clip on the stage, Parameters pinned right.",
+    good: "One Action is always the subject, and every control for it is on screen at once. Scales to many Projects without the page growing — the rail scrolls, the stage does not.",
+    cost: "Only ever shows one clip, so \"what does everything look like right now\" needs clicking through. Three columns is the widest thing here and the most furniture to build.",
+    render: directionA,
+  },
+  {
+    id: "b",
+    title: "Contact sheet",
+    gist: "Every Project a section, every Action a playing card. Selecting one opens a drawer in the grid.",
+    good: "The whole library plays at once, which is what a clip tool is for. Staleness reads across the entire page in a glance, and running a Project sits next to its own clips.",
+    cost: "The drawer reflows the grid under the pointer, and Parameters have to be abbreviated to fit it. Many playing clips at once is a lot of motion to look at.",
+    render: directionB,
+  },
+  {
+    id: "c",
+    title: "Single column",
+    gist: "One column, sticky Project headers, each Action a row with its clip and every Parameter always visible.",
+    good: "No selection, no navigation, no modes — nothing is hidden, so nothing has to be found. Cheapest of the four to build and the easiest to keep honest.",
+    cost: "Long. Eight Actions is already a lot of scrolling, and comparing two clips means they are never on screen together. Parameters as read-outs rather than controls in a row this narrow.",
+    render: directionC,
+  },
+  {
+    id: "d",
+    title: "Compare bench",
+    gist: "A flat list of every Action; Latest against Previous side by side; Parameters as a tray underneath.",
+    good: "Built around the loop the tool exists for — change a value, run it, look at it beside the last one. The Frame scrubber makes two Runs comparable at an instant rather than as two loops.",
+    cost: "Projects are demoted to a qualifier on a list row, so it stops looking like a per-Project tool. Compare is dead weight for an Action that has only ever run once.",
+    render: directionD,
+  },
+];
+
+// ---------------------------------------------------------------- assembly
+
+const tabs = document.getElementById("tabs");
+const host = document.getElementById("directions");
+
+DIRECTIONS.forEach((d, i) => {
+  const tab = document.createElement("button");
+  tab.type = "button";
+  tab.setAttribute("role", "tab");
+  tab.setAttribute("aria-controls", `direction-${d.id}`);
+  tab.innerHTML = `${d.title}<span class="key">${i + 1}</span>`;
+  tab.addEventListener("click", () => select(d.id));
+  tabs.append(tab);
+
+  const panel = document.createElement("section");
+  panel.className = "direction";
+  panel.id = `direction-${d.id}`;
+  panel.setAttribute("role", "tabpanel");
+  panel.innerHTML = `
+    <div class="verdict">
+      <div><h3>What it is</h3><p>${d.gist}</p></div>
+      <div><h3>What it is good at</h3><p>${d.good}</p></div>
+      <div><h3>What it costs</h3><p>${d.cost}</p></div>
+    </div>
+    ${d.render()}
+  `;
+  host.append(panel);
+});
+
+function select(id) {
+  DIRECTIONS.forEach((d, i) => {
+    const chosen = d.id === id;
+    tabs.children[i].setAttribute("aria-selected", String(chosen));
+    document.getElementById(`direction-${d.id}`).hidden = !chosen;
+  });
+  history.replaceState(null, "", `#${id}`);
+}
+
+document.addEventListener("keydown", (event) => {
+  const index = Number(event.key) - 1;
+  if (DIRECTIONS[index] && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    select(DIRECTIONS[index].id);
+  }
+});
+
+const fromHash = DIRECTIONS.find((d) => `#${d.id}` === location.hash);
+select(fromHash ? fromHash.id : DIRECTIONS[0].id);
+</script>
+</body>
+</html>
