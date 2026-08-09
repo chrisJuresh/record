@@ -3,46 +3,13 @@
  * command a person or an agent would type.
  */
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { after, test } from "node:test";
-import { promisify } from "node:util";
 
-const run = promisify(execFile);
-const cli = resolve(import.meta.dirname, "../src/main.js");
+import { record, removeWorkspaces, workspaceWith } from "./harness.js";
 
-const workspaces: string[] = [];
-after(() => Promise.all(workspaces.map((workspace) => rm(workspace, { recursive: true, force: true }))));
-
-type CommandResult = { stdout: string; stderr: string; code: number };
-
-/** Runs the built `record` command against a workspace of the test's own. */
-async function record(workspace: string, ...args: string[]): Promise<CommandResult> {
-  try {
-    const { stdout, stderr } = await run(process.execPath, [cli, ...args], {
-      env: { ...process.env, RECORD_WORKSPACE: workspace },
-    });
-    return { stdout, stderr, code: 0 };
-  } catch (failure) {
-    const { stdout, stderr, code } = failure as CommandResult;
-    return { stdout, stderr, code };
-  }
-}
-
-/** A workspace holding the given Projects, each with the given `project.toml`. */
-async function workspaceWith(projects: Record<string, string>): Promise<string> {
-  const workspace = await mkdtemp(join(tmpdir(), "record-cli-"));
-  workspaces.push(workspace);
-
-  for (const [name, config] of Object.entries(projects)) {
-    await mkdir(join(workspace, "projects", name), { recursive: true });
-    await writeFile(join(workspace, "projects", name, "project.toml"), config, "utf8");
-  }
-
-  return workspace;
-}
+after(removeWorkspaces);
 
 const fullyConfigured = `
 base_url = "http://127.0.0.1:4173/"
@@ -50,6 +17,7 @@ ready_path = "/health"
 start_command = "npm run preview"
 working_directory = 'C:\\demo\\site'
 source_repository = 'C:\\demo\\site'
+video_width = 960
 published = true
 
 [viewport]
@@ -78,6 +46,7 @@ test("`projects --json` reports every configured Project", async () => {
       workingDirectory: "C:\\demo\\site",
       sourceRepository: "C:\\demo\\site",
       viewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
+      videoWidth: 960,
       published: true,
     },
   ]);
@@ -95,6 +64,7 @@ test("a Project that declares only what it must gets the defaults, and is not Pu
       readyPath: "/",
       sourceRepository: "C:\\demo\\other",
       viewport: { width: 1440, height: 900, deviceScaleFactor: 2 },
+      videoWidth: 1280,
       published: false,
     },
   ]);

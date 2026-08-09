@@ -28,12 +28,15 @@ export type ProjectConfig = {
   /** The Project's own git repository, read to report staleness. */
   readonly sourceRepository: string;
   readonly viewport: Viewport;
+  /** Width the video Artifacts are encoded at, below the captured viewport. */
+  readonly videoWidth: number;
   /** Off unless deliberately turned on -- ADR 0007. */
   readonly published: boolean;
 };
 
 const defaultReadyPath = "/";
 const defaultViewport: Viewport = { width: 1440, height: 900, deviceScaleFactor: 2 };
+const defaultVideoWidth = 1280;
 
 /**
  * Every configured Project in the workspace, by name. A directory holding no
@@ -122,6 +125,7 @@ function projectFrom(name: string, table: Record<string, unknown>, file: string)
       deviceScaleFactor:
         optionalNumber(viewport, "device_scale_factor", file) ?? defaultViewport.deviceScaleFactor,
     },
+    videoWidth: optionalNumber(table, "video_width", file) ?? defaultVideoWidth,
     published: optionalBoolean(table, "published", file) ?? false,
   };
 }

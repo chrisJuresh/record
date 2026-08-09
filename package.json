@@ -4,10 +4,13 @@
   "type": "module",
   "description": "A tool for producing short, repeatable video and image clips of locally-running websites.",
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build && tsc --project projects",
     "clean": "tsc --build --clean",
     "test": "pnpm build && node --enable-source-maps --test \"packages/*/dist/test/*.test.js\" \"apps/*/dist/test/*.test.js\"",
     "record": "node apps/cli/dist/src/main.js"
+  },
+  "dependencies": {
+    "@record/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3"

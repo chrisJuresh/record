@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // Actions are imported as TypeScript and never built (ADR 0004), so this
+    // project exists only to catch a mistake in one before a render is
+    // attempted.
+    "noEmit": true,
+    // An Action describes motion and reaches for nothing on this machine.
+    "types": [],
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["*/actions/**/*.ts"]
+}
