@@ -120,6 +120,37 @@ test("a workspace with no Projects reports none rather than failing", async () =
   assert.deepEqual(JSON.parse(stdout), []);
 });
 
+test("a directory under projects/ holding no project.toml is not a Project", async () => {
+  const workspace = await workspaceWith({ demo: fullyConfigured });
+  await mkdir(join(workspace, "projects", "scratch"));
+
+  const { stdout, code } = await record(workspace, "projects", "--json");
+
+  assert.equal(code, 0);
+  assert.deepEqual(
+    (JSON.parse(stdout) as { name: string }[]).map((project) => project.name),
+    ["demo"],
+  );
+});
+
+test("an option the command does not have fails rather than being ignored", async () => {
+  const workspace = await workspaceWith({ demo: fullyConfigured });
+
+  const { stderr, code } = await record(workspace, "projects", "--jsonn");
+
+  assert.equal(code, 1);
+  assert.match(stderr, /unknown option '--jsonn'/);
+});
+
+test("an argument the command has no use for fails rather than being dropped", async () => {
+  const workspace = await workspaceWith({ demo: fullyConfigured });
+
+  const { stderr, code } = await record(workspace, "actions", "demo", "scroll-peek");
+
+  assert.equal(code, 1);
+  assert.match(stderr, /actions takes the name of one Project/);
+});
+
 test("`actions --json` reports a Project's Actions by name", async () => {
   const workspace = await workspaceWith({ demo: fullyConfigured });
   await mkdir(join(workspace, "projects", "demo", "actions"));

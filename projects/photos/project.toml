@@ -11,7 +11,7 @@ working_directory = 'C:\Users\Chris\Documents\photos'
 # Read to report staleness. Never written to -- ADR 0003.
 source_repository = 'C:\Users\Chris\Documents\photos'
 
-# This Project renders a real photo library, so its Artifacts are not safe to
+# This Project shows a real photo library, so its Artifacts are not safe to
 # share until it grows a demo mode. Off is also the default -- ADR 0007.
 published = false
 

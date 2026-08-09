@@ -1,6 +1,6 @@
 /*
  * Deliberately plain: no web fonts, no images, no gradients that dither
- * differently between runs. Everything here has to render the same way twice.
+ * differently between runs. Everything here has to look the same way twice.
  */
 
 * {

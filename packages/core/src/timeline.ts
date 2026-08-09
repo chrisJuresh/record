@@ -39,8 +39,8 @@ export function evaluateTimeline(timeline: Timeline): PageState[] {
 }
 
 /**
- * A declared duration covers a whole number of Frames; anything else would put
- * a Frame boundary inside a frame interval.
+ * A declared duration is rounded to the nearest whole number of Frames, since
+ * a Frame boundary cannot fall inside a frame interval.
  */
 function frameCount(durationMs: number, framerate: number): number {
   return Math.round((durationMs * framerate) / 1000);

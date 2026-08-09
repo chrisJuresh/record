@@ -26,15 +26,29 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const json = argv.includes("--json");
+  const options = argv.filter((argument) => argument.startsWith("-"));
+  const unknown = options.find((option) => option !== "--json");
+  if (unknown !== undefined) {
+    return fail(`unknown option '${unknown}'\n\n${usage}`);
+  }
+
+  const json = options.includes("--json");
   const [command, ...operands] = argv.filter((argument) => !argument.startsWith("-"));
 
   try {
     switch (command) {
       case "projects":
+        if (operands.length > 0) {
+          return fail(`projects takes no arguments\n\n${usage}`);
+        }
         return await projects(json);
-      case "actions":
-        return await actions(operands[0], json);
+      case "actions": {
+        const [project] = operands;
+        if (project === undefined || operands.length > 1) {
+          return fail(`actions takes the name of one Project\n\n${usage}`);
+        }
+        return await actions(project, json);
+      }
       default:
         return fail(`unknown command '${command}'\n\n${usage}`);
     }
@@ -49,23 +63,23 @@ async function main(argv: string[]): Promise<number> {
 async function projects(json: boolean): Promise<number> {
   const configured = await readProjects(workspace());
 
-  process.stdout.write(json ? `${JSON.stringify(configured, null, 2)}\n` : describe(configured));
-  return 0;
+  return emit(json, configured, () => asTable(configured));
 }
 
-async function actions(project: string | undefined, json: boolean): Promise<number> {
-  if (project === undefined) {
-    return fail(`actions needs the name of a Project\n\n${usage}`);
-  }
-
+async function actions(project: string, json: boolean): Promise<number> {
   const named = await readActions(workspace(), project);
 
-  process.stdout.write(json ? `${JSON.stringify(named, null, 2)}\n` : `${named.join("\n")}\n`);
+  return emit(json, named, () => `${named.join("\n")}\n`);
+}
+
+/** Machine-readable when asked for, and readable by a person otherwise. */
+function emit(json: boolean, value: unknown, describe: () => string): number {
+  process.stdout.write(json ? `${JSON.stringify(value, null, 2)}\n` : describe());
   return 0;
 }
 
 /** One line per Project: its name, where it serves, and whether it is Published. */
-function describe(configured: ProjectConfig[]): string {
+function asTable(configured: ProjectConfig[]): string {
   const name = widest(configured.map((project) => project.name));
   const url = widest(configured.map((project) => project.baseUrl));
 

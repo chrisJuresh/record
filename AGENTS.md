@@ -60,6 +60,10 @@ There are exactly two seams, and tests live only at them:
   boundaries, duration rounding and Override application, with no browser
   involved.
 
+`packages/fixture-site/test/` is the one exception, and it tests the harness
+rather than the tool: a fixture site that quietly stopped serving would weaken
+every assertion made against it, determinism most of all.
+
 Assert on what is observable from outside: the files a Run produced, the plan a
 publish would carry out. A test that reaches into an intermediate structure the
 operator cannot see will be rejected in review.

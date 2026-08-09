@@ -12,8 +12,6 @@ const siteRoot = resolve(import.meta.dirname, "../../site");
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".svg": "image/svg+xml",
 };
 
 export type FixtureSite = {

@@ -3,7 +3,7 @@
  * under `projects/` in the workspace holding a `project.toml` -- per ADR 0003
  * nothing is ever written into the Project's own repository.
  */
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
@@ -35,19 +35,28 @@ export type ProjectConfig = {
 const defaultReadyPath = "/";
 const defaultViewport: Viewport = { width: 1440, height: 900, deviceScaleFactor: 2 };
 
-/** Every configured Project in the workspace, by name. */
+/**
+ * Every configured Project in the workspace, by name. A directory holding no
+ * `project.toml` configures no Project, so a scratch directory left under
+ * `projects/` does not take the whole listing down.
+ */
 export async function readProjects(workspace: string): Promise<ProjectConfig[]> {
-  const names = (await readdir(projectsDirectory(workspace), { withFileTypes: true }).catch(asMissing))
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
+  const entries = await readdir(projectsDirectory(workspace), { withFileTypes: true }).catch(asMissing);
+
+  const configured = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => ((await isReadable(configFile(workspace, entry.name))) ? entry.name : undefined)),
+  );
+
+  const names = configured.filter((name) => name !== undefined).sort();
 
   return Promise.all(names.map((name) => readProject(workspace, name)));
 }
 
 /** One configured Project, or a failure naming the Project that is not there. */
 export async function readProject(workspace: string, name: string): Promise<ProjectConfig> {
-  const file = join(projectsDirectory(workspace), name, "project.toml");
+  const file = configFile(workspace, name);
 
   const text = await readFile(file, "utf8").catch((failure: NodeJS.ErrnoException) => {
     if (failure.code === "ENOENT") {
@@ -84,6 +93,17 @@ function projectsDirectory(workspace: string): string {
   return join(workspace, "projects");
 }
 
+function configFile(workspace: string, name: string): string {
+  return join(projectsDirectory(workspace), name, "project.toml");
+}
+
+async function isReadable(file: string): Promise<boolean> {
+  return access(file).then(
+    () => true,
+    () => false,
+  );
+}
+
 function projectFrom(name: string, table: Record<string, unknown>, file: string): ProjectConfig {
   const viewport = optionalTable(table, "viewport", file) ?? {};
   const startCommand = optionalString(table, "start_command", file);
@@ -115,15 +135,15 @@ function requiredString(table: Record<string, unknown>, key: string, file: strin
 }
 
 function optionalString(table: Record<string, unknown>, key: string, file: string): string | undefined {
-  return expect(table[key], "a string", (value) => typeof value === "string", key, file);
+  return ofType(table, key, file, "a string", (value) => typeof value === "string");
 }
 
 function optionalNumber(table: Record<string, unknown>, key: string, file: string): number | undefined {
-  return expect(table[key], "a number", (value) => typeof value === "number", key, file);
+  return ofType(table, key, file, "a number", (value) => typeof value === "number");
 }
 
 function optionalBoolean(table: Record<string, unknown>, key: string, file: string): boolean | undefined {
-  return expect(table[key], "true or false", (value) => typeof value === "boolean", key, file);
+  return ofType(table, key, file, "true or false", (value) => typeof value === "boolean");
 }
 
 function optionalTable(
@@ -131,26 +151,29 @@ function optionalTable(
   key: string,
   file: string,
 ): Record<string, unknown> | undefined {
-  return expect(
-    table[key],
-    "a table",
-    (value) => typeof value === "object" && value !== null && !Array.isArray(value),
+  return ofType(
+    table,
     key,
     file,
+    "a table",
+    (value) => typeof value === "object" && value !== null && !Array.isArray(value),
   );
 }
 
-function expect<T>(
-  value: unknown,
-  expected: string,
-  holds: (value: unknown) => boolean,
+/** A key's value if it is there and of the expected type, and a message naming both if it is not. */
+function ofType<T>(
+  table: Record<string, unknown>,
   key: string,
   file: string,
+  expected: string,
+  isExpected: (value: unknown) => boolean,
 ): T | undefined {
+  const value = table[key];
+
   if (value === undefined) {
     return undefined;
   }
-  if (!holds(value)) {
+  if (!isExpected(value)) {
     throw new RecordError(`${file}: '${key}' must be ${expected}`);
   }
   return value as T;
