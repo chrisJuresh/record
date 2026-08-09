@@ -4,7 +4,8 @@
  * machine. No test may depend on a real Project being present.
  */
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -63,6 +64,32 @@ export async function actionIn(
   const directory = join(workspace, "projects", project, "actions");
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, `${action}.ts`), source, "utf8");
+}
+
+/**
+ * Every file beneath a directory, by the name it has under it, hashed rather
+ * than read into the assertion -- which is how a test says "exactly as it was"
+ * about a pile of encoded video.
+ */
+export async function contentsOf(directory: string): Promise<Record<string, string>> {
+  const entries = await readdir(directory, { recursive: true, withFileTypes: true });
+
+  return Object.fromEntries(
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isFile())
+        .map(async (entry) => {
+          const file = join(entry.parentPath, entry.name);
+
+          return [
+            file.slice(directory.length + 1),
+            createHash("sha256")
+              .update(await readFile(file))
+              .digest("hex"),
+          ];
+        }),
+    ),
+  );
 }
 
 /** Registered with `after` by every file that makes a workspace. */

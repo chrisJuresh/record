@@ -13,6 +13,7 @@ export type { Artifact, ArtifactFormat } from "./artifacts.js";
 export { actionModule, overridesFile, readActions, readProject, readProjects } from "./config.js";
 export type { ProjectConfig, Viewport } from "./config.js";
 export { RecordError } from "./errors.js";
+export { readHistory } from "./history.js";
 export type { Key, KeyName, KeyStroke } from "./keys.js";
 export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
@@ -20,6 +21,8 @@ export { readOverrides, readParameters, resetOverrides, setOverrides } from "./o
 export type { ParameterReport, ReportedParameter } from "./overrides.js";
 export { runAction } from "./run.js";
 export type { RunReport } from "./run.js";
+export { readStatus } from "./status.js";
+export type { ActionStatus, LastRun, ProjectStatus, StatusReport } from "./status.js";
 export { evaluateTimeline } from "./timeline.js";
 export type {
   Click,
@@ -40,3 +43,4 @@ export type {
   Typing,
   WaitFor,
 } from "./timeline.js";
+export type { ToolVersions } from "./tools.js";

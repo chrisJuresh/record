@@ -8,8 +8,7 @@
  * rather than by reading anything the tool says about itself.
  */
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
@@ -22,7 +21,7 @@ import {
 } from "@record/fixture-site";
 import type { RunReport } from "@record/core";
 
-import { actionIn, record, removeWorkspaces, workspaceWith } from "./harness.js";
+import { actionIn, contentsOf, record, removeWorkspaces, workspaceWith } from "./harness.js";
 
 /** Four Frames of nothing much. What is under test here is the Project, not the clip. */
 const peek = `
@@ -170,8 +169,8 @@ test("a Project that is not answering is started, recorded, and stopped again", 
   assert.equal(started.frames.hashes.length, started.frames.captured);
 
   assert.deepEqual(
-    (await readdir(join(workspace, "runs", "stopped", "peek"))).sort(),
-    ["peek.embed.html", "peek.gif", "peek.mp4", "peek.webm"],
+    (await readdir(started.directory)).sort(),
+    ["peek.embed.html", "peek.gif", "peek.mp4", "peek.webm", "run.json"],
   );
 
   assert.equal(await answers(`http://127.0.0.1:${startedPort}/`), false, "the Project it started is still up");
@@ -230,7 +229,7 @@ test("a Project that never becomes ready fails distinguishably from an Action th
 test("a Run that fails leaves the previous Latest Artifacts exactly as they were", async () => {
   const produced = join(workspace, "runs", "stopped", "peek");
   const latest = await contentsOf(produced);
-  assert.equal(Object.keys(latest).length, 4);
+  assert.equal(Object.keys(latest).length, 5);
 
   // Recording gets as far as the browser and then fails on the Action's terms.
   await actionIn(workspace, "stopped", "peek", impossible);
@@ -256,22 +255,6 @@ test("a Run that fails leaves the previous Latest Artifacts exactly as they were
   assert.equal(beforeRecording.code, 1);
   assert.deepEqual(await contentsOf(produced), latest);
 });
-
-/** Every file a Run left behind, by name, hashed rather than read into the assertion. */
-async function contentsOf(directory: string): Promise<Record<string, string>> {
-  const files = await readdir(directory);
-
-  return Object.fromEntries(
-    await Promise.all(
-      files.map(async (file) => [
-        file,
-        createHash("sha256")
-          .update(await readFile(join(directory, file)))
-          .digest("hex"),
-      ]),
-    ),
-  );
-}
 
 /**
  * Whether anything is serving at a URL. Deliberately the test's own probe

@@ -23,7 +23,9 @@ A pnpm workspace of TypeScript packages, built with project references.
   values sit next to each Action in `actions/<action>.overrides.toml` and never
   inside the module (ADR 0005). Nothing is ever written into a Project's own
   repository (ADR 0003).
-- `runs/` — what Runs produce, on this machine only and never committed.
+- `runs/<project>/<action>/<run>/` — one directory per Run, named for the
+  instant it began (ADR 0009). The ten most recent Runs of each Action are kept
+  and older ones pruned. On this machine only, and never committed.
 - `spikes/` — throwaway evidence behind an ADR. Not the engine; nothing imports
   it.
 
@@ -60,6 +62,10 @@ pnpm record run photos scroll-peek
 pnpm record parameters photos scroll-peek
 ```
 
+```bash
+pnpm record status
+```
+
 `record` reads its Projects from `$RECORD_WORKSPACE`, defaulting to this
 checkout. Tests set it to a workspace of their own — **no test may depend on a
 real Project being present, and none may read the photo vault.**
@@ -73,12 +79,29 @@ once the Run ends, however it ended. **Only a Project this tool started is ever
 stopped.**
 
 Recording also needs `chrome-headless-shell` and `ffmpeg`, which are found on
-this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG` name a copy. Frames
-land under `runs/<project>/<action>/` and are deleted as soon as they have been
-encoded, leaving the three Artifacts every Run produces — `<action>.mp4`,
-`<action>.webm` and `<action>.gif` (ADR 0006) — and `<action>.embed.html`, the
-video element naming both video sources. A Run that fails leaves the last good
-Run's Artifacts exactly as they were.
+this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG` name a copy. Every Run
+gets a directory of its own. Frames land in it and are deleted as soon as they
+have been encoded, leaving the three Artifacts every Run produces —
+`<action>.mp4`, `<action>.webm` and `<action>.gif` (ADR 0006) —
+`<action>.embed.html`, the video element naming both video sources, and
+`run.json`, the record of what the Run was produced under. **A Run that fails
+takes its own directory away with it**, so the last good Run's Artifacts are
+exactly as they were.
+
+Runs are not disposable (ADR 0009). Each keeps its timestamp, the Project's
+commit at the time, the effective Parameters and the versions of the tools that
+made it, and the ten most recent Runs of an Action survive — `record history
+<project> <action>` lists them, newest first. Latest is the newest of them, so
+nothing reads a Run's path off a template.
+
+`record status` says which Actions have gone **Stale**: the Project's
+`source_repository` has been committed to since that Action last ran. Only
+commits count — a working tree is edited all day, so uncommitted changes are
+deliberately not considered — and **staleness is reported, never acted on**. The
+commits read are those of the repository *containing* `source_repository`, so a
+Project that is one package of a larger repository is compared against that
+repository. A Project under no repository at all cannot be told either way, and
+`status` warns rather than reporting its Actions as current.
 
 ## Writing an Action
 

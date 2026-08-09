@@ -7,9 +7,12 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import {
+  actionModule,
   readActions,
+  readHistory,
   readParameters,
   readProjects,
+  readStatus,
   RecordError,
   resetOverrides,
   runAction,
@@ -17,6 +20,7 @@ import {
   type ParameterReport,
   type ProjectConfig,
   type RunReport,
+  type StatusReport,
 } from "@record/core";
 
 const usage = `record -- repeatable clips of locally-running websites
@@ -27,6 +31,8 @@ const usage = `record -- repeatable clips of locally-running websites
   record set <project> <action> <name>=<value>...   Override Parameters by hand
   record reset <project> <action> <name>...         Remove Overrides
   record run <project> <action>          Record one Action and encode its Artifacts
+  record status [project]                Say which Actions have gone Stale
+  record history <project> <action>      List the Runs of an Action still kept
 
   --set <name>=<value>         Override a Parameter for this Run, and keep it
   --json                       Emit machine-readable output
@@ -108,6 +114,20 @@ async function main(argv: string[]): Promise<number> {
         }
         return await run(project, action, sets, json);
       }
+      case "status": {
+        const [project] = operands;
+        if (operands.length > 1) {
+          return fail(`status takes at most the name of one Project\n\n${usage}`);
+        }
+        return await status(project, json);
+      }
+      case "history": {
+        const [project, action] = operands;
+        if (project === undefined || action === undefined || operands.length > 2) {
+          return fail(`history takes the name of one Project and one of its Actions\n\n${usage}`);
+        }
+        return await history(project, action, json);
+      }
       default:
         return fail(`unknown command '${command}'\n\n${usage}`);
     }
@@ -188,6 +208,28 @@ async function run(
   warnAbout(recorded.warnings);
 
   return emit(json, recorded, () => asSummary(recorded));
+}
+
+/**
+ * Which Actions have gone Stale. Reading it changes nothing: staleness is
+ * reported and never acted on, so this command never records anything.
+ */
+async function status(project: string | undefined, json: boolean): Promise<number> {
+  const reported = await readStatus(workspace(), project);
+  warnAbout(reported.warnings);
+
+  return emit(json, reported, () => asStatus(reported));
+}
+
+/** The Runs of one Action still kept on this machine, newest first. */
+async function history(project: string, action: string, json: boolean): Promise<number> {
+  // Asked of the Action first: an Action nobody has run has no history, which
+  // is a different answer from a name nobody declared.
+  await actionModule(workspace(), project, action);
+
+  const kept = await readHistory(workspace(), project, action);
+
+  return emit(json, kept, () => asHistory(kept));
 }
 
 function report(reported: ParameterReport, json: boolean): number {
@@ -294,6 +336,48 @@ function asSummary(report: RunReport): string {
     `  embed ${report.embed}`,
     "",
   ].join("\n");
+}
+
+/**
+ * One block per Project: the commit it is at, and how each of its Actions
+ * stands against it. An Action nobody has run says so rather than reading as
+ * current, because the two are worth telling apart.
+ */
+function asStatus(reported: StatusReport): string {
+  return reported.projects
+    .flatMap((project) => {
+      const name = widest(project.actions.map((action) => action.action));
+
+      return [
+        `${project.project}  ${project.commit === null ? "no commit" : shortCommit(project.commit)}`,
+        ...project.actions.map((action) => {
+          const standing = action.lastRun === null ? "never run" : action.stale ? "stale" : "current";
+          const last =
+            action.lastRun === null ? "" : `  ${action.lastRun.recordedAt}  ${action.runs} kept`;
+
+          return `  ${action.action.padEnd(name)}  ${standing.padEnd("never run".length)}${last}`;
+        }),
+      ];
+    })
+    .map((line) => `${line}\n`)
+    .join("");
+}
+
+/** One line per retained Run, newest first: when it ran, against what, and how it was tuned. */
+function asHistory(kept: readonly RunReport[]): string {
+  return kept
+    .map((run) => {
+      const commit = run.commit === null ? "no commit" : shortCommit(run.commit);
+      const tuned = run.overridden.length === 0 ? "" : `  overridden: ${run.overridden.join(", ")}`;
+
+      return `${run.recordedAt}  ${commit}  ${run.frames.captured} Frames at ${run.framerate}fps${tuned}\n`;
+    })
+    .join("");
+}
+
+/** As much of a commit as a person reads, which is as much as git itself shows. */
+function shortCommit(commit: string): string {
+  return commit.slice(0, 7);
 }
 
 function widest(values: string[]): number {
