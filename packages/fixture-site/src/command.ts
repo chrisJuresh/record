@@ -1,6 +1,7 @@
 /**
  * The fixture site as a Project the tool has to start for itself: a command to
- * put in a `project.toml`, and a port nothing is listening on to point it at.
+ * put in a `project.toml`, the directory to run it from, and a port nothing is
+ * listening on to point it at.
  *
  * A Project's configuration has to name where it will answer before it is
  * running, so an ephemeral port is no use here -- one is reserved and let go
@@ -8,19 +9,23 @@
  */
 import { once } from "node:events";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
 
-const entry = resolve(import.meta.dirname, "main.js");
+/**
+ * The directory the command below has to be run from. It names its script
+ * relatively on purpose, so that a Project's `working_directory` being ignored
+ * is a Project that does not start rather than one that quietly still works.
+ */
+export const fixtureSiteDirectory = import.meta.dirname;
 
-export type FixtureSiteCommand = {
+export type FixtureSiteOptions = {
   readonly port: number;
   /** How long the site waits before it starts listening. */
   readonly delayMs?: number;
 };
 
-/** A shell command that serves the fixture site on the given port. */
-export function fixtureSiteCommand({ port, delayMs = 0 }: FixtureSiteCommand): string {
-  return `"${process.execPath}" "${entry}" ${port} ${delayMs}`;
+/** A shell command that serves the fixture site, run from `fixtureSiteDirectory`. */
+export function fixtureSiteCommand({ port, delayMs = 0 }: FixtureSiteOptions): string {
+  return `"${process.execPath}" main.js ${port} ${delayMs}`;
 }
 
 /**

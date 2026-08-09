@@ -36,14 +36,14 @@ export type RunningProject = {
   /** True only when this tool started it, which is the only case it may be stopped in. */
   readonly started: boolean;
   /**
-   * Stops the Project if this tool started it, and never otherwise. Answers
-   * whether it stopped one, and is safe to call more than once.
+   * Stops the Project if this tool started it, and never otherwise. Safe to
+   * call on one that has already stopped, or that was never started.
    */
-  stop(): Promise<boolean>;
+  stop(): Promise<void>;
 };
 
 /** Where a Project says it answers when it is ready to record. */
-export function readyUrl(project: ProjectConfig): string {
+function readyUrl(project: ProjectConfig): string {
   try {
     return new URL(project.readyPath, project.baseUrl).href;
   } catch {
@@ -62,7 +62,7 @@ export async function ensureRunning(project: ProjectConfig): Promise<RunningProj
   const url = readyUrl(project);
 
   if (await answers(url)) {
-    return { readyUrl: url, started: false, stop: async () => false };
+    return { readyUrl: url, started: false, stop: async () => undefined };
   }
 
   const command = project.startCommand;
@@ -82,19 +82,10 @@ export async function ensureRunning(project: ProjectConfig): Promise<RunningProj
     throw failure;
   }
 
-  let stopped = false;
-
   return {
     readyUrl: url,
     started: true,
-    async stop() {
-      if (stopped) {
-        return false;
-      }
-      stopped = true;
-      await halt(running.process);
-      return true;
-    },
+    stop: () => halt(running.process),
   };
 }
 
@@ -172,10 +163,11 @@ async function waitUntilReady(project: ProjectConfig, url: string, running: Star
 }
 
 /**
- * Whether anything is serving the ready URL. Any answer short of an error
- * status counts: a Project that is up but replies 404 there is one whose
- * ready_path names a page it does not serve, and starting a second copy of it
- * would not help.
+ * Whether the Project is serving its ready URL. An error status is not an
+ * answer -- a site still building can say 503 at the path it will serve when it
+ * is done, and waiting is exactly what that case wants. The cost is that a
+ * ready_path naming something the Project never serves reads as a Project that
+ * is not running, and the start command that follows fails on the taken port.
  */
 async function answers(url: string): Promise<boolean> {
   const request = new URL(url).protocol === "https:" ? httpsGet : httpGet;
@@ -197,44 +189,45 @@ async function answers(url: string): Promise<boolean> {
   });
 }
 
-/** Stops a Project this tool started, politely first and then not. */
+/**
+ * Stops a Project this tool started -- all of it, not only the shell that
+ * fronts it, because a server left running under a dead shell would hold the
+ * port the next Run needs.
+ */
 async function halt(child: ChildProcess): Promise<void> {
-  if (!alive(child)) {
+  const pid = child.pid;
+  if (pid === undefined || !alive(child)) {
     return;
   }
 
   const exited = onceEvent(child, "exit").catch(() => undefined);
 
-  signal(child, "SIGTERM");
+  if (process.platform === "win32") {
+    // Windows offers no process group to signal and no polite kill of a tree:
+    // taskkill walking it is the whole of what can be done.
+    const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], { stdio: "ignore" });
+    killer.on("error", () => child.kill());
+
+    await Promise.race([exited, after(stopTimeoutMs)]);
+    return;
+  }
+
+  // The process group rather than the shell, and asked before it is told.
+  signalGroup(child, pid, "SIGTERM");
   await Promise.race([exited, after(stopTimeoutMs)]);
 
   if (alive(child)) {
-    signal(child, "SIGKILL");
+    signalGroup(child, pid, "SIGKILL");
     await Promise.race([exited, after(stopTimeoutMs)]);
   }
 }
 
 function alive(child: ChildProcess): boolean {
-  return child.pid !== undefined && child.exitCode === null && child.signalCode === null;
+  return child.exitCode === null && child.signalCode === null;
 }
 
-/**
- * Signals the whole of what was started, not only the shell that fronts it: a
- * server left running under a dead shell would hold the port a later Run needs.
- */
-function signal(child: ChildProcess, sending: "SIGTERM" | "SIGKILL"): void {
-  const pid = child.pid;
-  if (pid === undefined) {
-    return;
-  }
-
-  if (process.platform === "win32") {
-    // Windows has no process group to signal, and no polite kill either.
-    const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], { stdio: "ignore" });
-    killer.on("error", () => child.kill(sending));
-    return;
-  }
-
+/** Signals the group the Project was started in, or the Project alone if it has none. */
+function signalGroup(child: ChildProcess, pid: number, sending: "SIGTERM" | "SIGKILL"): void {
   try {
     process.kill(-pid, sending);
   } catch {

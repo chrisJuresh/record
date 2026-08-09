@@ -46,10 +46,12 @@ export type RunReport = {
   readonly lifecycle: {
     /** Where the Project was health-checked before recording began. */
     readonly readyUrl: string;
-    /** Whether the Run started the Project, rather than finding it answering. */
+    /**
+     * Whether the Run started the Project rather than finding it answering,
+     * which is also whether it stopped it: a Project it did not start is a
+     * Project it leaves running.
+     */
     readonly started: boolean;
-    /** Whether the Run stopped it again, which it does only if it started it. */
-    readonly stopped: boolean;
   };
 };
 
@@ -85,10 +87,13 @@ export async function runAction(
 
   const produced = join(workspace, "runs", projectName, actionName);
   const frames = join(produced, "frames");
-  await rm(frames, { recursive: true, force: true });
-  await mkdir(produced, { recursive: true });
 
+  // Everything from here is inside the try, so that nothing between starting a
+  // Project and stopping it again can leave one running.
   try {
+    await rm(frames, { recursive: true, force: true });
+    await mkdir(produced, { recursive: true });
+
     const captured = await captureFrames({
       url: project.baseUrl,
       executable: await findHeadlessShell(),
@@ -109,10 +114,6 @@ export async function runAction(
       name: actionName,
     });
 
-    // Stopped before the Run reports, so that what it reports is what happened
-    // rather than what was about to.
-    const stopped = await running.stop();
-
     return {
       project: projectName,
       action: actionName,
@@ -128,7 +129,7 @@ export async function runAction(
       },
       artifacts: encoded.artifacts,
       embed: encoded.embed,
-      lifecycle: { readyUrl: running.readyUrl, started: running.started, stopped },
+      lifecycle: { readyUrl: running.readyUrl, started: running.started },
     };
   } finally {
     // Frames are the bulk of a Run by far, and their only purpose was to be
@@ -137,8 +138,8 @@ export async function runAction(
     // whatever went wrong -- the next Run clears them before it starts.
     await rm(frames, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
 
-    // A Project this Run started is stopped however the Run ended. Stopping is
-    // idempotent, so the Run that already stopped it does not stop it twice.
+    // A Project this Run started is stopped however the Run ended, and one it
+    // found already answering is left exactly as it was found.
     await running.stop();
   }
 }
