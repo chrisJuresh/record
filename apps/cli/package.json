@@ -1,0 +1,17 @@
+{
+  "name": "@record/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The record command. Every operation the tool performs is reachable here.",
+  "bin": {
+    "record": "./dist/src/main.js"
+  },
+  "dependencies": {
+    "@record/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.16.0",
+    "typescript": "5.9.3"
+  }
+}
