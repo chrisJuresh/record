@@ -24,7 +24,7 @@ import type { RunReport, RunSummary } from "@record/core";
 
 import {
   actionIn,
-  contentsOf,
+  artifactsOf,
   projectIn,
   record,
   removeWorkspaces,
@@ -278,17 +278,6 @@ async function answers(url: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * What a Run left behind, hashed, but for the record it wrote of itself -- that
- * one names the instant the Run began, so no two Runs could ever share it.
- */
-async function artifactsOf(run: RunReport): Promise<Record<string, string>> {
-  const left = await contentsOf(run.directory);
-  delete left["run.json"];
-
-  return left;
 }
 
 /** What one Action recorded in a summary, or a failure naming the one that is missing. */

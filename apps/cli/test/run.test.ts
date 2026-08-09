@@ -16,7 +16,7 @@ import { promisify } from "node:util";
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
 import type { Artifact, ArtifactFormat, RunReport } from "@record/core";
 
-import { actionIn, contentsOf, record, removeWorkspaces, workspaceWith } from "./harness.js";
+import { actionIn, artifactsOf, record, removeWorkspaces, workspaceWith } from "./harness.js";
 
 const execute = promisify(execFile);
 
@@ -368,17 +368,6 @@ async function dominantColour(file: string): Promise<readonly [number, number, n
   const [dominant = 0] = [...counts].sort(([, one], [, other]) => other - one)[0] ?? [];
 
   return [(dominant >> 16) & 0xff, (dominant >> 8) & 0xff, dominant & 0xff];
-}
-
-/**
- * What a Run left behind, hashed, but for the record it wrote of itself -- that
- * one names the instant the Run began, which no two Runs could ever share.
- */
-async function artifactsOf(run: RunReport): Promise<Record<string, string>> {
-  const left = await contentsOf(run.directory);
-  delete left["run.json"];
-
-  return left;
 }
 
 /** The Artifact of one format a Run reported, or a failure naming the format that is missing. */

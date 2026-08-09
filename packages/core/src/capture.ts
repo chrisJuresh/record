@@ -11,6 +11,7 @@ import type { Viewport } from "./config.js";
 import type { CursorOverlay } from "./cursor.js";
 import { openFrameStepper, type FrameStepper } from "./driver.js";
 import { RecordError } from "./errors.js";
+import type { Substitution, TextSubstitution } from "./text.js";
 import type { CursorState, PageEffect, PageState } from "./timeline.js";
 
 /**
@@ -30,6 +31,8 @@ export type CapturedFrames = {
   readonly repeated: number;
   /** One hash per captured Frame, in order. */
   readonly hashes: readonly string[];
+  /** The copy substituted into the page, and what each selector matched. */
+  readonly substituted: readonly Substitution[];
 };
 
 export type CaptureOptions = {
@@ -42,6 +45,8 @@ export type CaptureOptions = {
   readonly directory: string;
   /** The cursor drawn over the page, where this Run draws one at all. */
   readonly overlay?: CursorOverlay;
+  /** The copy substituted into the page, where the Action declares any. */
+  readonly substitution?: TextSubstitution;
 };
 
 /** Smooth scrolling would fight a scroll position chosen per Frame. */
@@ -91,6 +96,15 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
 
   try {
     await stepper.evaluate(stopSmoothScrolling);
+
+    // Before the scroller is found and before anything settles: replacement
+    // copy is as free to change the page's height as its wording, so the Run
+    // has to find its scroller in the page it is about to photograph.
+    const substituted =
+      options.substitution === undefined
+        ? []
+        : options.substitution.substituted(await stepper.evaluate(options.substitution.script));
+
     await stepper.evaluate(findScroller);
 
     for (let frame = 0; frame < settlingFrames; frame++) {
@@ -133,6 +147,7 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
       priming: { compositor: stepper.primingFrames, settle: settlingFrames },
       repeated: stepper.repeatedFrames - repeatedWhileSettling,
       hashes,
+      substituted,
     };
   } finally {
     await stepper.close();

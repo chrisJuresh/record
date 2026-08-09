@@ -26,6 +26,7 @@ export type { RunFailure, RunManyOptions, RunReport, RunSummary } from "./run.js
 export type { ParameterSetting } from "./settings.js";
 export { readStatus } from "./status.js";
 export type { ActionStatus, LastRun, ProjectStatus, StatusReport } from "./status.js";
+export type { Substitution, TextOverrides } from "./text.js";
 export { evaluateTimeline } from "./timeline.js";
 export type {
   Click,
