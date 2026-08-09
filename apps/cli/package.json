@@ -11,6 +11,7 @@
     "@record/core": "workspace:*"
   },
   "devDependencies": {
+    "@record/fixture-site": "workspace:*",
     "@types/node": "22.16.0",
     "typescript": "5.9.3"
   }

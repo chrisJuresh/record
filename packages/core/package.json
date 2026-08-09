@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Timeline evaluation, Project configuration, and (later) the capture engine.",
+  "description": "Timeline evaluation, Project configuration, the capture engine and encoding.",
   "exports": {
     ".": "./dist/src/index.js"
   },

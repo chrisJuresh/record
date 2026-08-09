@@ -8,16 +8,18 @@ anything that names a domain concept.
 
 A pnpm workspace of TypeScript packages, built with project references.
 
-- `packages/core/` — Timeline evaluation, Project configuration, and the capture
-  engine once it lands.
+- `packages/core/` — Timeline evaluation, Project configuration, the capture
+  engine and encoding.
 - `packages/fixture-site/` — the static site every test records against, and the
   harness that serves it on an ephemeral port.
 - `apps/cli/` — the `record` command. **The CLI is the real interface**: the
   server and the UI will reach the tool through these commands rather than
   around them, so a new operation is a command first.
 - `projects/<name>/project.toml` — one configured Project. Actions live beside
-  it under `actions/`. Nothing is ever written into a Project's own repository
-  (ADR 0003).
+  it under `actions/`, as TypeScript modules the engine imports directly
+  (ADR 0004) and `tsc --project projects` type-checks. Nothing is ever written
+  into a Project's own repository (ADR 0003).
+- `runs/` — what Runs produce, on this machine only and never committed.
 - `spikes/` — throwaway evidence behind an ADR. Not the engine; nothing imports
   it.
 
@@ -46,9 +48,19 @@ node --enable-source-maps --test apps/cli/dist/test/cli.test.js
 pnpm record projects
 ```
 
+```bash
+pnpm record run photos scroll-peek
+```
+
 `record` reads its Projects from `$RECORD_WORKSPACE`, defaulting to this
 checkout. Tests set it to a workspace of their own — **no test may depend on a
 real Project being present, and none may read the photo vault.**
+
+Recording needs the Project already answering on its base URL; starting one is
+not the tool's job yet. It also needs `chrome-headless-shell` and `ffmpeg`,
+which are found on this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG`
+name a copy. Frames land under `runs/<project>/<action>/` and are deleted as
+soon as they have been encoded.
 
 ## Testing
 
@@ -68,6 +80,11 @@ Assert on what is observable from outside: the files a Run produced, the plan a
 publish would carry out. A test that reaches into an intermediate structure the
 operator cannot see will be rejected in review.
 
+The CLI seam launches a real browser and a real encoder, so its Actions are kept
+small — a test Action asserts the same behaviour as a real one in a tenth of the
+Frames. Determinism is asserted on the **hashes** of Frames, never on stored
+images, which is also all a Run leaves behind.
+
 ## Agent skills
 
 ### Issue tracker
@@ -75,6 +92,11 @@ operator cannot see will be rejected in review.
 Issues and specs live as GitHub issues on `chrisJuresh/record`, driven through the
 `gh` CLI. Blocking is expressed with GitHub's native issue dependencies, not only
 as prose. See `docs/agents/issue-tracker.md`.
+
+**Every issue resolved by a code change lands through a pull request** — a
+branch named `<issue-number>-<slug>`, a PR opened at the first push whose body
+says `Closes #<number>`, and a merge that closes the issue. Nothing is committed
+to `main` directly, and no agent merges or closes on its own.
 
 ### Triage labels
 

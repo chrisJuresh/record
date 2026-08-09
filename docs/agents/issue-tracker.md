@@ -9,7 +9,9 @@ Issues and specs for this repo live as GitHub issues on `chrisJuresh/record`. Us
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: `gh issue close <number> --comment "..."`
+- **Close**: `gh issue close <number> --comment "..."` — only for issues resolved
+  without a code change. An issue resolved by code is closed by merging its pull
+  request (see below), never by hand.
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
@@ -24,6 +26,26 @@ Blocking is expressed with GitHub's **native issue dependencies**, which are vis
 - **Read**: `issue_dependencies_summary.blocked_by` counts open blockers only, so it is the live gate.
 
 Tickets also carry a `## Blocked by` section in the body listing the same edges, for readers looking at raw markdown.
+
+## Every resolved issue goes through a pull request
+
+**Nothing is committed to `main` directly.** Every issue resolved by a code
+change gets a branch and a pull request, and the merge is what closes the issue.
+This holds for one-line fixes as much as for features: the PR is where the diff
+is reviewed and where the record of why it landed lives.
+
+- **Branch**: one per issue, named `<issue-number>-<slug>` — `2-workspace-cli-and-project-config`.
+  Branch from up-to-date `main`.
+- **Open the PR** as soon as the first commit is pushed, not when the work is
+  finished: `gh pr create --title "..." --body-file <file>`. Same body-file rule
+  as issues — write multi-line bodies to a file, BOM-free (see below).
+- **Link the issue** from the PR body with a closing keyword on its own line —
+  `Closes #<number>` — so merging closes the issue and GitHub records the link.
+  One issue per PR; if a branch resolves several, list a `Closes` line for each.
+- **Read a PR**: `gh pr view <number> --comments`, `gh pr diff <number>`.
+- **Merging is the human's call.** Agents open, push to, and update PRs, and
+  answer review comments on them; they don't merge, and they don't close the
+  issue behind the PR's back.
 
 ## Pull requests as a triage surface
 
@@ -56,6 +78,6 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer to the map's Decisions-so-far.
 
-## Writing issue bodies from PowerShell
+## Writing issue and PR bodies from PowerShell
 
 Windows PowerShell's `Set-Content -Encoding utf8` writes a UTF-8 **BOM**, which lands at the top of the issue body and can stop a leading markdown heading from rendering. Write body files with `[System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding $false))` instead.

@@ -18,11 +18,13 @@ Notes:
 - Node 22 supplies the test runner (`node --test`) and TOML is read with
   `smol-toml`, so the only workspace dependencies are TypeScript, `@types/node`
   and that parser.
-- ffmpeg and ffprobe are not invoked yet — encoding and the assertions on
-  encoded Artifacts arrive with the capture engine. They are recorded now
-  because these are the versions the clock spike's size measurements in
-  `spikes/clock-shim/README.md` came from.
-- `chrome-headless-shell` is likewise not driven yet. Per ADR 0008 it must be
-  the old headless shell rather than `chrome.exe`, and Playwright is the source
-  of the pinned binary rather than the driver. The version above is the one the
-  spike proved the clock against.
+- ffmpeg encodes every Artifact and ffprobe is what the CLI seam's tests measure
+  the encoded result with, rather than trusting what the tool says it wrote.
+  `$RECORD_FFMPEG` names a different copy.
+- `chrome-headless-shell` is what capture drives. Per ADR 0008 it must be the
+  old headless shell rather than `chrome.exe`, and Playwright is the source of
+  the pinned binary rather than the driver — the engine launches it itself and
+  speaks raw CDP. The newest copy under Playwright's download directory is used
+  unless `$RECORD_CHROME` names one. The version above is the one the spike
+  proved the clock against, and the one the priming-frame count in
+  `apps/cli/test/run.test.ts` was measured on.
