@@ -76,6 +76,11 @@ Issues and specs live as GitHub issues on `chrisJuresh/record`, driven through t
 `gh` CLI. Blocking is expressed with GitHub's native issue dependencies, not only
 as prose. See `docs/agents/issue-tracker.md`.
 
+**Every issue resolved by a code change lands through a pull request** — a
+branch named `<issue-number>-<slug>`, a PR opened at the first push whose body
+says `Closes #<number>`, and a merge that closes the issue. Nothing is committed
+to `main` directly, and no agent merges or closes on its own.
+
 ### Triage labels
 
 The five canonical triage roles, each label string equal to its name, plus a
