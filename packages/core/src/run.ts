@@ -4,8 +4,12 @@
  * This is where configuration, Timeline evaluation, capture and encoding meet.
  * Everything a Run reports is something the operator can see for themselves --
  * the file it wrote, and the hashes of the Frames it wrote it from.
+ *
+ * A Run is not disposable: it keeps what it produced in a directory of its own,
+ * beside a record of the conditions it was produced under, until ten newer Runs
+ * of the same Action have replaced it.
  */
-import { mkdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { allParameters, effectiveParameters, loadAction } from "./action.js";
@@ -15,13 +19,26 @@ import { captureFrames } from "./capture.js";
 import { actionModule, readProject } from "./config.js";
 import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
+import { beginRun, historyDirectory, pruneHistory, writeRun } from "./history.js";
 import { ensureRunning } from "./lifecycle.js";
 import { readOverrides } from "./overrides.js";
+import { headCommit, repositoryOf } from "./repository.js";
+import { toolVersions, type ToolVersions } from "./tools.js";
 import { evaluateTimeline, type EasingName } from "./timeline.js";
 
 export type RunReport = {
   readonly project: string;
   readonly action: string;
+  /** What this Run is called, which is also the instant it began. */
+  readonly id: string;
+  /** When it began, as an ISO instant. */
+  readonly recordedAt: string;
+  /** Where its Artifacts, its snippet and this record are kept. */
+  readonly directory: string;
+  /** The Project's commit when it was recorded, which is what staleness compares. */
+  readonly commit: string | null;
+  /** The versions of the external tools that made it. */
+  readonly tools: ToolVersions;
   readonly framerate: number;
   /** What the Action actually ran with, declarations and Overrides together. */
   readonly parameters: Readonly<Record<string, number | EasingName>>;
@@ -61,6 +78,9 @@ export type RunReport = {
  * A Project already answering is recorded as it stands and left running; one
  * that is not is started for the Run and stopped again afterwards, whether the
  * Run succeeded or not.
+ *
+ * What it produces goes into a directory of this Run's own, so a Run that fails
+ * takes only its own away with it and every earlier Run is left where it was.
  */
 export async function runAction(
   workspace: string,
@@ -82,21 +102,31 @@ export async function runAction(
   }
 
   // Before anything is written: a Project that will not come up costs nothing
-  // to find out about, and the last good Run's Artifacts are still the Latest.
+  // to find out about, and the retained Runs are still where they were.
   const running = await ensureRunning(project);
 
-  const produced = join(workspace, "runs", projectName, actionName);
-  const frames = join(produced, "frames");
+  /** This Run's own directory, once it has one to clean up after itself. */
+  let produced: string | undefined;
 
   // Everything from here is inside the try, so that nothing between starting a
   // Project and stopping it again can leave one running.
   try {
-    await rm(frames, { recursive: true, force: true });
-    await mkdir(produced, { recursive: true });
+    const executable = await findHeadlessShell();
+
+    const begun = await beginRun(workspace, projectName, actionName, new Date());
+    produced = begun.directory;
+    const frames = join(begun.directory, "frames");
+
+    // What the clip was made under, read while it is being made rather than
+    // asked for afterwards, when the answer could already have changed.
+    const [tools, commit] = await Promise.all([
+      toolVersions(executable),
+      headCommit(repositoryOf(workspace, project)),
+    ]);
 
     const captured = await captureFrames({
       url: project.baseUrl,
-      executable: await findHeadlessShell(),
+      executable,
       viewport: project.viewport,
       framerate: timeline.framerate,
       states,
@@ -110,13 +140,23 @@ export async function runAction(
       viewport: project.viewport,
       videoWidth: project.videoWidth,
       gif: gifSettings(effective.values),
-      directory: produced,
+      directory: begun.directory,
       name: actionName,
     });
 
-    return {
+    // Frames are the bulk of a Run by far, and their only purpose was to be
+    // encoded; their hashes outlive them. Failing to sweep up must not replace
+    // a Run that succeeded -- what is left of them goes when the Run is pruned.
+    await rm(frames, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
+
+    const report: RunReport = {
       project: projectName,
       action: actionName,
+      id: begun.id,
+      recordedAt: begun.recordedAt,
+      directory: begun.directory,
+      commit,
+      tools,
       framerate: timeline.framerate,
       parameters: effective.values,
       overridden: effective.overridden,
@@ -131,13 +171,20 @@ export async function runAction(
       embed: encoded.embed,
       lifecycle: { readyUrl: running.readyUrl, started: running.started },
     };
-  } finally {
-    // Frames are the bulk of a Run by far, and their only purpose was to be
-    // encoded. Their hashes outlive them, and a Run that failed leaves no
-    // half-recorded pile behind either. Failing to sweep up must not replace
-    // whatever went wrong -- the next Run clears them before it starts.
-    await rm(frames, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
 
+    await writeRun(report);
+    await pruneHistory(historyDirectory(workspace, projectName, actionName));
+
+    return report;
+  } catch (failure) {
+    // A Run that failed leaves nothing behind: its directory holds only its own
+    // half of a recording, so taking it away is what leaves every earlier Run,
+    // the Latest included, exactly as it was.
+    if (produced !== undefined) {
+      await rm(produced, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
+    }
+    throw failure;
+  } finally {
     // A Project this Run started is stopped however the Run ended, and one it
     // found already answering is left exactly as it was found.
     await running.stop();

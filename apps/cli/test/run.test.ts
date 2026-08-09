@@ -209,15 +209,14 @@ test("tuning the GIF's Parameters shrinks the GIF and leaves the video Artifacts
 });
 
 test("captured Frames are deleted once encoding succeeds", async () => {
-  const produced = join(workspace, "runs", "demo", "peek");
-
-  // The Artifacts and their snippet, and nothing else -- no Frames, and no
-  // half-written encode.
-  assert.deepEqual((await readdir(produced)).sort(), [
+  // The Artifacts, their snippet and the Run's own record, and nothing else --
+  // no Frames, and no half-written encode.
+  assert.deepEqual((await readdir(first.directory)).sort(), [
     "peek.embed.html",
     "peek.gif",
     "peek.mp4",
     "peek.webm",
+    "run.json",
   ]);
 });
 
@@ -229,7 +228,7 @@ test("captured Frames are deleted once encoding succeeds", async () => {
 test("an embed snippet naming both video sources is written beside the Artifacts", async () => {
   const snippet = await readFile(first.embed, "utf8");
 
-  assert.equal(first.embed, join(workspace, "runs", "demo", "peek", "peek.embed.html"));
+  assert.equal(first.embed, join(first.directory, "peek.embed.html"));
   assert.match(snippet, /<source src="peek\.webm" type="video\/webm"/);
   assert.match(snippet, /<source src="peek\.mp4" type="video\/mp4"/);
   assert.ok(
