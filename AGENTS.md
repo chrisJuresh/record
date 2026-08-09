@@ -59,6 +59,14 @@ pnpm record run photos scroll-peek
 ```
 
 ```bash
+pnpm record run photos
+```
+
+```bash
+pnpm record run --all
+```
+
+```bash
 pnpm record parameters photos scroll-peek
 ```
 
@@ -78,6 +86,17 @@ open. One that is not answering is started from its `start_command` in its
 once the Run ends, however it ended. **Only a Project this tool started is ever
 stopped.**
 
+`record run <project>` records every Action in a Project and `record run --all`
+records every Action of every Project, **four at a time** unless
+`--concurrency <n>` says otherwise. Recording concurrently cannot change what is
+recorded, because a Run's output depends on the stepped clock rather than on
+wall-clock time (ADR 0001) — the Artifacts are byte-identical to the same
+Actions recorded one at a time, which the CLI seam asserts. A Project needing to
+be started is started **once** and shared by every Action recording against it,
+and stopped when the last of them is done. **One Action failing does not abandon
+the others**: the rest record, the summary names what failed, and the command
+still fails.
+
 Recording also needs `chrome-headless-shell` and `ffmpeg`, which are found on
 this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG` name a copy. Every Run
 gets a directory of its own. Frames land in it and are deleted as soon as they
@@ -86,7 +105,10 @@ have been encoded, leaving the three Artifacts every Run produces —
 `<action>.embed.html`, the video element naming both video sources, and
 `run.json`, the record of what the Run was produced under. **A Run that fails
 takes its own directory away with it**, so the last good Run's Artifacts are
-exactly as they were.
+exactly as they were. Encoding is bit-exact, so an Artifact is a function of the
+Frames it was encoded from and nothing else — two Runs of an unchanged Action
+produce the same bytes rather than files stamped with the moment they were
+written.
 
 Runs are not disposable (ADR 0009). Each keeps its timestamp, the Project's
 commit at the time, the effective Parameters and the versions of the tools that

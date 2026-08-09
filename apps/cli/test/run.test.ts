@@ -319,13 +319,6 @@ test("`run --set` records with the Override and keeps it in the sidecar", async 
   assert.match(await readFile(sidecar, "utf8"), /distance = 40/);
 });
 
-test("`run` without an Action to run says so rather than recording something else", async () => {
-  const { stderr, code } = await record(workspace, "run", "demo");
-
-  assert.equal(code, 1);
-  assert.match(stderr, /run takes the name of one Project and one of its Actions/);
-});
-
 test("naming an Action the Project does not declare fails with a message saying so", async () => {
   const { stderr, code } = await record(workspace, "run", "demo", "nothing-like-it");
 
