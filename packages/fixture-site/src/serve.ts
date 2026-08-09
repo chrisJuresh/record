@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const siteRoot = resolve(import.meta.dirname, "../../site");
 
@@ -20,12 +21,21 @@ export type FixtureSite = {
   close(): Promise<void>;
 };
 
-export async function startFixtureSite(): Promise<FixtureSite> {
+/**
+ * Serves the fixture site, on an ephemeral port unless one is named. A port is
+ * named only by a Project the tool has to start itself, whose `project.toml`
+ * has to say where it will answer before it is running.
+ */
+export async function startFixtureSite(port = 0, delayMs = 0): Promise<FixtureSite> {
   const server = createServer((request, response) => {
     void handle(request, response);
   });
 
-  server.listen(0, "127.0.0.1");
+  // A Project that takes a moment to come up is the case worth exercising: the
+  // tool has to wait for the ready URL rather than assume the command's return.
+  await delay(delayMs);
+
+  server.listen(port, "127.0.0.1");
   await once(server, "listening");
 
   const address = server.address();

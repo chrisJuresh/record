@@ -15,6 +15,7 @@ import { captureFrames } from "./capture.js";
 import { actionModule, readProject } from "./config.js";
 import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
+import { ensureRunning } from "./lifecycle.js";
 import { readOverrides } from "./overrides.js";
 import { evaluateTimeline, type EasingName } from "./timeline.js";
 
@@ -41,13 +42,23 @@ export type RunReport = {
   readonly artifacts: readonly Artifact[];
   /** Where the embed snippet naming both video Artifacts was written. */
   readonly embed: string;
+  /** What the Run did with the Project itself. */
+  readonly lifecycle: {
+    /** Where the Project was health-checked before recording began. */
+    readonly readyUrl: string;
+    /** Whether the Run started the Project, rather than finding it answering. */
+    readonly started: boolean;
+    /** Whether the Run stopped it again, which it does only if it started it. */
+    readonly stopped: boolean;
+  };
 };
 
 /**
  * Runs one Action of one Project and returns what it produced.
  *
- * The Project is expected to already be answering; starting and stopping it is
- * a separate piece of work.
+ * A Project already answering is recorded as it stands and left running; one
+ * that is not is started for the Run and stopped again afterwards, whether the
+ * Run succeeded or not.
  */
 export async function runAction(
   workspace: string,
@@ -67,6 +78,10 @@ export async function runAction(
   if (states.length === 0) {
     throw new RecordError(`'${actionName}' declares a Timeline that produces no Frames`);
   }
+
+  // Before anything is written: a Project that will not come up costs nothing
+  // to find out about, and the last good Run's Artifacts are still the Latest.
+  const running = await ensureRunning(project);
 
   const produced = join(workspace, "runs", projectName, actionName);
   const frames = join(produced, "frames");
@@ -94,6 +109,10 @@ export async function runAction(
       name: actionName,
     });
 
+    // Stopped before the Run reports, so that what it reports is what happened
+    // rather than what was about to.
+    const stopped = await running.stop();
+
     return {
       project: projectName,
       action: actionName,
@@ -109,6 +128,7 @@ export async function runAction(
       },
       artifacts: encoded.artifacts,
       embed: encoded.embed,
+      lifecycle: { readyUrl: running.readyUrl, started: running.started, stopped },
     };
   } finally {
     // Frames are the bulk of a Run by far, and their only purpose was to be
@@ -116,5 +136,9 @@ export async function runAction(
     // half-recorded pile behind either. Failing to sweep up must not replace
     // whatever went wrong -- the next Run clears them before it starts.
     await rm(frames, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
+
+    // A Project this Run started is stopped however the Run ended. Stopping is
+    // idempotent, so the Run that already stopped it does not stop it twice.
+    await running.stop();
   }
 }

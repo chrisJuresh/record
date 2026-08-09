@@ -14,6 +14,8 @@ export { actionModule, overridesFile, readActions, readProject, readProjects } f
 export type { ProjectConfig, Viewport } from "./config.js";
 export { RecordError } from "./errors.js";
 export type { Key, KeyName, KeyStroke } from "./keys.js";
+export { ensureRunning, readyUrl } from "./lifecycle.js";
+export type { RunningProject } from "./lifecycle.js";
 export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
 export { readOverrides, readParameters, resetOverrides, setOverrides } from "./overrides.js";

@@ -14,6 +14,7 @@ after(removeWorkspaces);
 const fullyConfigured = `
 base_url = "http://127.0.0.1:4173/"
 ready_path = "/health"
+ready_timeout_ms = 15000
 start_command = "npm run preview"
 working_directory = 'C:\\demo\\site'
 source_repository = 'C:\\demo\\site'
@@ -44,6 +45,7 @@ test("`projects --json` reports every configured Project", async () => {
       readyPath: "/health",
       startCommand: "npm run preview",
       workingDirectory: "C:\\demo\\site",
+      readyTimeoutMs: 15000,
       sourceRepository: "C:\\demo\\site",
       viewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
       videoWidth: 960,
@@ -62,6 +64,7 @@ test("a Project that declares only what it must gets the defaults, and is not Pu
       name: "other",
       baseUrl: "http://127.0.0.1:5173/",
       readyPath: "/",
+      readyTimeoutMs: 60000,
       sourceRepository: "C:\\demo\\other",
       viewport: { width: 1440, height: 900, deviceScaleFactor: 2 },
       videoWidth: 1280,

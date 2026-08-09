@@ -25,6 +25,8 @@ export type ProjectConfig = {
   /** Command that starts the Project when it is not already answering. */
   readonly startCommand?: string;
   readonly workingDirectory?: string;
+  /** How long a Project that had to be started is given to answer its ready URL. */
+  readonly readyTimeoutMs: number;
   /** The Project's own git repository, read to report staleness. */
   readonly sourceRepository: string;
   readonly viewport: Viewport;
@@ -35,6 +37,8 @@ export type ProjectConfig = {
 };
 
 const defaultReadyPath = "/";
+/** Long enough for a bundler to build a site it has not built before. */
+const defaultReadyTimeoutMs = 60_000;
 const defaultViewport: Viewport = { width: 1440, height: 900, deviceScaleFactor: 2 };
 const defaultVideoWidth = 1280;
 
@@ -143,6 +147,7 @@ function projectFrom(name: string, table: Record<string, unknown>, file: string)
     readyPath: optionalString(table, "ready_path", file) ?? defaultReadyPath,
     ...(startCommand === undefined ? {} : { startCommand }),
     ...(workingDirectory === undefined ? {} : { workingDirectory }),
+    readyTimeoutMs: optionalNumber(table, "ready_timeout_ms", file) ?? defaultReadyTimeoutMs,
     sourceRepository: requiredString(table, "source_repository", file),
     viewport: {
       width: optionalNumber(viewport, "width", file) ?? defaultViewport.width,
