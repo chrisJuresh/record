@@ -137,6 +137,11 @@ async function main(argv: string[]): Promise<number> {
         if (sets.length > 0 && action === undefined) {
           return fail(`--set names one Action's Parameter, so it takes a Project and an Action\n\n${usage}`);
         }
+        // ...and one Action records on its own however many the machine could
+        // have recorded beside it.
+        if (concurrency !== undefined && action !== undefined) {
+          return fail(`--concurrency is how many Actions record at once, so it takes a Project or --all\n\n${usage}`);
+        }
 
         return project !== undefined && action !== undefined
           ? await run(project, action, sets, json)
@@ -199,7 +204,7 @@ function parse(argv: string[]): Arguments {
       }
       sets.push(assignment);
     } else if (argument === "--concurrency") {
-      concurrency = wholeNumber(argv[++at]);
+      concurrency = actionsAtOnce(argv[++at]);
     } else if (argument.startsWith("-")) {
       throw new Error(`unknown option '${argument}'`);
     } else {
@@ -213,7 +218,7 @@ function parse(argv: string[]): Arguments {
 }
 
 /** How many Actions record at once, which is a count of Actions rather than a number. */
-function wholeNumber(given: string | undefined): number {
+function actionsAtOnce(given: string | undefined): number {
   const count = Number(given);
 
   if (given === undefined || !Number.isInteger(count) || count < 1) {
@@ -255,7 +260,7 @@ async function run(
   const recorded = await runAction(workspace(), project, action);
   warnAbout(recorded.warnings);
 
-  return emit(json, recorded, () => asSummary(recorded));
+  return emit(json, recorded, () => asRun(recorded));
 }
 
 /**
@@ -390,7 +395,7 @@ function asParameters(reported: ParameterReport): string {
 }
 
 /** What a Run captured, and what it left behind. */
-function asSummary(report: RunReport): string {
+function asRun(report: RunReport): string {
   const { captured, repeated } = report.frames;
   const seconds = (captured / report.framerate).toFixed(2);
 
@@ -424,7 +429,7 @@ function asRuns(recorded: RunSummary): string {
   const asked = recorded.runs.length + recorded.failures.length;
 
   return [
-    ...recorded.runs.map(asSummary),
+    ...recorded.runs.map(asRun),
     `${recorded.runs.length} of ${asked} Actions recorded, ${recorded.concurrency} at a time\n`,
   ].join("");
 }

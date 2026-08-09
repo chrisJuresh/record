@@ -153,12 +153,14 @@ export async function runActions(
   workspace: string,
   options: RunManyOptions = {},
 ): Promise<RunSummary> {
+  const concurrency = concurrencyOf(options.concurrency);
+
   const configured =
     options.project === undefined
       ? await readProjects(workspace)
       : [await readProject(workspace, options.project)];
 
-  const asked = await Promise.all(
+  const requested = await Promise.all(
     configured.map(async (project) => {
       const named = await readActions(workspace, project.name);
       // One lease per Project, shared by every Action recording against it, so
@@ -169,28 +171,26 @@ export async function runActions(
     }),
   );
 
-  const concurrency = Math.max(1, Math.trunc(options.concurrency ?? defaultConcurrency));
-  const outcomes = await recordEach(workspace, asked.flat(), concurrency);
+  const runs: RunReport[] = [];
+  const failures: RunFailure[] = [];
 
-  return {
-    concurrency,
-    runs: outcomes.flatMap((outcome) => ("report" in outcome ? [outcome.report] : [])),
-    failures: outcomes.flatMap((outcome) =>
-      "report" in outcome
-        ? []
-        : [
-            {
-              project: outcome.recording.project.name,
-              action: outcome.recording.action,
-              message: messageOf(outcome.failure),
-            },
-          ],
-    ),
-  };
+  for (const outcome of await recordEach(workspace, requested.flat(), concurrency)) {
+    if ("report" in outcome) {
+      runs.push(outcome.report);
+    } else {
+      failures.push({
+        project: outcome.asked.project.name,
+        action: outcome.asked.action,
+        message: messageOf(outcome.failure),
+      });
+    }
+  }
+
+  return { concurrency, runs, failures };
 }
 
-/** One Action to record, and the lease its Project is shared through. */
-type Recording = {
+/** One Action asked for, and the lease its Project is shared through. */
+type RunRequest = {
   readonly project: ProjectConfig;
   readonly action: string;
   readonly lease: Lease;
@@ -199,6 +199,10 @@ type Recording = {
 /**
  * A Project held open for the Actions recording against it: started when the
  * first of them needs it, and stopped when the last of them is done.
+ *
+ * Starting one per Action would be a second server fighting the first for the
+ * port, and stopping one per Action would stop it under the Actions still
+ * recording against it.
  */
 type Lease = {
   /** How many of the Project's Actions have still to let go of it. */
@@ -209,8 +213,8 @@ type Lease = {
 
 /** What one Action recorded, or what stopped it. */
 type Outcome =
-  | { readonly recording: Recording; readonly report: RunReport }
-  | { readonly recording: Recording; readonly failure: unknown };
+  | { readonly asked: RunRequest; readonly report: RunReport }
+  | { readonly asked: RunRequest; readonly failure: unknown };
 
 /**
  * Records each of them, at most `concurrency` at once, and answers in the order
@@ -218,32 +222,32 @@ type Outcome =
  */
 async function recordEach(
   workspace: string,
-  recordings: readonly Recording[],
+  requested: readonly RunRequest[],
   concurrency: number,
 ): Promise<Outcome[]> {
   const outcomes: Outcome[] = [];
 
   // One queue drawn from by every worker, rather than a share of the Actions
   // handed to each: a slow Action then holds up nothing but itself.
-  const queue = recordings.entries();
+  const queue = requested.entries();
 
   const worker = async () => {
-    for (const [at, recording] of queue) {
-      outcomes[at] = await recordOne(workspace, recording);
+    for (const [at, asked] of queue) {
+      outcomes[at] = await recordOne(workspace, asked);
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, recordings.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(concurrency, requested.length) }, worker));
 
   return outcomes;
 }
 
 /** Records one Action, answering with what stopped it rather than throwing it. */
-async function recordOne(workspace: string, recording: Recording): Promise<Outcome> {
+async function recordOne(workspace: string, asked: RunRequest): Promise<Outcome> {
   try {
-    return { recording, report: await record(workspace, recording) };
+    return { asked, report: await record(workspace, asked) };
   } catch (failure) {
-    return { recording, failure };
+    return { asked, failure };
   }
 }
 
@@ -252,9 +256,20 @@ function messageOf(failure: unknown): string {
   return failure instanceof Error ? failure.message : String(failure);
 }
 
+/** How many Actions may record at once, or a failure naming what was asked for instead. */
+function concurrencyOf(asked: number | undefined): number {
+  const concurrency = asked ?? defaultConcurrency;
+
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RecordError(`${concurrency} is not a number of Actions to record at once`);
+  }
+
+  return concurrency;
+}
+
 /** Everything one Run does, from the Action's declaration to its Artifacts. */
-async function record(workspace: string, recording: Recording): Promise<RunReport> {
-  const { project, action: actionName, lease } = recording;
+async function record(workspace: string, asked: RunRequest): Promise<RunReport> {
+  const { project, action: actionName, lease } = asked;
   const projectName = project.name;
 
   /** This Run's own directory, once it has one to clean up after itself. */
@@ -277,7 +292,10 @@ async function record(workspace: string, recording: Recording): Promise<RunRepor
     // Before anything is written, and before a Project is asked for at all: an
     // Action that cannot describe a clip costs nothing to find out about, and
     // the retained Runs are still where they were.
-    const running = await acquire(lease, project);
+    //
+    // The Project is started by whichever of its Actions needs it first, and
+    // every other Action recording against it waits on that same start.
+    const running = await (lease.running ??= ensureRunning(project));
 
     const executable = await findHeadlessShell();
 
@@ -357,18 +375,6 @@ async function record(workspace: string, recording: Recording): Promise<RunRepor
     // ever asked for -- a lease nobody let go of is a Project left running.
     await release(lease);
   }
-}
-
-/**
- * The Project answering, started at most once however many of its Actions
- * record against it. Starting one per Action would be a second server fighting
- * the first for the port, and would stop the Project under the Actions still
- * recording against it.
- */
-async function acquire(lease: Lease, project: ProjectConfig): Promise<RunningProject> {
-  lease.running ??= ensureRunning(project);
-
-  return lease.running;
 }
 
 /**

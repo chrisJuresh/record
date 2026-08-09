@@ -99,9 +99,18 @@ let togetherSaid: CommandResult;
 let alphaUrl: string;
 let betaUrl: string;
 
+/** What recording every startable Project produced, and what was watched while it did. */
+type Everything = {
+  readonly summary: RunSummary;
+  /** Whether the two Projects were ever answering at the same moment. */
+  readonly bothUp: boolean;
+  /** How many times each Project's start command ran. */
+  readonly starts: Record<string, number>;
+};
+
 /** Recording both startable Projects one Action at a time, and several at once. */
-let serial: { summary: RunSummary; bothUp: boolean; starts: Record<string, number> };
-let concurrent: { summary: RunSummary; bothUp: boolean; starts: Record<string, number> };
+let serial: Everything;
+let concurrent: Everything;
 
 before(async () => {
   site = await startFixtureSite();
@@ -190,7 +199,6 @@ async function startableProject(workspace: string, name: string, port: number): 
       "video_width = 320",
       `start_command = ${JSON.stringify(`"${process.execPath}" "${script}" && ${fixtureSiteCommand({ port })}`)}`,
       `working_directory = ${JSON.stringify(fixtureSiteDirectory)}`,
-      "ready_timeout_ms = 20000",
       "",
       "[viewport]",
       "width = 400",
@@ -213,9 +221,7 @@ async function recordOne(workspace: string, action: string): Promise<RunReport> 
  * moment is the only evidence of concurrency there is that does not depend on
  * how fast this machine happens to be.
  */
-async function recordEverything(
-  ...options: string[]
-): Promise<{ summary: RunSummary; bothUp: boolean; starts: Record<string, number> }> {
+async function recordEverything(...options: string[]): Promise<Everything> {
   await Promise.all(
     ["alpha", "beta"].map((name) => writeFile(join(started, `${name}.starts`), "", "utf8")),
   );
@@ -380,6 +386,40 @@ test("a Project needing to be started is started once and shared by its Actions"
   }
 });
 
+/**
+ * The byte-for-byte comparison again, against the Projects the tool had to
+ * start: recorded one at a time, and recorded at once against a Project two
+ * Actions shared, the Artifacts are the same bytes either way.
+ */
+test("a Project the tool started records the same at once as it does one at a time", async () => {
+  for (const action of ["first", "second", "only"]) {
+    const one = runOf(serial.summary, action);
+    const many = runOf(concurrent.summary, action);
+
+    assert.deepEqual(many.frames.hashes, one.frames.hashes, `the Frames of '${action}'`);
+    assert.deepEqual(await artifactsOf(many), await artifactsOf(one), `the Artifacts of '${action}'`);
+  }
+});
+
+/**
+ * Two Actions of one Project record beside each other rather than one after the
+ * other -- measured against how far apart those same two Runs began when they
+ * were recorded one at a time, so that nothing about how fast this machine
+ * happens to be decides it.
+ */
+test("two Actions of one Project record at once rather than one after the other", () => {
+  const apart = (recorded: Everything) =>
+    Math.abs(
+      Date.parse(runOf(recorded.summary, "second").recordedAt) -
+        Date.parse(runOf(recorded.summary, "first").recordedAt),
+    );
+
+  assert.ok(
+    apart(concurrent) * 2 < apart(serial),
+    `began ${apart(concurrent)}ms apart at once, and ${apart(serial)}ms apart one at a time`,
+  );
+});
+
 /** ...and the machine is left as it was found, however many Actions recorded. */
 test("every Project this tool started is stopped once its Actions have recorded", async () => {
   assert.equal(await answers(alphaUrl), false, "the Project it started is still up");
@@ -427,4 +467,12 @@ test("`--set` without an Action to set it on says so rather than tuning everythi
 
   assert.equal(code, 1);
   assert.match(stderr, /--set names one Action's Parameter/);
+});
+
+/** ...and asking for one Action at four at a time is asking for something else. */
+test("`--concurrency` alongside one Action to record says so rather than being ignored", async () => {
+  const { stderr, code } = await record(recorded, "run", "demo", "one", "--concurrency", "4");
+
+  assert.equal(code, 1);
+  assert.match(stderr, /--concurrency is how many Actions record at once/);
 });

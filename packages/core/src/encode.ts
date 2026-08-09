@@ -137,7 +137,7 @@ function plan(options: EncodeOptions, video: Dimensions): Planned[] {
  * Given to the output rather than the input, where it would configure the
  * reading of the Frames instead of the writing of the Artifact.
  */
-const deterministically = ["-fflags", "+bitexact", "-flags:v", "+bitexact"];
+const bitExactArguments = ["-fflags", "+bitexact", "-flags:v", "+bitexact"];
 
 /** The ffmpeg run that turns the captured Frames into one Artifact. */
 function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string): string[] {
@@ -154,7 +154,7 @@ function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string):
     "-frames:v",
     String(encoding.frames),
     ...formatArguments(encoding),
-    ...deterministically,
+    ...bitExactArguments,
     file,
   ];
 }
