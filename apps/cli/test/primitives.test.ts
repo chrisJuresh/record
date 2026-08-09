@@ -6,6 +6,10 @@
  * by recording one. What makes it observable from outside is the tool's own
  * `waitFor`: an Action that clicks, types and presses, and then waits for the
  * page to show that all three landed, fails its own Run if any of them did not.
+ *
+ * The conditions are chosen to fail for the *near misses* as well as the
+ * obvious ones -- text that appeared in the field without the keys having been
+ * pressed does not count as typing.
  */
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
@@ -25,6 +29,10 @@ const note = { x: 151, y: 22 };
 const landed = [
   "document.body.classList.contains('clicked')",
   "window.entered === 'ok'",
+  // Two characters and the Enter that followed them. Counted at keydown, so
+  // text pushed into the field without the keys being pressed would not reach
+  // three -- which is the difference between typing and inserting.
+  "window.keystrokes === 3",
   "window.escapeHatch === true",
 ].join(" && ");
 

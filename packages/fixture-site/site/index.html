@@ -55,9 +55,15 @@
           state.textContent = `typed ${note.value}`;
         });
 
+        // Counted here rather than on `input`, so that text pushed into the
+        // field without the keys being pressed is not mistaken for typing.
+        window.keystrokes = 0;
+
         // Recorded at keydown, before the key itself has had any chance to
         // change the field, so what is reported is what had been typed.
         note.addEventListener("keydown", (event) => {
+          window.keystrokes += 1;
+
           if (event.key === "Enter") {
             window.entered = note.value;
             state.textContent = `entered ${note.value}`;

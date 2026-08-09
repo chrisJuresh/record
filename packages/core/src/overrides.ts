@@ -90,8 +90,7 @@ export async function readParameters(
   project: string,
   action: string,
 ): Promise<ParameterReport> {
-  const declared = (await loadAction(await actionModule(workspace, project, action))).parameters;
-  const overrides = await readOverrides(workspace, project, action);
+  const { declared, overrides } = await tuning(workspace, project, action);
 
   return report(workspace, project, action, declared, overrides);
 }
@@ -103,10 +102,7 @@ export async function setOverrides(
   action: string,
   assignments: readonly string[],
 ): Promise<ParameterReport> {
-  const declared = (await loadAction(await actionModule(workspace, project, action))).parameters;
-  const overrides: Record<string, number | string> = {
-    ...(await readOverrides(workspace, project, action)),
-  };
+  const { declared, overrides } = await tuning(workspace, project, action);
 
   for (const assignment of assignments) {
     const at = assignment.indexOf("=");
@@ -134,10 +130,7 @@ export async function resetOverrides(
   action: string,
   names: readonly string[],
 ): Promise<ParameterReport> {
-  const declared = (await loadAction(await actionModule(workspace, project, action))).parameters;
-  const overrides: Record<string, number | string> = {
-    ...(await readOverrides(workspace, project, action)),
-  };
+  const { declared, overrides } = await tuning(workspace, project, action);
 
   for (const name of names) {
     if (overrides[name] === undefined) {
@@ -149,6 +142,20 @@ export async function resetOverrides(
   await writeOverrides(workspace, project, action, overrides);
 
   return report(workspace, project, action, declared, overrides);
+}
+
+/**
+ * What one Action declares and what has been tuned on top of it. The Overrides
+ * come back as a copy, because every caller but one is about to change them.
+ */
+async function tuning(
+  workspace: string,
+  project: string,
+  action: string,
+): Promise<{ declared: Parameters; overrides: Record<string, number | string> }> {
+  const { parameters } = await loadAction(await actionModule(workspace, project, action));
+
+  return { declared: parameters, overrides: { ...(await readOverrides(workspace, project, action)) } };
 }
 
 /** An Action with no Overrides left has no sidecar, so resetting the last one removes the file. */

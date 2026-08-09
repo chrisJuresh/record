@@ -57,8 +57,6 @@ export type FrameStepper = {
   cursor(event: CursorEvent, point: Point): Promise<void>;
   /** Presses and releases one key, so the page sees a whole keystroke. */
   keyStroke(stroke: KeyStroke): Promise<void>;
-  /** Inserts text into whatever has focus, as typing it would. */
-  insertText(text: string): Promise<void>;
   /** Produces the next Frame and returns its PNG. Time only moves forward. */
   next(): Promise<Buffer>;
   close(): Promise<void>;
@@ -227,9 +225,6 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
           ...(stroke.text === undefined ? {} : { text: stroke.text }),
         });
         await send("Input.dispatchKeyEvent", { ...identity, type: "keyUp" });
-      },
-      async insertText(text) {
-        await send("Input.insertText", { text });
       },
       async next() {
         const frame = await next();

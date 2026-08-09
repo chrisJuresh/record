@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { RecordError } from "../src/errors.js";
+import type { Key } from "../src/keys.js";
 import { motion } from "../src/motion.js";
 import { evaluateTimeline, type EasingName, type PageState, type Timeline } from "../src/timeline.js";
 
@@ -204,9 +205,14 @@ test("a press is one whole keystroke, followed by a span for the page to answer 
   assert.deepEqual(frames[1]?.does, []);
 });
 
+/**
+ * A key an Action could name is a key `pnpm build` accepts, which is what ADR
+ * 0004 chose TypeScript for. This is the backstop underneath that, for a name
+ * that reached the engine from somewhere untyped.
+ */
 test("a key the browser has no name for fails before anything is recorded", () => {
   assert.throws(
-    () => evaluateTimeline(motion({ framerate: 10 }).press("Enterr")),
+    () => evaluateTimeline(motion({ framerate: 10 }).press("Enterr" as Key)),
     (failure: Error) => {
       assert.ok(failure instanceof RecordError);
       assert.match(failure.message, /'Enterr' is not a key that can be pressed/);
@@ -215,12 +221,22 @@ test("a key the browser has no name for fails before anything is recorded", () =
   );
 });
 
-test("typing spends one span per character", () => {
-  const frames = evaluateTimeline(motion({ framerate: 10 }).type("hi", { perKeyMs: 200 }));
+/**
+ * Typing arrives as keystrokes rather than as inserted text, because a page
+ * that filters as you type or answers a shortcut listens for the key -- and
+ * would record as though nothing had been typed.
+ */
+test("typing spends one span per character, and each character is a keystroke", () => {
+  const frames = evaluateTimeline(motion({ framerate: 10 }).type("h!", { perKeyMs: 200 }));
 
   assert.deepEqual(
     frames.map((frame) => frame.does),
-    [[{ kind: "text", text: "h" }], [], [{ kind: "text", text: "i" }], []],
+    [
+      [{ kind: "key", stroke: { key: "h", code: "KeyH", keyCode: 72, text: "h" } }],
+      [],
+      [{ kind: "key", stroke: { key: "!", code: "", keyCode: 33, text: "!" } }],
+      [],
+    ],
   );
 });
 
@@ -240,6 +256,25 @@ test("a wait is a Hold whose condition has to hold by the last Frame of it", () 
   assert.deepEqual(frames.at(-1)?.does, [
     { kind: "require", condition: "window.ready", describes: "the grid" },
   ]);
+});
+
+/**
+ * The one rounding a Timeline must not do quietly. A wait is checked on the
+ * last Frame of its own span, so a wait rounded away is a Run that passes
+ * without ever having looked.
+ */
+test("a wait too short to occupy a Frame is refused rather than rounded away", () => {
+  assert.throws(
+    () =>
+      evaluateTimeline(
+        motion({ framerate: 10 }).waitFor("window.ready", { durationMs: 40, describes: "the grid" }),
+      ),
+    (failure: Error) => {
+      assert.ok(failure instanceof RecordError);
+      assert.match(failure.message, /waiting for the grid was given 40ms, which is less than one Frame/);
+      return true;
+    },
+  );
 });
 
 test("the escape hatch takes no time and lands on the next Frame drawn", () => {

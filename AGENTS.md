@@ -79,6 +79,13 @@ and reaches for nothing on this machine.
 import { motion, type Action } from "@record/core";
 
 const parameters = {
+  hold: {
+    kind: "number",
+    describes: "Still at either end, in milliseconds",
+    default: 400,
+    min: 0,
+    max: 2000,
+  },
   distance: {
     kind: "number",
     describes: "How far down the page travels, in CSS pixels",
@@ -99,16 +106,19 @@ const parameters = {
 
 const scrollPeek: Action<typeof parameters> = {
   parameters,
-  timeline({ distance, travel, framerate, easing }) {
+  timeline({ hold, distance, travel, framerate, easing }) {
     return motion({ framerate })
-      .hold(400)
+      .hold(hold)
       .scrollTo(distance, { durationMs: travel, easing })
-      .hold(400);
+      .hold(hold);
   },
 };
 
 export default scrollPeek;
 ```
+
+Every number in that Timeline arrives as a Parameter. That is the rule, not the
+example being thorough.
 
 ### Declaring Parameters
 
@@ -138,13 +148,19 @@ no Frame contains a real pointer to ask about.
 | `.scrollBy(distance, { durationMs, easing })` | Travel that far from wherever the Timeline has reached. |
 | `.moveCursorTo({ x, y }, { durationMs, easing })` | Carry the cursor across the viewport, in CSS pixels. |
 | `.click({ durationMs })` | Press and release where the cursor is. |
-| `.press(key, { durationMs })` | One keystroke: a letter, a digit, or `Enter`, `Escape`, `Tab`, `Space`, `Backspace`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `ArrowUp`/`Down`/`Left`/`Right`. |
-| `.type(text, { perKeyMs })` | Type into whatever has focus, one character per span. |
+| `.press(key, { durationMs })` | One keystroke: a letter, a digit, or `Enter`, `Escape`, `Tab`, `Space`, `Backspace`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `ArrowUp`/`Down`/`Left`/`Right`. The key is typed, so a wrong name fails `pnpm build`. |
+| `.type(text, { perKeyMs })` | Type into whatever has focus, one keystroke per character. |
 | `.waitFor(condition, { durationMs, describes })` | Hold, and fail the Run if the condition has not become true by the end of it. |
 | `.evaluate(expression)` | The escape hatch (ADR 0004): an expression run in the page, taking no time at all. |
 
-Only `durationMs` is ever required: `easing` defaults to `ease-in-out-cubic`,
-and the rest carry sensible defaults too.
+Every option carries a default except `waitFor`'s `durationMs` and the
+`durationMs` of the three travels — `easing` defaults to `ease-in-out-cubic`,
+`click` and `press` to 120ms, `type` to 90ms a character.
+
+The escape hatch is an expression evaluated in the page, not a handle on it:
+nothing comes back, because Timeline evaluation happens before any browser
+exists. Reach for it to *do* something the primitives cannot say, and use
+`waitFor` to find out whether it worked.
 
 ### Conventions
 
@@ -153,7 +169,11 @@ and the rest carry sensible defaults too.
 - **Hold at both ends.** A looping clip has to pause rather than snap back.
 - **A wait declares how long it waits.** `waitFor` occupies the span it was
   given whatever the page does, and then checks — a wait whose length depended
-  on the page would make two Runs of one Action different lengths.
+  on the page would make two Runs of one Action different lengths. A wait too
+  short to occupy a Frame is refused rather than rounded away.
+- **Nothing after the last Frame happens.** A Timeline ending in `.evaluate()`
+  ends in a no-op: there is no Frame left to run it before. Put an ending Hold
+  after it, which a looping clip wants anyway.
 - **Reach for `evaluate` last.** It is there for what the primitives cannot say,
   not for what they say verbosely.
 - **Never write a tuned value into the module.** Overrides belong in the sidecar

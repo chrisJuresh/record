@@ -6,6 +6,7 @@
  * Everything here is a description. Nothing runs until the Timeline is
  * evaluated, and nothing evaluated needs a browser.
  */
+import type { Key } from "./keys.js";
 import type {
   EasingName,
   Point,
@@ -36,7 +37,7 @@ export type Motion = Timeline & {
   /** Press and release the cursor where it is, held down for a moment. */
   click(options?: { readonly durationMs?: number }): Motion;
   /** Press one named key, then wait for the page to answer it. */
-  press(key: string, options?: { readonly durationMs?: number }): Motion;
+  press(key: Key, options?: { readonly durationMs?: number }): Motion;
   /** Type text one character at a time into whatever has focus. */
   type(text: string, options?: { readonly perKeyMs?: number }): Motion;
   /** Hold, and fail the Run if the condition has not become true by the end of it. */

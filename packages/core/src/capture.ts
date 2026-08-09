@@ -137,8 +137,6 @@ async function apply(stepper: FrameStepper, effect: PageEffect, state: PageState
       return stepper.cursor("released", clicking(state));
     case "key":
       return stepper.keyStroke(effect.stroke);
-    case "text":
-      return stepper.insertText(effect.text);
     case "evaluate":
       await stepper.evaluate(effect.expression);
       return;

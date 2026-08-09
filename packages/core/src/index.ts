@@ -13,7 +13,7 @@ export { actionModule, overridesFile, readActions, readProject, readProjects } f
 export type { ProjectConfig, Viewport } from "./config.js";
 export type { Artifact } from "./encode.js";
 export { RecordError } from "./errors.js";
-export type { KeyStroke } from "./keys.js";
+export type { Key, KeyName, KeyStroke } from "./keys.js";
 export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
 export { readOverrides, readParameters, resetOverrides, setOverrides } from "./overrides.js";
@@ -37,6 +37,6 @@ export type {
   Timeline,
   TimelineSegment,
   TimelineStart,
-  Type,
+  Typing,
   WaitFor,
 } from "./timeline.js";

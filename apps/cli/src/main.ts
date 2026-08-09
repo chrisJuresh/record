@@ -179,7 +179,9 @@ async function run(
   json: boolean,
 ): Promise<number> {
   if (sets.length > 0) {
-    warnAbout((await setOverrides(workspace(), project, action, sets)).warnings);
+    // Not warned about here: the Run is about to read the same sidecar and say
+    // the same thing, and saying it twice reads as two problems.
+    await setOverrides(workspace(), project, action, sets);
   }
 
   const recorded = await runAction(workspace(), project, action);
@@ -256,14 +258,14 @@ function asTable(configured: ProjectConfig[]): string {
 /** One line per Parameter: what it is worth now, what it would be, and its range. */
 function asParameters(reported: ParameterReport): string {
   const name = widest(reported.parameters.map((parameter) => parameter.name));
+  const value = widest(reported.parameters.map((parameter) => String(parameter.value)));
 
   return reported.parameters
     .map((parameter) => {
-      const range =
-        parameter.min === undefined ? "" : `  (${parameter.min}..${parameter.max})`;
+      const range = parameter.min === undefined ? "" : `  (${parameter.min}..${parameter.max})`;
       const source = parameter.overridden ? `  overridden, default ${parameter.default}` : "";
 
-      return `${parameter.name.padEnd(name)}  ${parameter.value}${range}${source}\n`;
+      return `${parameter.name.padEnd(name)}  ${String(parameter.value).padEnd(value)}${range}${source}\n`;
     })
     .join("");
 }

@@ -9,11 +9,19 @@
  * rather than participating in producing it.
  */
 import { RecordError } from "./errors.js";
-import { keyStroke, type KeyStroke } from "./keys.js";
+import { characterStroke, keyStroke, type Key, type KeyStroke } from "./keys.js";
 
 export type Point = { readonly x: number; readonly y: number };
 
-/** Where the drawn cursor is for one Frame, and whether it is held down. */
+/**
+ * Where the cursor is for one Frame, and whether it is held down.
+ *
+ * This is the state a cursor is drawn from -- no Frame contains the operating
+ * system's pointer, so one has to be drawn into the page, which is #10's work.
+ * It is not how a click reaches the page: a click is an event, and an event
+ * shorter than a Frame still has to happen, which a state read once per Frame
+ * could not express.
+ */
 export type CursorState = { readonly x: number; readonly y: number; readonly pressed: boolean };
 
 /**
@@ -25,7 +33,6 @@ export type PageEffect =
   | { readonly kind: "cursor-press" }
   | { readonly kind: "cursor-release" }
   | { readonly kind: "key"; readonly stroke: KeyStroke }
-  | { readonly kind: "text"; readonly text: string }
   /** The escape hatch: an expression evaluated in the page (ADR 0004). */
   | { readonly kind: "evaluate"; readonly expression: string }
   /** A condition that must hold by now, or the Run fails saying what it waited for. */
@@ -80,12 +87,12 @@ export type Click = {
 /** One keystroke, followed by a declared span for the page to answer it in. */
 export type Press = {
   readonly kind: "press";
-  readonly key: string;
+  readonly key: Key;
   readonly durationMs: number;
 };
 
 /** Text typed one character at a time, each character occupying a span. */
-export type Type = {
+export type Typing = {
   readonly kind: "type";
   readonly text: string;
   readonly perKeyMs: number;
@@ -117,7 +124,7 @@ export type TimelineSegment =
   | MoveCursor
   | Click
   | Press
-  | Type
+  | Typing
   | WaitFor
   | Evaluate;
 
@@ -186,6 +193,8 @@ export function evaluateTimeline(timeline: Timeline): PageState[] {
   let carried: readonly PageEffect[] = [];
 
   for (const segment of timeline.segments) {
+    assertWaitsLongEnough(segment, timeline.framerate);
+
     for (const span of spansOf(segment)) {
       const count = frameCount(span.durationMs, timeline.framerate);
       const at = span.at ?? still;
@@ -213,6 +222,20 @@ export function evaluateTimeline(timeline: Timeline): PageState[] {
   // looking: releasing a cursor the clip has already stopped watching changes
   // nothing anyone can see.
   return frames;
+}
+
+/**
+ * A wait is checked on the last Frame of its own span, so a wait too short to
+ * occupy a Frame would be a Run that passed without ever having looked. That is
+ * the one thing a wait must not do, so it is refused rather than rounded away.
+ */
+function assertWaitsLongEnough(segment: TimelineSegment, framerate: number): void {
+  if (segment.kind === "wait-for" && frameCount(segment.durationMs, framerate) === 0) {
+    throw new RecordError(
+      `waiting for ${segment.describes} was given ${segment.durationMs}ms, which is less than ` +
+        `one Frame at ${framerate}fps -- it would never be checked`,
+    );
+  }
 }
 
 /** What one segment does, as the spans it breaks into. */
@@ -243,7 +266,7 @@ function spansOf(segment: TimelineSegment): readonly Span[] {
     case "type":
       return [...segment.text].map((character) => ({
         durationMs: segment.perKeyMs,
-        does: [{ kind: "text", text: character } as const],
+        does: [{ kind: "key", stroke: characterStroke(character) } as const],
         to: still,
       }));
     case "wait-for":
@@ -308,8 +331,8 @@ function held(from: Position, pressed: boolean): Position {
 }
 
 /**
- * A cursor has to start somewhere: it is drawn into the page rather than owned
- * by the machine, so no Action can be asked where it "already" is.
+ * A cursor has to start somewhere: no Frame contains the operating system's
+ * pointer, so there is no "already" for an Action to be asked about.
  */
 function cursorOf(from: Position, what: string): CursorState {
   if (from.cursor === null) {
@@ -325,8 +348,8 @@ function startingCursor(point: Point | null | undefined): CursorState | null {
 /**
  * Chromium rounds scrollTop to whole CSS pixels regardless of device pixel
  * ratio (ADR 0008), so an evaluated page state carrying a fraction would
- * describe a position the page cannot occupy. The cursor is drawn into the page
- * and rounded with it, so that two Runs cannot disagree in a half pixel.
+ * describe a position the page cannot occupy. Cursor positions are rounded
+ * alongside it, so that two Runs cannot disagree over half a pixel.
  */
 function pixels(from: number, to: number, eased: number): number {
   return Math.round(from + (to - from) * eased);
