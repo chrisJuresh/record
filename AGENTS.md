@@ -322,9 +322,15 @@ Issues and specs live as GitHub issues on `chrisJuresh/record`, driven through t
 as prose. See `docs/agents/issue-tracker.md`.
 
 **Every issue resolved by a code change lands through a pull request** — a
-branch named `<issue-number>-<slug>`, a PR opened at the first push whose body
-says `Closes #<number>`, and a merge that closes the issue. Nothing is committed
-to `main` directly, and no agent merges or closes on its own.
+branch named `<issue-number>-<slug>`, a PR whose body says `Closes #<number>`,
+and a merge that closes the issue. Nothing is committed to `main` directly.
+
+**Committing is not delivering.** An agent that has committed against an issue
+**pushes the branch and opens the PR itself**, unasked — work left on a local
+branch is work nobody can see, and a PR opened early is where the diff is read
+while it is still cheap to change. Only the merge waits: agents open, push to
+and update PRs and answer review comments on them, and never merge or close the
+issue behind the PR's back.
 
 ### Triage labels
 

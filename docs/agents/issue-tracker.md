@@ -36,9 +36,15 @@ is reviewed and where the record of why it landed lives.
 
 - **Branch**: one per issue, named `<issue-number>-<slug>` — `2-workspace-cli-and-project-config`.
   Branch from up-to-date `main`.
-- **Open the PR** as soon as the first commit is pushed, not when the work is
-  finished: `gh pr create --title "..." --body-file <file>`. Same body-file rule
-  as issues — write multi-line bodies to a file, BOM-free (see below).
+- **Push and open the PR without being asked.** Committing is not delivering:
+  the branch is pushed and the PR opened as soon as there is a commit on it,
+  rather than when the work is finished and rather than when somebody asks.
+  `gh pr create --title "..." --body-file <file>`, with the same body-file rule
+  as issues — write multi-line bodies to a file, BOM-free (see below). A skill
+  that says only "commit your work" is not saying to stop there; this is the
+  repo's convention and it wins.
+- **Keep pushing.** Later commits on the branch go up as they are made, so the
+  PR is always what the branch actually is.
 - **Link the issue** from the PR body with a closing keyword on its own line —
   `Closes #<number>` — so merging closes the issue and GitHub records the link.
   One issue per PR; if a branch resolves several, list a `Closes` line for each.
