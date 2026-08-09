@@ -14,7 +14,7 @@ import { after, before, test } from "node:test";
 import { promisify } from "node:util";
 
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
-import type { RunReport } from "@record/core";
+import type { Artifact, ArtifactFormat, RunReport } from "@record/core";
 
 import { actionIn, record, removeWorkspaces, workspaceWith } from "./harness.js";
 
@@ -49,6 +49,9 @@ export default peek;
 const expectedFrames = 12;
 const expectedFramerate = 20;
 
+/** The three ADR 0006 requires, in the order a Run reports them. */
+const expectedFormats: ArtifactFormat[] = ["mp4", "webm", "gif"];
+
 let site: FixtureSite;
 let workspace: string;
 
@@ -57,7 +60,7 @@ let workspace: string;
  * per test would be felt, and the pair of identical Runs is what the
  * determinism assertion needs anyway. The third is the same Action tuned by
  * hand, which is only worth a recording because what it proves is that the
- * tuned value reached the browser.
+ * tuned values reached the browser and the encoder.
  */
 let first: RunReport;
 let second: RunReport;
@@ -79,10 +82,14 @@ before(async () => {
     ].join("\n"),
   });
   await actionIn(workspace, "demo", "peek", peek);
+  // The same Action under a second name. A Run writes over the Artifacts of the
+  // last Run of that Action, so the tuned Run needs somewhere of its own for
+  // both its Artifacts and the untuned ones to still be there to measure.
+  await actionIn(workspace, "demo", "tight", peek);
 
-  first = await recordPeek();
-  second = await recordPeek();
-  tuned = await recordPeek("--set", "distance=40");
+  first = await recordRun("peek");
+  second = await recordRun("peek");
+  tuned = await recordRun("tight", "--set", "distance=40", "--set", "gifWidth=160", "--set", "gifFramerate=10");
 });
 
 after(async () => {
@@ -90,42 +97,147 @@ after(async () => {
   await removeWorkspaces();
 });
 
-async function recordPeek(...args: string[]): Promise<RunReport> {
-  const { stdout, stderr, code } = await record(workspace, "run", "demo", "peek", ...args, "--json");
+async function recordRun(action: string, ...args: string[]): Promise<RunReport> {
+  const { stdout, stderr, code } = await record(workspace, "run", "demo", action, ...args, "--json");
   assert.equal(code, 0, stderr);
   return JSON.parse(stdout) as RunReport;
 }
 
-test("a Run writes an MP4 at the size, framerate and duration that were asked for", async () => {
-  const [artifact, ...rest] = first.artifacts;
-
-  assert.deepEqual(rest, [], "one Artifact format, for now");
-  assert.equal(artifact?.format, "mp4");
+/**
+ * Three Artifacts from the Frames of one Run, because the delivery targets
+ * differ (ADR 0006): a GIF is the only one that plays inline in a README, and a
+ * web page wants a video element with WebM for size and MP4 as its fallback.
+ */
+test("a Run encodes an MP4, a WebM and a GIF from the Frames it captured once", () => {
+  assert.deepEqual(
+    first.artifacts.map((artifact) => artifact.format),
+    expectedFormats,
+  );
   assert.equal(first.frames.captured, expectedFrames);
   assert.equal(first.framerate, expectedFramerate);
+});
 
-  // 320 wide keeps the viewport's 4:3 shape, and H.264 needs both even.
-  assert.equal(artifact?.width, 320);
-  assert.equal(artifact?.height, 240);
-  assert.equal(artifact?.durationMs, 600);
+test("the video Artifacts keep the captured framerate and the Project's video width", async () => {
+  for (const format of ["mp4", "webm"] as const) {
+    const artifact = artifactOf(first, format);
 
-  const encoded = await probe(artifact?.path ?? "");
+    // 320 wide keeps the viewport's 4:3 shape, and H.264 needs both even.
+    assert.equal(artifact.width, 320, format);
+    assert.equal(artifact.height, 240, format);
+    assert.equal(artifact.framerate, expectedFramerate, format);
+    assert.equal(artifact.durationMs, 600, format);
 
-  assert.equal(encoded.width, 320);
-  assert.equal(encoded.height, 240);
+    const encoded = await probe(artifact.path);
+
+    assert.equal(encoded.width, 320, format);
+    assert.equal(encoded.height, 240, format);
+    assert.equal(encoded.framerate, "20/1", format);
+    assert.equal(encoded.frames, expectedFrames, format);
+    assert.ok(
+      Math.abs(encoded.durationMs - 600) <= 50,
+      `expected roughly 600ms of ${format}, got ${encoded.durationMs}ms`,
+    );
+  }
+});
+
+/**
+ * The GIF's declared width of 640 is wider than this deliberately tiny fixture
+ * ever captured, which is beside the point: what is asserted is that the
+ * declared Parameters are what reached the encoder rather than a constant.
+ */
+test("the GIF is encoded at the width and framerate its Parameters declare", async () => {
+  const artifact = artifactOf(first, "gif");
+
+  assert.equal(artifact.width, 640);
+  assert.equal(artifact.height, 480);
+  assert.equal(artifact.framerate, 20);
+  assert.equal(artifact.durationMs, 600);
+
+  const encoded = await probe(artifact.path);
+
+  assert.equal(encoded.width, 640);
+  assert.equal(encoded.height, 480);
   assert.equal(encoded.framerate, "20/1");
   assert.equal(encoded.frames, expectedFrames);
   assert.ok(
     Math.abs(encoded.durationMs - 600) <= 50,
-    `expected roughly 600ms of video, got ${encoded.durationMs}ms`,
+    `expected roughly 600ms of GIF, got ${encoded.durationMs}ms`,
   );
+});
+
+/**
+ * 256 colours taken from the clip rather than 256 fixed ones, which is the
+ * difference between a GIF worth putting in a README and one that is not.
+ *
+ * Both Artifacts were encoded from the same Frames, so the colour most of the
+ * page is has to survive into both. A fixed palette could not hold it: asked to
+ * encode a GIF without one being generated, ffmpeg crushes this fixture's
+ * near-black background to black.
+ */
+test("the GIF's colours are a palette taken from the clip, not a fixed one", async () => {
+  const inGif = await dominantColour(artifactOf(first, "gif").path);
+  const inVideo = await dominantColour(artifactOf(first, "mp4").path);
+
+  for (const channel of [0, 1, 2] as const) {
+    assert.ok(
+      Math.abs(inGif[channel] - inVideo[channel]) <= 8,
+      `channel ${channel} of ${inGif.join()} is nothing like ${inVideo.join()}`,
+    );
+  }
+});
+
+/**
+ * The GIF is the Artifact that balloons and the one most likely to be seen, so
+ * its two size levers are Parameters rather than constants. Tuning them changes
+ * the encoded file and nothing else: the same span of time, fewer and smaller
+ * Frames of it.
+ */
+test("tuning the GIF's Parameters shrinks the GIF and leaves the video Artifacts alone", async () => {
+  const gif = await probe(artifactOf(tuned, "gif").path);
+
+  assert.equal(gif.width, 160);
+  assert.equal(gif.height, 120);
+  assert.equal(gif.framerate, "10/1");
+  assert.equal(gif.frames, expectedFrames / 2, "half the framerate over the same duration");
+  assert.ok(Math.abs(gif.durationMs - 600) <= 50, `expected roughly 600ms of GIF, got ${gif.durationMs}ms`);
+
+  const mp4 = await probe(artifactOf(tuned, "mp4").path);
+
+  assert.equal(mp4.width, 320);
+  assert.equal(mp4.framerate, "20/1");
+  assert.equal(mp4.frames, expectedFrames);
 });
 
 test("captured Frames are deleted once encoding succeeds", async () => {
   const produced = join(workspace, "runs", "demo", "peek");
 
-  // The Artifact, and nothing else -- no Frames, and no half-written encode.
-  assert.deepEqual(await readdir(produced), ["peek.mp4"]);
+  // The Artifacts and their snippet, and nothing else -- no Frames, and no
+  // half-written encode.
+  assert.deepEqual((await readdir(produced)).sort(), [
+    "peek.embed.html",
+    "peek.gif",
+    "peek.mp4",
+    "peek.webm",
+  ]);
+});
+
+/**
+ * Putting a clip on a page should never require remembering a video element's
+ * attributes, so the Run writes the element it wrote the Artifacts for. Its
+ * sources are named relative to itself, so the folder can be copied anywhere.
+ */
+test("an embed snippet naming both video sources is written beside the Artifacts", async () => {
+  const snippet = await readFile(first.embed, "utf8");
+
+  assert.equal(first.embed, join(workspace, "runs", "demo", "peek", "peek.embed.html"));
+  assert.match(snippet, /<source src="peek\.webm" type="video\/webm"/);
+  assert.match(snippet, /<source src="peek\.mp4" type="video\/mp4"/);
+  assert.ok(
+    snippet.indexOf("peek.webm") < snippet.indexOf("peek.mp4"),
+    "WebM is offered before the MP4 fallback",
+  );
+  assert.match(snippet, /<video[^>]*\bloop\b/, "a clip this short is meant to loop");
+  assert.doesNotMatch(snippet, /runs[\\/]/, "no path from this machine leaks into the snippet");
 });
 
 /**
@@ -180,8 +292,13 @@ test("the Frames driven before capture are a fixed count, not whatever the machi
   assert.deepEqual(second.frames.priming, first.frames.priming);
 });
 
-test("a Run reports the Parameter values it ran with", () => {
-  assert.deepEqual(first.parameters, { distance: 200, framerate: 20 });
+test("a Run reports the Parameter values it ran with, the Artifacts' included", () => {
+  assert.deepEqual(first.parameters, {
+    distance: 200,
+    framerate: 20,
+    gifWidth: 640,
+    gifFramerate: 20,
+  });
   assert.deepEqual(first.overridden, []);
   assert.deepEqual(first.warnings, []);
 });
@@ -192,14 +309,14 @@ test("a Run reports the Parameter values it ran with", () => {
  * value that never left the report would be no tuning at all.
  */
 test("`run --set` records with the Override and keeps it in the sidecar", async () => {
-  assert.deepEqual(tuned.overridden, ["distance"]);
+  assert.deepEqual(tuned.overridden, ["distance", "gifWidth", "gifFramerate"]);
   assert.equal(tuned.parameters["distance"], 40);
 
   // Same Timeline, same Frames -- a shorter travel, not a shorter clip.
   assert.equal(tuned.frames.captured, expectedFrames);
   assert.notDeepEqual(tuned.frames.hashes, first.frames.hashes);
 
-  const sidecar = join(workspace, "projects", "demo", "actions", "peek.overrides.toml");
+  const sidecar = join(workspace, "projects", "demo", "actions", "tight.overrides.toml");
   assert.match(await readFile(sidecar, "utf8"), /distance = 40/);
 });
 
@@ -217,6 +334,36 @@ test("naming an Action the Project does not declare fails with a message saying 
   assert.match(stderr, /no Action named 'nothing-like-it' is declared by Project 'demo'/);
 });
 
+/**
+ * The colour most of an Artifact's first Frame is, as ffmpeg decodes it. Which
+ * colour that is belongs to the fixture site; that two Artifacts of one Run
+ * agree on it is what a test can ask.
+ */
+async function dominantColour(file: string): Promise<readonly [number, number, number]> {
+  const { stdout } = await execute(
+    "ffmpeg",
+    ["-hide_banner", "-loglevel", "error", "-i", file, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+    { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 },
+  );
+
+  const counts = new Map<number, number>();
+  for (let at = 0; at + 2 < stdout.length; at += 3) {
+    const colour = ((stdout[at] ?? 0) << 16) | ((stdout[at + 1] ?? 0) << 8) | (stdout[at + 2] ?? 0);
+    counts.set(colour, (counts.get(colour) ?? 0) + 1);
+  }
+
+  const [dominant = 0] = [...counts].sort(([, one], [, other]) => other - one)[0] ?? [];
+
+  return [(dominant >> 16) & 0xff, (dominant >> 8) & 0xff, dominant & 0xff];
+}
+
+/** The Artifact of one format a Run reported, or a failure naming the format that is missing. */
+function artifactOf(report: RunReport, format: ArtifactFormat): Artifact {
+  const artifact = report.artifacts.find((candidate) => candidate.format === format);
+  assert.ok(artifact !== undefined, `the Run reported no ${format}`);
+  return artifact;
+}
+
 type Probed = {
   readonly width: number;
   readonly height: number;
@@ -225,15 +372,20 @@ type Probed = {
   readonly durationMs: number;
 };
 
-/** What ffprobe says the encoded Artifact actually is, rather than what we meant it to be. */
+/**
+ * What ffprobe says the encoded Artifact actually is, rather than what we meant
+ * it to be. The Frames are counted rather than read off the container, because
+ * WebM does not record a count to read.
+ */
 async function probe(file: string): Promise<Probed> {
   const { stdout } = await execute("ffprobe", [
     "-v",
     "error",
     "-select_streams",
     "v:0",
+    "-count_frames",
     "-show_entries",
-    "stream=width,height,r_frame_rate,nb_frames",
+    "stream=width,height,r_frame_rate,nb_read_frames",
     "-show_entries",
     "format=duration",
     "-of",
@@ -242,7 +394,7 @@ async function probe(file: string): Promise<Probed> {
   ]);
 
   const probed = JSON.parse(stdout) as {
-    streams?: { width: number; height: number; r_frame_rate: string; nb_frames: string }[];
+    streams?: { width: number; height: number; r_frame_rate: string; nb_read_frames: string }[];
     format?: { duration: string };
   };
   const stream = probed.streams?.[0];
@@ -252,7 +404,7 @@ async function probe(file: string): Promise<Probed> {
     width: stream.width,
     height: stream.height,
     framerate: stream.r_frame_rate,
-    frames: Number(stream.nb_frames),
+    frames: Number(stream.nb_read_frames),
     durationMs: Math.round(Number(probed.format?.duration ?? 0) * 1000),
   };
 }

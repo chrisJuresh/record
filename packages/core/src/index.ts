@@ -1,4 +1,4 @@
-export { effectiveParameters, loadAction, overrideFrom } from "./action.js";
+export { allParameters, effectiveParameters, loadAction, overrideFrom } from "./action.js";
 export type {
   Action,
   EasingParameter,
@@ -9,9 +9,9 @@ export type {
   Parameters,
   ParameterValues,
 } from "./action.js";
+export type { Artifact, ArtifactFormat } from "./artifacts.js";
 export { actionModule, overridesFile, readActions, readProject, readProjects } from "./config.js";
 export type { ProjectConfig, Viewport } from "./config.js";
-export type { Artifact } from "./encode.js";
 export { RecordError } from "./errors.js";
 export type { Key, KeyName, KeyStroke } from "./keys.js";
 export { motion } from "./motion.js";

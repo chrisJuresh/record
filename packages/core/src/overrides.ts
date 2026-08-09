@@ -12,6 +12,7 @@ import { readFile, unlink, writeFile } from "node:fs/promises";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 
 import {
+  allParameters,
   effectiveParameters,
   loadAction,
   overrideFrom,
@@ -145,17 +146,18 @@ export async function resetOverrides(
 }
 
 /**
- * What one Action declares and what has been tuned on top of it. The Overrides
- * come back as a copy, because every caller but one is about to change them.
+ * Everything tunable about one Action -- what it declares and what every Action
+ * carries -- and what has been tuned on top of it. The Overrides come back as a
+ * copy, because every caller but one is about to change them.
  */
 async function tuning(
   workspace: string,
   project: string,
   action: string,
 ): Promise<{ declared: Parameters; overrides: Record<string, number | string> }> {
-  const { parameters } = await loadAction(await actionModule(workspace, project, action));
+  const declared = allParameters(await loadAction(await actionModule(workspace, project, action)));
 
-  return { declared: parameters, overrides: { ...(await readOverrides(workspace, project, action)) } };
+  return { declared, overrides: { ...(await readOverrides(workspace, project, action)) } };
 }
 
 /** An Action with no Overrides left has no sidecar, so resetting the last one removes the file. */

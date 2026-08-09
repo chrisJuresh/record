@@ -282,8 +282,11 @@ function asSummary(report: RunReport): string {
       ? []
       : [`  overridden: ${report.overridden.join(", ")}`]),
     ...report.artifacts.map(
-      (artifact) => `  ${artifact.format}  ${artifact.width}x${artifact.height}  ${artifact.path}`,
+      (artifact) =>
+        `  ${artifact.format.padEnd(4)}  ${`${artifact.width}x${artifact.height}`.padEnd(9)}  ` +
+        `${String(artifact.framerate).padStart(3)}fps  ${artifact.path}`,
     ),
+    `  embed ${report.embed}`,
     "",
   ].join("\n");
 }

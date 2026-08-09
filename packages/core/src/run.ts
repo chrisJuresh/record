@@ -8,11 +8,12 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { effectiveParameters, loadAction } from "./action.js";
+import { allParameters, effectiveParameters, loadAction } from "./action.js";
+import { gifSettings, type Artifact } from "./artifacts.js";
 import { findHeadlessShell } from "./browser.js";
 import { captureFrames } from "./capture.js";
 import { actionModule, readProject } from "./config.js";
-import { encodeMp4, videoDimensions, type Artifact } from "./encode.js";
+import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
 import { readOverrides } from "./overrides.js";
 import { evaluateTimeline, type EasingName } from "./timeline.js";
@@ -36,7 +37,10 @@ export type RunReport = {
     /** One hash per captured Frame. The Frames themselves are gone by now. */
     readonly hashes: readonly string[];
   };
+  /** MP4, WebM and GIF, in that order -- every Run produces all three (ADR 0006). */
   readonly artifacts: readonly Artifact[];
+  /** Where the embed snippet naming both video Artifacts was written. */
+  readonly embed: string;
 };
 
 /**
@@ -54,7 +58,7 @@ export async function runAction(
   const action = await loadAction(await actionModule(workspace, projectName, actionName));
 
   const effective = effectiveParameters(
-    action.parameters,
+    allParameters(action),
     await readOverrides(workspace, projectName, actionName),
   );
 
@@ -79,12 +83,15 @@ export async function runAction(
       directory: frames,
     });
 
-    const artifact = await encodeMp4({
+    const encoded = await encodeArtifacts({
       frames,
       frameCount: states.length,
       framerate: timeline.framerate,
-      ...videoDimensions(project.viewport, project.videoWidth),
-      file: join(produced, `${actionName}.mp4`),
+      viewport: project.viewport,
+      videoWidth: project.videoWidth,
+      gif: gifSettings(effective.values),
+      directory: produced,
+      name: actionName,
     });
 
     return {
@@ -100,7 +107,8 @@ export async function runAction(
         repeated: captured.repeated,
         hashes: captured.hashes,
       },
-      artifacts: [artifact],
+      artifacts: encoded.artifacts,
+      embed: encoded.embed,
     };
   } finally {
     // Frames are the bulk of a Run by far, and their only purpose was to be

@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { effectiveParameters, overrideFrom, type Action } from "../src/action.js";
+import { allParameters, effectiveParameters, overrideFrom, type Action } from "../src/action.js";
 import { RecordError } from "../src/errors.js";
 import { motion } from "../src/motion.js";
 import { evaluateTimeline } from "../src/timeline.js";
@@ -58,6 +58,57 @@ test("the effective Parameters are what the Action declares, under the names it 
     values: { distance: 100, travel: 500, framerate: 10, easing: "linear" },
     overridden: [],
     warnings: [],
+  });
+});
+
+/**
+ * Every Run encodes a GIF as well as the video Artifacts (ADR 0006), and the
+ * GIF's size levers are tunable per Action. They are not motion, so an Action
+ * does not declare them -- it carries them, and tuning one is the same act as
+ * tuning a distance.
+ */
+test("every Action carries the Artifact Parameters as well as the ones it declares", () => {
+  const declared = allParameters(peek);
+
+  assert.deepEqual(Object.keys(declared), [
+    "distance",
+    "travel",
+    "framerate",
+    "easing",
+    "gifWidth",
+    "gifFramerate",
+  ]);
+
+  const effective = effectiveParameters(declared);
+
+  assert.equal(effective.values["gifWidth"], 640);
+  assert.equal(effective.values["gifFramerate"], 20);
+  assert.deepEqual(effective.warnings, []);
+});
+
+test("an Artifact Parameter is tuned by Override like any other", () => {
+  const effective = effectiveParameters(allParameters(peek), { gifWidth: 480 });
+
+  assert.equal(effective.values["gifWidth"], 480);
+  assert.deepEqual(effective.overridden, ["gifWidth"]);
+});
+
+/**
+ * Shadowing would leave two declarations of one name and no way to say which
+ * an Override meant, so the Action is refused rather than quietly losing.
+ */
+test("an Action declaring a Parameter every Action already carries is refused by name", () => {
+  const clashing: Action = {
+    parameters: {
+      gifWidth: { kind: "number", describes: "How wide", default: 300, min: 100, max: 900 },
+    },
+    timeline: () => motion({ framerate: 10 }).hold(100),
+  };
+
+  assert.throws(() => allParameters(clashing), (failure: Error) => {
+    assert.ok(failure instanceof RecordError);
+    assert.match(failure.message, /'gifWidth' is carried by every Action already/);
+    return true;
   });
 });
 
