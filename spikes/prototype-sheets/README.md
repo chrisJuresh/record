@@ -87,9 +87,13 @@ Fill this in before starting anything that depends on it, and say why in a
 sentence — the reason is what stops the decision being reopened every time
 something is inconvenient to build.
 
-- **Layout direction**: _not chosen yet_
-- **Mockup presets to build**: _not chosen yet_
-- **Default Mockup for a new Project**: _not chosen yet_
+- **Layout direction**:
+rail and stage is best, but i would like a compare bench included in the free spare to the right of the gif as there is a lot of spare horizontal space.
+under each action on the sidebar should be a tiny gif of the action, it should be toggleable.
+- **Mockup presets to build**: 
+all of these should be options, however the laptop and phone ones do not look like professional ones that should go on a super professional high end portfolio site, so either find a place where you can download a set of existing perfect looking ones or recreate them.
+- **Default Mockup for a new Project**: 
+browser window light for light mode captures and browser window dark for dark mode captures. if there is no light dark mode setting for that page then light mode is default.
 
 Once all three are recorded and the tickets that depend on them are open, delete
 this directory. These sheets are evidence for a decision, not a design system.
