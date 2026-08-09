@@ -58,8 +58,9 @@ export function textSubstitution(overrides: TextOverrides): TextSubstitution | u
 
 /**
  * How an Action's declaration of its copy fails to be one. Read while the
- * module is loaded, so a mistyped override costs nothing and is found before a
- * browser is ever launched.
+ * module is loaded, so copy that is not copy costs a message rather than a
+ * browser. Whether a selector finds anything is the page's answer to give, and
+ * is asked of it once the Run has one.
  */
 export function assertTextOverrides(file: string, declared: unknown): void {
   const wrong = (why: string): never => {
@@ -80,13 +81,16 @@ export function assertTextOverrides(file: string, declared: unknown): void {
   }
 }
 
+/** What a page answering with anything but a count for each selector is worth. */
+const unanswered = "the page did not say what the text overrides matched";
+
 /** What the page answered, checked against what it was asked to substitute. */
 function read(
   declared: readonly { selector: string; copy: string }[],
   answer: unknown,
 ): readonly Substitution[] {
   if (!Array.isArray(answer) || answer.length !== declared.length) {
-    throw new RecordError("the page did not say what the text overrides matched");
+    throw new RecordError(unanswered);
   }
 
   const substitutions: Substitution[] = [];
@@ -98,7 +102,7 @@ function read(
     if (matched === null) {
       missed.push(`'${override.selector}' is not a selector the page understands`);
     } else if (typeof matched !== "number") {
-      throw new RecordError("the page did not say what the text overrides matched");
+      throw new RecordError(unanswered);
     } else if (matched === 0) {
       missed.push(`'${override.selector}' matched nothing in the page`);
     } else {

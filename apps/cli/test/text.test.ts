@@ -15,9 +15,9 @@ import { after, before, test } from "node:test";
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
 import type { RunReport } from "@record/core";
 
-import { actionIn, contentsOf, record, removeWorkspaces, workspaceWith } from "./harness.js";
+import { actionIn, artifactsOf, record, removeWorkspaces, workspaceWith } from "./harness.js";
 
-/** Small on purpose: every Frame is a screenshot and an encode. */
+/** Small on purpose: every Frame is captured and encoded. */
 const peek = `
 import { motion, type Action } from "@record/core";
 
@@ -194,11 +194,3 @@ test("copy that is not copy is refused before anything is recorded", async () =>
   assert.equal(code, 1);
   assert.match(stderr, /text overrides for '#heading' must be the copy to substitute in/);
 });
-
-/** What a Run left behind, hashed, but for the record it wrote of itself. */
-async function artifactsOf(run: RunReport): Promise<Record<string, string>> {
-  const left = await contentsOf(run.directory);
-  delete left["run.json"];
-
-  return left;
-}

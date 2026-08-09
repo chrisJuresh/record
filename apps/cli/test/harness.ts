@@ -100,6 +100,22 @@ export async function contentsOf(directory: string): Promise<Record<string, stri
   );
 }
 
+/**
+ * What a Run left behind, hashed, but for the record it wrote of itself -- that
+ * one names the instant the Run began, which no two Runs could ever share.
+ *
+ * This is how a test says "the same bytes" about a pile of encoded video, which
+ * is the assertion determinism is made of.
+ */
+export async function artifactsOf(run: { readonly directory: string }): Promise<
+  Record<string, string>
+> {
+  const left = await contentsOf(run.directory);
+  delete left["run.json"];
+
+  return left;
+}
+
 /** Registered with `after` by every file that makes a workspace. */
 export async function removeWorkspaces(): Promise<void> {
   await Promise.all(
