@@ -62,12 +62,12 @@ test("the effective Parameters are what the Action declares, under the names it 
 });
 
 /**
- * Every Run encodes a GIF as well as the video Artifacts (ADR 0006), and the
- * GIF's size levers are tunable per Action. They are not motion, so an Action
- * does not declare them -- it carries them, and tuning one is the same act as
- * tuning a distance.
+ * Every Run draws its own cursor and encodes a GIF as well as the video
+ * Artifacts (ADR 0006), and both are tunable per Action. Neither is motion, so
+ * an Action declares neither -- it carries them, and tuning one is the same act
+ * as tuning a distance.
  */
-test("every Action carries the Artifact Parameters as well as the ones it declares", () => {
+test("every Action carries the cursor and Artifact Parameters as well as the ones it declares", () => {
   const declared = allParameters(peek);
 
   assert.deepEqual(Object.keys(declared), [
@@ -75,15 +75,75 @@ test("every Action carries the Artifact Parameters as well as the ones it declar
     "travel",
     "framerate",
     "easing",
+    "cursor",
+    "cursorStyle",
+    "cursorCaptions",
     "gifWidth",
     "gifFramerate",
   ]);
 
   const effective = effectiveParameters(declared);
 
+  assert.equal(effective.values["cursor"], "auto");
+  assert.equal(effective.values["cursorStyle"], "soft-dot");
+  assert.equal(effective.values["cursorCaptions"], false);
   assert.equal(effective.values["gifWidth"], 640);
   assert.equal(effective.values["gifFramerate"], 20);
   assert.deepEqual(effective.warnings, []);
+});
+
+/**
+ * A Parameter reaches whoever tunes it as the control its kind describes, so a
+ * choice is one of a named set and a flag is on or off -- neither is a number
+ * box with a convention written down beside it.
+ */
+test("a choice and a flag are overridden by name and by true or false", () => {
+  const declared = allParameters(peek);
+
+  const chosen = effectiveParameters(declared, { cursor: "shown", cursorCaptions: true });
+
+  assert.equal(chosen.values["cursor"], "shown");
+  assert.equal(chosen.values["cursorCaptions"], true);
+  assert.deepEqual(chosen.overridden, ["cursor", "cursorCaptions"]);
+  assert.deepEqual(chosen.warnings, []);
+
+  assert.equal(overrideFrom(declared, "cursorStyle", "arrow-light"), "arrow-light");
+  assert.equal(overrideFrom(declared, "cursorCaptions", "true"), true);
+
+  assert.throws(
+    () => overrideFrom(declared, "cursor", "sometimes"),
+    /'cursor' takes one of auto, shown, hidden, not 'sometimes'/,
+  );
+  assert.throws(
+    () => overrideFrom(declared, "cursorCaptions", "yes"),
+    /'cursorCaptions' takes true or false, not 'yes'/,
+  );
+});
+
+test("a choice or flag Override of the wrong shape falls back to the default, saying so", () => {
+  const declared = allParameters(peek);
+
+  const wrong = effectiveParameters(declared, { cursorStyle: "squiggle", cursorCaptions: 1 });
+
+  assert.equal(wrong.values["cursorStyle"], "soft-dot");
+  assert.equal(wrong.values["cursorCaptions"], false);
+  assert.deepEqual(wrong.overridden, []);
+  assert.match(wrong.warnings[0] ?? "", /is 'squiggle', which is not one of soft-dot/);
+  assert.match(wrong.warnings[1] ?? "", /is '1', which is not true or false/);
+});
+
+test("a choice defaulting to something outside its own choices fails naming the Parameter", () => {
+  assert.throws(
+    () =>
+      effectiveParameters({
+        shape: { kind: "choice", describes: "Which shape", default: "oval", choices: ["round"] },
+      }),
+    (failure: Error) => {
+      assert.ok(failure instanceof RecordError);
+      assert.match(failure.message, /'shape' defaults to 'oval', which is not one of round/);
+      return true;
+    },
+  );
 });
 
 test("an Artifact Parameter is tuned by Override like any other", () => {
@@ -98,18 +158,24 @@ test("an Artifact Parameter is tuned by Override like any other", () => {
  * an Override meant, so the Action is refused rather than quietly losing.
  */
 test("an Action declaring a Parameter every Action already carries is refused by name", () => {
-  const clashing: Action = {
-    parameters: {
-      gifWidth: { kind: "number", describes: "How wide", default: 300, min: 100, max: 900 },
-    },
-    timeline: () => motion({ framerate: 10 }).hold(100),
+  const clashes = (parameters: Action["parameters"], expected: RegExp) => {
+    const clashing: Action = { parameters, timeline: () => motion({ framerate: 10 }).hold(100) };
+
+    assert.throws(() => allParameters(clashing), (failure: Error) => {
+      assert.ok(failure instanceof RecordError);
+      assert.match(failure.message, expected);
+      return true;
+    });
   };
 
-  assert.throws(() => allParameters(clashing), (failure: Error) => {
-    assert.ok(failure instanceof RecordError);
-    assert.match(failure.message, /'gifWidth' is carried by every Action already/);
-    return true;
-  });
+  clashes(
+    { gifWidth: { kind: "number", describes: "How wide", default: 300, min: 100, max: 900 } },
+    /'gifWidth' is carried by every Action already/,
+  );
+  clashes(
+    { cursorStyle: { kind: "choice", describes: "Which cursor", default: "mine", choices: ["mine"] } },
+    /'cursorStyle' is carried by every Action already/,
+  );
 });
 
 test("a Parameter defaulting outside its own range fails naming the Parameter", () => {

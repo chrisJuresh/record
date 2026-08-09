@@ -1,8 +1,10 @@
 export { allParameters, effectiveParameters, loadAction, overrideFrom } from "./action.js";
 export type {
   Action,
+  ChoiceParameter,
   EasingParameter,
   EffectiveParameters,
+  FlagParameter,
   NumberParameter,
   Overrides,
   ParameterDeclaration,
@@ -21,6 +23,7 @@ export { readOverrides, readParameters, resetOverrides, setOverrides } from "./o
 export type { ParameterReport, ReportedParameter } from "./overrides.js";
 export { defaultConcurrency, runAction, runActions } from "./run.js";
 export type { RunFailure, RunManyOptions, RunReport, RunSummary } from "./run.js";
+export type { ParameterSetting } from "./settings.js";
 export { readStatus } from "./status.js";
 export type { ActionStatus, LastRun, ProjectStatus, StatusReport } from "./status.js";
 export { evaluateTimeline } from "./timeline.js";
@@ -35,6 +38,7 @@ export type {
   PageState,
   Point,
   Press,
+  Ripple,
   ScrollBy,
   ScrollTo,
   Timeline,

@@ -66,6 +66,11 @@ export type StepperOptions = {
   readonly executable: string;
   readonly viewport: Viewport;
   readonly framerate: number;
+  /**
+   * An expression evaluated in the page before its own scripts run, and again
+   * in any document it goes on to load. What the drawn cursor is installed by.
+   */
+  readonly overlay?: string;
 };
 
 export async function openFrameStepper(url: string, options: StepperOptions): Promise<FrameStepper> {
@@ -127,6 +132,10 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
       deviceScaleFactor: options.viewport.deviceScaleFactor,
       mobile: false,
     });
+
+    if (options.overlay !== undefined) {
+      await send("Page.addScriptToEvaluateOnNewDocument", { source: options.overlay });
+    }
 
     const loaded = cdp.once("Page.loadEventFired");
     const navigation = await send("Page.navigate", { url });

@@ -379,19 +379,26 @@ function asTable(configured: ProjectConfig[]): string {
     .join("");
 }
 
-/** One line per Parameter: what it is worth now, what it would be, and its range. */
+/** One line per Parameter: what it is worth now, what it would be, and what it takes. */
 function asParameters(reported: ParameterReport): string {
   const name = widest(reported.parameters.map((parameter) => parameter.name));
   const value = widest(reported.parameters.map((parameter) => String(parameter.value)));
 
   return reported.parameters
     .map((parameter) => {
-      const range = parameter.min === undefined ? "" : `  (${parameter.min}..${parameter.max})`;
       const source = parameter.overridden ? `  overridden, default ${parameter.default}` : "";
 
-      return `${parameter.name.padEnd(name)}  ${String(parameter.value).padEnd(value)}${range}${source}\n`;
+      return `${parameter.name.padEnd(name)}  ${String(parameter.value).padEnd(value)}${takes(parameter)}${source}\n`;
     })
     .join("");
+}
+
+/** What one Parameter will take: a range, a set of names, or nothing to say. */
+function takes(parameter: ParameterReport["parameters"][number]): string {
+  if (parameter.min !== undefined) {
+    return `  (${parameter.min}..${parameter.max})`;
+  }
+  return parameter.choices === undefined ? "" : `  (${parameter.choices.join("|")})`;
 }
 
 /** What a Run captured, and what it left behind. */
@@ -407,6 +414,7 @@ function asRun(report: RunReport): string {
       ? `  started the Project at ${readyUrl}, and stopped it again`
       : `  recorded the Project already answering at ${readyUrl}`,
     `  ${captured} Frames at ${report.framerate}fps (${seconds}s), ${repeated} repeated`,
+    ...asCursor(report),
     ...(report.overridden.length === 0
       ? []
       : [`  overridden: ${report.overridden.join(", ")}`]),
@@ -418,6 +426,20 @@ function asRun(report: RunReport): string {
     `  embed ${report.embed}`,
     "",
   ].join("\n");
+}
+
+/**
+ * What was drawn over the page, and nothing at all where nothing was: an Action
+ * that only scrolls draws no cursor, and a line saying so every time would say
+ * it about most Runs.
+ */
+function asCursor(report: RunReport): string[] {
+  const drawn = [
+    ...(report.cursor.shown ? [`a ${report.cursor.style} cursor`] : []),
+    ...(report.cursor.captions ? ["captioned keystrokes"] : []),
+  ];
+
+  return drawn.length === 0 ? [] : [`  drew ${drawn.join(" and ")}`];
 }
 
 /**

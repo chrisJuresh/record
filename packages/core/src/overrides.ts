@@ -17,21 +17,25 @@ import {
   loadAction,
   overrideFrom,
   type Overrides,
+  type ParameterDeclaration,
   type Parameters,
 } from "./action.js";
 import { actionModule, overridesFile } from "./config.js";
 import { RecordError } from "./errors.js";
-import type { EasingName } from "./timeline.js";
+import type { ParameterSetting } from "./settings.js";
 
 /** One declared Parameter, with what it is currently worth and why. */
 export type ReportedParameter = {
   readonly name: string;
-  readonly kind: "number" | "easing";
+  readonly kind: ParameterDeclaration["kind"];
   readonly describes: string;
-  readonly default: number | EasingName;
+  readonly default: ParameterSetting;
+  /** The range a number is tuned within, and nothing for the other kinds. */
   readonly min?: number;
   readonly max?: number;
-  readonly value: number | EasingName;
+  /** The values a choice takes, so that tuning it is picking one of them. */
+  readonly choices?: readonly string[];
+  readonly value: ParameterSetting;
   readonly overridden: boolean;
 };
 
@@ -74,13 +78,14 @@ export async function readOverrides(
     throw new RecordError(`${file} is not valid TOML: ${(failure as Error).message}`);
   }
 
-  // Anything that is not a number is carried across as the text it was written
-  // as, so that a value of the wrong shape is reported against the Parameter it
-  // was meant for rather than silently disappearing on the way in.
+  // Anything that is neither a number nor a flag is carried across as the text
+  // it was written as, so that a value of the wrong shape is reported against
+  // the Parameter it was meant for rather than silently disappearing on the way
+  // in.
   return Object.fromEntries(
     Object.entries(table as Record<string, unknown>).map(([name, value]) => [
       name,
-      typeof value === "number" ? value : String(value),
+      typeof value === "number" || typeof value === "boolean" ? value : String(value),
     ]),
   );
 }
@@ -154,7 +159,7 @@ async function tuning(
   workspace: string,
   project: string,
   action: string,
-): Promise<{ declared: Parameters; overrides: Record<string, number | string> }> {
+): Promise<{ declared: Parameters; overrides: Record<string, ParameterSetting> }> {
   const declared = allParameters(await loadAction(await actionModule(workspace, project, action)));
 
   return { declared, overrides: { ...(await readOverrides(workspace, project, action)) } };
@@ -200,7 +205,8 @@ function report(
       describes: declaration.describes,
       default: declaration.default,
       ...(declaration.kind === "number" ? { min: declaration.min, max: declaration.max } : {}),
-      value: effective.values[name] as number | EasingName,
+      ...(declaration.kind === "choice" ? { choices: declaration.choices } : {}),
+      value: effective.values[name] as ParameterSetting,
       overridden: effective.overridden.includes(name),
     })),
     warnings: effective.warnings,

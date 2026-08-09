@@ -14,7 +14,7 @@
  */
 import type { Viewport } from "./config.js";
 import { RecordError } from "./errors.js";
-import type { EasingName } from "./timeline.js";
+import { numberSetting, type Settled } from "./settings.js";
 
 export type ArtifactFormat = "mp4" | "webm" | "gif";
 
@@ -62,8 +62,11 @@ export type GifSettings = {
 };
 
 /** The GIF's settings out of the Parameter values a Run resolved. */
-export function gifSettings(values: Readonly<Record<string, number | EasingName>>): GifSettings {
-  return { width: numberFrom(values, "gifWidth"), framerate: numberFrom(values, "gifFramerate") };
+export function gifSettings(values: Settled): GifSettings {
+  return {
+    width: numberSetting(values, "gifWidth"),
+    framerate: numberSetting(values, "gifFramerate"),
+  };
 }
 
 /**
@@ -74,20 +77,6 @@ export function gifSettings(values: Readonly<Record<string, number | EasingName>
 export function artifactDimensions(viewport: Viewport, artifactWidth: number): Dimensions {
   const width = even(artifactWidth);
   return { width, height: even((width * viewport.height) / viewport.width) };
-}
-
-/**
- * Every Artifact Parameter is declared a number, so a value that is not one
- * means the declarations and this reader have drifted apart rather than that
- * somebody typed something wrong.
- */
-function numberFrom(values: Readonly<Record<string, number | EasingName>>, name: string): number {
-  const value = values[name];
-
-  if (typeof value !== "number") {
-    throw new RecordError(`Parameter '${name}' resolved to '${String(value)}' rather than to a number`);
-  }
-  return value;
 }
 
 function even(value: number): number {

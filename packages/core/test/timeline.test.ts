@@ -27,6 +27,20 @@ function scrolls(timeline: Timeline): number[] {
 /** The cursor starts somewhere for the Actions that move it, and nowhere for the rest. */
 const fromTopLeft = { scrollTop: 0, cursor: { x: 0, y: 0 } };
 
+/** How far each live click ripple has spread, Frame by Frame. */
+function spreads(timeline: Timeline): number[][] {
+  return evaluateTimeline(timeline).map((frame) =>
+    (frame.cursor?.ripples ?? []).map((ripple) => ripple.spread),
+  );
+}
+
+/** A Timeline that clicks once and then stands still long enough to watch. */
+function clicking(framerate: number): Timeline {
+  return motion({ framerate, startsAt: { scrollTop: 0, cursor: { x: 5, y: 5 } } })
+    .click({ durationMs: 100 })
+    .hold(1000);
+}
+
 test("a Hold occupies one Frame per frame interval and nothing moves", () => {
   const frames = evaluateTimeline(motion({ framerate: 60 }).hold(400));
 
@@ -38,7 +52,7 @@ test("a Hold occupies one Frame per frame interval and nothing moves", () => {
 test("a Frame of an Action that never moves a cursor has none, and does nothing to the page", () => {
   const [frame] = evaluateTimeline(motion({ framerate: 10 }).hold(100));
 
-  assert.deepEqual(frame, { scrollTop: 0, cursor: null, does: [] });
+  assert.deepEqual(frame, { scrollTop: 0, cursor: null, caption: null, does: [] });
 });
 
 test("consecutive Holds run one after the other from where the Timeline starts", () => {
@@ -149,12 +163,12 @@ test("the cursor travels across the viewport along its easing, in whole pixels",
   assert.deepEqual(
     frames.map((frame) => frame.cursor),
     [
-      { x: 0, y: 0, pressed: false },
-      { x: 20, y: 10, pressed: false },
-      { x: 40, y: 20, pressed: false },
-      { x: 60, y: 30, pressed: false },
-      { x: 80, y: 40, pressed: false },
-      { x: 100, y: 50, pressed: false },
+      { x: 0, y: 0, pressed: false, ripples: [] },
+      { x: 20, y: 10, pressed: false, ripples: [] },
+      { x: 40, y: 20, pressed: false, ripples: [] },
+      { x: 60, y: 30, pressed: false, ripples: [] },
+      { x: 80, y: 40, pressed: false, ripples: [] },
+      { x: 100, y: 50, pressed: false, ripples: [] },
     ],
   );
 });
@@ -191,6 +205,61 @@ test("a click holds the cursor down for its own span and lets go after it", () =
       { pressed: false, does: [{ kind: "cursor-release" }] },
     ],
   );
+});
+
+/**
+ * No Frame contains the operating system's pointer, so a click has to be drawn
+ * as well as dispatched. What is drawn is decided here rather than by an
+ * animation in the page: a ripple whose spread is read off the Timeline is the
+ * same ripple in every Run of the Action.
+ */
+test("a click sends out a ripple that spreads from where the cursor is and fades", () => {
+  assert.deepEqual(spreads(clicking(10)).slice(0, 5), [[0], [0.333], [0.667], [], []]);
+});
+
+/**
+ * A click marks the place it happened. The cursor has moved on by the second
+ * Frame of the ripple and is a hundred pixels away by the third, and the ring
+ * is still around the button that was clicked.
+ */
+test("a ripple stays where its click landed however far the cursor travels on", () => {
+  const frames = evaluateTimeline(
+    motion({ framerate: 10, startsAt: { scrollTop: 0, cursor: { x: 5, y: 5 } } })
+      .click({ durationMs: 100 })
+      .moveCursorTo({ x: 205, y: 105 }, { durationMs: 200, easing: "linear" })
+      .hold(100),
+  );
+
+  assert.deepEqual(
+    frames.map((frame) => ({ at: [frame.cursor?.x, frame.cursor?.y], ripples: frame.cursor?.ripples })),
+    [
+      { at: [5, 5], ripples: [{ x: 5, y: 5, spread: 0 }] },
+      { at: [5, 5], ripples: [{ x: 5, y: 5, spread: 0.333 }] },
+      { at: [105, 55], ripples: [{ x: 5, y: 5, spread: 0.667 }] },
+      { at: [205, 105], ripples: [] },
+    ],
+  );
+});
+
+test("a ripple lasts the same span of Timeline whatever the framerate", () => {
+  const live = (framerate: number) => spreads(clicking(framerate)).filter((live) => live.length > 0);
+
+  // 320ms of ripple: three Frames of it at 10fps and six at 20, which is the
+  // same third of a second of clip either way.
+  assert.equal(live(10).length, 3);
+  assert.equal(live(20).length, 6);
+});
+
+test("clicks close together keep a ripple each rather than one replacing the other", () => {
+  const frames = spreads(
+    motion({ framerate: 10, startsAt: { scrollTop: 0, cursor: { x: 5, y: 5 } } })
+      .click({ durationMs: 100 })
+      .hold(100)
+      .click({ durationMs: 100 })
+      .hold(400),
+  );
+
+  assert.deepEqual(frames, [[0], [0.333], [0.667, 0], [0.333], [0.667], [], []]);
 });
 
 test("a press is one whole keystroke, followed by a span for the page to answer it", () => {
@@ -237,6 +306,48 @@ test("typing spends one span per character, and each character is a keystroke", 
       [{ kind: "key", stroke: { key: "!", code: "", keyCode: 33, text: "!" } }],
       [],
     ],
+  );
+});
+
+/**
+ * A keystroke is invisible: nothing on screen says which key was struck. So
+ * every Frame carries the keys struck near it, and whether they are drawn is a
+ * Parameter rather than a second evaluation of the Timeline.
+ */
+test("the keys struck around a Frame are captioned on it, and linger past the last of them", () => {
+  const frames = evaluateTimeline(
+    motion({ framerate: 10 })
+      .type("ok", { perKeyMs: 100 })
+      .press("Enter", { durationMs: 100 })
+      .hold(1000),
+  );
+
+  assert.deepEqual(frames.map((frame) => frame.caption), [
+    "o",
+    "ok",
+    // A key with a name of its own reads as its name, beside the characters typed.
+    "ok Enter",
+    "ok Enter",
+    "ok Enter",
+    "ok Enter",
+    "ok Enter",
+    "ok Enter",
+    null,
+    null,
+    null,
+    null,
+    null,
+  ]);
+});
+
+test("a key struck after the caption has gone begins a caption of its own", () => {
+  const frames = evaluateTimeline(
+    motion({ framerate: 10 }).type("a", { perKeyMs: 100 }).hold(1000).type("b", { perKeyMs: 100 }),
+  );
+
+  assert.deepEqual(
+    frames.map((frame) => frame.caption).filter((caption) => caption !== null),
+    ["a", "a", "a", "a", "a", "a", "b"],
   );
 });
 

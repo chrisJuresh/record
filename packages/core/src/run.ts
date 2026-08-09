@@ -21,14 +21,16 @@ import { gifSettings, type Artifact } from "./artifacts.js";
 import { findHeadlessShell } from "./browser.js";
 import { captureFrames } from "./capture.js";
 import { actionModule, readActions, readProject, readProjects, type ProjectConfig } from "./config.js";
+import { cursorOverlay, cursorSettings } from "./cursor.js";
 import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
 import { beginRun, pruneHistory, writeRun } from "./history.js";
 import { ensureRunning, type RunningProject } from "./lifecycle.js";
 import { readOverrides } from "./overrides.js";
 import { headCommit, repositoryOf } from "./repository.js";
+import type { ParameterSetting } from "./settings.js";
 import { toolVersions, type ToolVersions } from "./tools.js";
-import { evaluateTimeline, type EasingName } from "./timeline.js";
+import { evaluateTimeline } from "./timeline.js";
 
 /** How many Actions record at once when nobody says otherwise. */
 export const defaultConcurrency = 4;
@@ -47,8 +49,17 @@ export type RunReport = {
   /** The versions of the external tools that made it. */
   readonly tools: ToolVersions;
   readonly framerate: number;
+  /**
+   * What was drawn over the page, since no Frame contains a real pointer. An
+   * Action that neither clicks nor types draws none unless it is asked to.
+   */
+  readonly cursor: {
+    readonly shown: boolean;
+    readonly style: string;
+    readonly captions: boolean;
+  };
   /** What the Action actually ran with, declarations and Overrides together. */
-  readonly parameters: Readonly<Record<string, number | EasingName>>;
+  readonly parameters: Readonly<Record<string, ParameterSetting>>;
   /** Which of those came from an Override rather than the declaration. */
   readonly overridden: readonly string[];
   /** Overrides that could not be applied, reported rather than swallowed. */
@@ -289,6 +300,12 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       throw new RecordError(`'${actionName}' declares a Timeline that produces no Frames`);
     }
 
+    // What is drawn over the page rather than what the page does, and settled
+    // here beside the Timeline it is drawn from: an Action that cannot say what
+    // to draw should cost no more than one that cannot describe a clip.
+    const cursor = cursorSettings(effective.values, timeline);
+    const overlay = cursorOverlay(cursor);
+
     // Before anything is written, and before a Project is asked for at all: an
     // Action that cannot describe a clip costs nothing to find out about, and
     // the retained Runs are still where they were.
@@ -317,6 +334,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       framerate: timeline.framerate,
       states,
       directory: frames,
+      ...(overlay === undefined ? {} : { overlay }),
     });
 
     const encoded = await encodeArtifacts({
@@ -344,6 +362,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       commit,
       tools,
       framerate: timeline.framerate,
+      cursor: { shown: cursor.shown, style: cursor.style.name, captions: cursor.captions },
       parameters: effective.values,
       overridden: effective.overridden,
       warnings: effective.warnings,
