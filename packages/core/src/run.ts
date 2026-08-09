@@ -39,7 +39,7 @@ export type RunReport = {
   };
   /** MP4, WebM and GIF, in that order -- every Run produces all three (ADR 0006). */
   readonly artifacts: readonly Artifact[];
-  /** The embed snippet written beside them, naming both video Artifacts. */
+  /** Where the embed snippet naming both video Artifacts was written. */
   readonly embed: string;
 };
 

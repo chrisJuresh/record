@@ -1,12 +1,12 @@
 /**
  * The Artifacts a Run produces, and what is tunable about them.
  *
- * Three come out of every capture (ADR 0006), because the delivery targets
- * genuinely differ: MP4 and WebM at the Project's video width and the captured
- * framerate, and a GIF smaller and slower. The GIF is the one Artifact that can
- * balloon and also the one most likely to be seen -- it is all a README can
- * play -- so its two size levers are Parameters with ranges rather than
- * constants.
+ * Three come out of the Frames of every Run (ADR 0006), because the delivery
+ * targets genuinely differ: MP4 and WebM at the Project's video width and the
+ * captured framerate, and a GIF smaller and slower. The GIF is the one Artifact
+ * that can balloon and also the one most likely to be seen -- it is all a
+ * README can play -- so its two size levers are Parameters with ranges rather
+ * than constants.
  *
  * They describe encoding rather than motion, though, and an Action describes
  * motion. So no Action declares them: every Action carries them, and a new
@@ -17,6 +17,12 @@ import { RecordError } from "./errors.js";
 import type { EasingName } from "./timeline.js";
 
 export type ArtifactFormat = "mp4" | "webm" | "gif";
+
+/** How big something is drawn, in pixels. */
+export type Dimensions = {
+  readonly width: number;
+  readonly height: number;
+};
 
 export type Artifact = {
   readonly format: ArtifactFormat;
@@ -65,10 +71,7 @@ export function gifSettings(values: Readonly<Record<string, number | EasingName>
  * requested width, keeping its shape. H.264 needs both dimensions even, and no
  * other format minds them being so.
  */
-export function artifactDimensions(
-  viewport: Viewport,
-  artifactWidth: number,
-): { width: number; height: number } {
+export function artifactDimensions(viewport: Viewport, artifactWidth: number): Dimensions {
   const width = even(artifactWidth);
   return { width, height: even((width * viewport.height) / viewport.width) };
 }

@@ -14,7 +14,7 @@ import { after, before, test } from "node:test";
 import { promisify } from "node:util";
 
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
-import type { Artifact, RunReport } from "@record/core";
+import type { Artifact, ArtifactFormat, RunReport } from "@record/core";
 
 import { actionIn, record, removeWorkspaces, workspaceWith } from "./harness.js";
 
@@ -50,7 +50,7 @@ const expectedFrames = 12;
 const expectedFramerate = 20;
 
 /** The three ADR 0006 requires, in the order a Run reports them. */
-const expectedFormats = ["mp4", "webm", "gif"];
+const expectedFormats: ArtifactFormat[] = ["mp4", "webm", "gif"];
 
 let site: FixtureSite;
 let workspace: string;
@@ -104,9 +104,9 @@ async function recordRun(action: string, ...args: string[]): Promise<RunReport> 
 }
 
 /**
- * Three Artifacts from the one capture, because the delivery targets differ
- * (ADR 0006): a GIF is the only one that plays inline in a README, and a web
- * page wants a video element with WebM for size and MP4 as its fallback.
+ * Three Artifacts from the Frames of one Run, because the delivery targets
+ * differ (ADR 0006): a GIF is the only one that plays inline in a README, and a
+ * web page wants a video element with WebM for size and MP4 as its fallback.
  */
 test("a Run encodes an MP4, a WebM and a GIF from the Frames it captured once", () => {
   assert.deepEqual(
@@ -118,7 +118,7 @@ test("a Run encodes an MP4, a WebM and a GIF from the Frames it captured once", 
 });
 
 test("the video Artifacts keep the captured framerate and the Project's video width", async () => {
-  for (const format of ["mp4", "webm"]) {
+  for (const format of ["mp4", "webm"] as const) {
     const artifact = artifactOf(first, format);
 
     // 320 wide keeps the viewport's 4:3 shape, and H.264 needs both even.
@@ -159,6 +159,31 @@ test("the GIF is encoded at the width and framerate its Parameters declare", asy
   assert.equal(encoded.height, 480);
   assert.equal(encoded.framerate, "20/1");
   assert.equal(encoded.frames, expectedFrames);
+  assert.ok(
+    Math.abs(encoded.durationMs - 600) <= 50,
+    `expected roughly 600ms of GIF, got ${encoded.durationMs}ms`,
+  );
+});
+
+/**
+ * 256 colours taken from the clip rather than 256 fixed ones, which is the
+ * difference between a GIF worth putting in a README and one that is not.
+ *
+ * Both Artifacts were encoded from the same Frames, so the colour most of the
+ * page is has to survive into both. A fixed palette could not hold it: asked to
+ * encode a GIF without one being generated, ffmpeg crushes this fixture's
+ * near-black background to black.
+ */
+test("the GIF's colours are a palette taken from the clip, not a fixed one", async () => {
+  const inGif = await dominantColour(artifactOf(first, "gif").path);
+  const inVideo = await dominantColour(artifactOf(first, "mp4").path);
+
+  for (const channel of [0, 1, 2] as const) {
+    assert.ok(
+      Math.abs(inGif[channel] - inVideo[channel]) <= 8,
+      `channel ${channel} of ${inGif.join()} is nothing like ${inVideo.join()}`,
+    );
+  }
 });
 
 /**
@@ -309,8 +334,31 @@ test("naming an Action the Project does not declare fails with a message saying 
   assert.match(stderr, /no Action named 'nothing-like-it' is declared by Project 'demo'/);
 });
 
+/**
+ * The colour most of an Artifact's first Frame is, as ffmpeg decodes it. Which
+ * colour that is belongs to the fixture site; that two Artifacts of one Run
+ * agree on it is what a test can ask.
+ */
+async function dominantColour(file: string): Promise<readonly [number, number, number]> {
+  const { stdout } = await execute(
+    "ffmpeg",
+    ["-hide_banner", "-loglevel", "error", "-i", file, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+    { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 },
+  );
+
+  const counts = new Map<number, number>();
+  for (let at = 0; at + 2 < stdout.length; at += 3) {
+    const colour = ((stdout[at] ?? 0) << 16) | ((stdout[at + 1] ?? 0) << 8) | (stdout[at + 2] ?? 0);
+    counts.set(colour, (counts.get(colour) ?? 0) + 1);
+  }
+
+  const [dominant = 0] = [...counts].sort(([, one], [, other]) => other - one)[0] ?? [];
+
+  return [(dominant >> 16) & 0xff, (dominant >> 8) & 0xff, dominant & 0xff];
+}
+
 /** The Artifact of one format a Run reported, or a failure naming the format that is missing. */
-function artifactOf(report: RunReport, format: string): Artifact {
+function artifactOf(report: RunReport, format: ArtifactFormat): Artifact {
   const artifact = report.artifacts.find((candidate) => candidate.format === format);
   assert.ok(artifact !== undefined, `the Run reported no ${format}`);
   return artifact;

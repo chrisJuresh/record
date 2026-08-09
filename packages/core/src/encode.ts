@@ -14,6 +14,7 @@ import {
   artifactDimensions,
   type Artifact,
   type ArtifactFormat,
+  type Dimensions,
   type GifSettings,
 } from "./artifacts.js";
 import { framePattern } from "./capture.js";
@@ -39,17 +40,17 @@ export type EncodeOptions = {
 export type Encoded = {
   /** MP4, WebM and GIF, in that order. */
   readonly artifacts: readonly Artifact[];
-  /** The embed snippet written beside them. */
+  /** Where the embed snippet was written. */
   readonly embed: string;
 };
 
-/** What one Artifact is encoded at, whatever format it is. */
-type Shape = {
+/** What one Artifact is encoded as, and how many Frames of it there are. */
+type Encoding = {
   readonly format: ArtifactFormat;
   readonly width: number;
   readonly height: number;
   readonly framerate: number;
-  readonly frameCount: number;
+  readonly frames: number;
 };
 
 /** One Artifact as it will be, and the ffmpeg run that makes it. */
@@ -61,7 +62,8 @@ type Planned = {
 };
 
 export async function encodeArtifacts(options: EncodeOptions): Promise<Encoded> {
-  const planned = plan(options);
+  const video = artifactDimensions(options.viewport, options.videoWidth);
+  const planned = plan(options, video);
 
   // Every encode is waited for even once one has failed, so that cleaning up
   // cannot race an ffmpeg still writing the file it is trying to remove.
@@ -78,55 +80,55 @@ export async function encodeArtifacts(options: EncodeOptions): Promise<Encoded> 
   }
 
   const embed = join(options.directory, `${options.name}.embed.html`);
-  const video = artifactDimensions(options.viewport, options.videoWidth);
   await writeFile(embed, embedSnippet({ name: options.name, ...video }), "utf8");
 
   return { artifacts: planned.map((one) => one.artifact), embed };
 }
 
 /** What each Artifact will be, decided before any of them is encoded. */
-function plan(options: EncodeOptions): Planned[] {
-  const video = artifactDimensions(options.viewport, options.videoWidth);
-  const gif = artifactDimensions(options.viewport, options.gif.width);
+function plan(options: EncodeOptions, video: Dimensions): Planned[] {
+  const asCaptured = { framerate: options.framerate, frames: options.frameCount };
 
-  const shapes: Shape[] = [
-    { format: "mp4", ...video, framerate: options.framerate, frameCount: options.frameCount },
-    { format: "webm", ...video, framerate: options.framerate, frameCount: options.frameCount },
+  // Every Artifact is the same clip, so every one of them lasts as long as the
+  // Timeline did. Only the GIF's Frames are resampled, and only its count of
+  // them follows from a framerate of its own.
+  const durationMs = Math.round((options.frameCount / options.framerate) * 1000);
+
+  const encodings: Encoding[] = [
+    { format: "mp4", ...video, ...asCaptured },
+    { format: "webm", ...video, ...asCaptured },
     {
       format: "gif",
-      ...gif,
+      ...artifactDimensions(options.viewport, options.gif.width),
       framerate: options.gif.framerate,
-      // The GIF plays slower than the page was captured, so the fps filter
-      // resamples the Frames: how many it emits follows from the two framerates
-      // rather than from how many were captured.
-      frameCount: Math.max(
-        1,
-        Math.round((options.frameCount / options.framerate) * options.gif.framerate),
-      ),
+      // Rounded up, because this only ever caps what the fps filter emits: a
+      // cap below what the clip holds would shorten the GIF rather than guard
+      // it. ffmpeg stops at the last Frame either way.
+      frames: Math.max(1, Math.ceil((options.frameCount / options.framerate) * options.gif.framerate)),
     },
   ];
 
-  return shapes.map((shape) => {
-    const file = join(options.directory, `${options.name}.${shape.format}`);
-    const partial = `${file}.partial.${shape.format}`;
+  return encodings.map((encoding) => {
+    const file = join(options.directory, `${options.name}.${encoding.format}`);
+    const partial = `${file}.partial.${encoding.format}`;
 
     return {
       artifact: {
-        format: shape.format,
+        format: encoding.format,
         path: file,
-        width: shape.width,
-        height: shape.height,
-        framerate: shape.framerate,
-        durationMs: Math.round((shape.frameCount / shape.framerate) * 1000),
+        width: encoding.width,
+        height: encoding.height,
+        framerate: encoding.framerate,
+        durationMs,
       },
       partial,
-      args: argumentsFor(options, shape, partial),
+      args: argumentsFor(options, encoding, partial),
     };
   });
 }
 
 /** The ffmpeg run that turns the captured Frames into one Artifact. */
-function argumentsFor(options: EncodeOptions, shape: Shape, file: string): string[] {
+function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string): string[] {
   return [
     "-hide_banner",
     "-nostdin",
@@ -138,39 +140,32 @@ function argumentsFor(options: EncodeOptions, shape: Shape, file: string): strin
     "-i",
     join(options.frames, framePattern),
     "-frames:v",
-    String(shape.frameCount),
-    ...encoding(shape),
+    String(encoding.frames),
+    ...formatArguments(encoding),
     file,
   ];
 }
 
-function encoding(shape: Shape): string[] {
-  const scale = `scale=${shape.width}:${shape.height}:flags=lanczos`;
-
-  switch (shape.format) {
+/** What distinguishes one Artifact's format from the others'. */
+function formatArguments(encoding: Encoding): string[] {
+  switch (encoding.format) {
     case "mp4":
       return [
-        "-vf",
-        scale,
+        ...videoArguments(encoding),
         "-c:v",
         "libx264",
         "-preset",
         "medium",
         "-crf",
         "18",
-        // The pixel format and the faststart atom are what make the file play
-        // everywhere rather than only in the browser it was made on.
-        "-pix_fmt",
-        "yuv420p",
+        // The faststart atom is half of what makes the file play everywhere
+        // rather than only in the browser it was made on.
         "-movflags",
         "+faststart",
-        "-r",
-        String(shape.framerate),
       ];
     case "webm":
       return [
-        "-vf",
-        scale,
+        ...videoArguments(encoding),
         "-c:v",
         "libvpx-vp9",
         // A quality target rather than a bitrate: '-b:v 0' is what makes -crf
@@ -185,10 +180,6 @@ function encoding(shape: Shape): string[] {
         "good",
         "-cpu-used",
         "2",
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        String(shape.framerate),
       ];
     case "gif":
       return [
@@ -197,13 +188,26 @@ function encoding(shape: Shape): string[] {
         // and the other is mapped through them. 256 colours chosen from the
         // clip beat any fixed set of 256, by a margin that is plainly visible.
         "-filter_complex",
-        `fps=${shape.framerate},${scale},split[measured][mapped];` +
+        `fps=${encoding.framerate},${scale(encoding)},split[measured][mapped];` +
           "[measured]palettegen[palette];[mapped][palette]paletteuse",
         // Loop forever: a clip that holds at both ends is meant to.
         "-loop",
         "0",
       ];
   }
+}
+
+/**
+ * What both video Artifacts do the same way, whatever encodes them: the scale
+ * down from the captured Frames, the pixel format every player can decode, and
+ * the framerate the Frames were captured at.
+ */
+function videoArguments(encoding: Encoding): string[] {
+  return ["-vf", scale(encoding), "-pix_fmt", "yuv420p", "-r", String(encoding.framerate)];
+}
+
+function scale(encoding: Encoding): string {
+  return `scale=${encoding.width}:${encoding.height}:flags=lanczos`;
 }
 
 async function ffmpeg(args: readonly string[]): Promise<void> {
