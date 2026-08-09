@@ -127,6 +127,18 @@ function plan(options: EncodeOptions, video: Dimensions): Planned[] {
   });
 }
 
+/**
+ * What makes an Artifact a function of the Frames it was encoded from and
+ * nothing else. Without it Matroska stamps every WebM with the moment it was
+ * written and an identifier of its own, so two Runs of an unchanged Action
+ * would produce clips that differ in bytes while being the same clip -- which
+ * is exactly the comparison this tool exists to make.
+ *
+ * Given to the output rather than the input, where it would configure the
+ * reading of the Frames instead of the writing of the Artifact.
+ */
+const bitExactArguments = ["-fflags", "+bitexact", "-flags:v", "+bitexact"];
+
 /** The ffmpeg run that turns the captured Frames into one Artifact. */
 function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string): string[] {
   return [
@@ -142,6 +154,7 @@ function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string):
     "-frames:v",
     String(encoding.frames),
     ...formatArguments(encoding),
+    ...bitExactArguments,
     file,
   ];
 }

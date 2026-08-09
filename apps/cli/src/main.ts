@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 
 import {
   actionModule,
+  defaultConcurrency,
   readActions,
   readHistory,
   readParameters,
@@ -16,10 +17,12 @@ import {
   RecordError,
   resetOverrides,
   runAction,
+  runActions,
   setOverrides,
   type ParameterReport,
   type ProjectConfig,
   type RunReport,
+  type RunSummary,
   type StatusReport,
 } from "@record/core";
 
@@ -31,10 +34,14 @@ const usage = `record -- repeatable clips of locally-running websites
   record set <project> <action> <name>=<value>...   Override Parameters by hand
   record reset <project> <action> <name>...         Remove Overrides
   record run <project> <action>          Record one Action and encode its Artifacts
+  record run <project>                   Record every Action in a Project, at once
+  record run --all                       Record every Action of every Project, at once
   record status [project]                Say which Actions have gone Stale
   record history <project> <action>      List the Runs of an Action still kept
 
   --set <name>=<value>         Override a Parameter for this Run, and keep it
+  --all                        Record every Project rather than one named Project
+  --concurrency <n>            How many Actions record at once (${defaultConcurrency})
   --json                       Emit machine-readable output
   --help                       Show this message
 
@@ -62,10 +69,16 @@ async function main(argv: string[]): Promise<number> {
     return fail(`${(failure as Error).message}\n\n${usage}`);
   }
 
-  const { command, operands, json, sets } = parsed;
+  const { command, operands, json, sets, all, concurrency } = parsed;
 
-  if (sets.length > 0 && command !== "run") {
-    return fail(`only run takes --set\n\n${usage}`);
+  for (const [option, given] of [
+    ["--set", sets.length > 0],
+    ["--all", all],
+    ["--concurrency", concurrency !== undefined],
+  ] as const) {
+    if (given && command !== "run") {
+      return fail(`only run takes ${option}\n\n${usage}`);
+    }
   }
 
   if (readsActions.includes(command) && !process.features.typescript) {
@@ -109,10 +122,30 @@ async function main(argv: string[]): Promise<number> {
       }
       case "run": {
         const [project, action] = operands;
-        if (project === undefined || action === undefined || operands.length > 2) {
-          return fail(`run takes the name of one Project and one of its Actions\n\n${usage}`);
+
+        if (all && operands.length > 0) {
+          return fail(`run --all records every Project, so it takes no Project\n\n${usage}`);
         }
-        return await run(project, action, sets, json);
+        if (!all && project === undefined) {
+          return fail(`run takes a Project and one of its Actions, a Project, or --all\n\n${usage}`);
+        }
+        if (operands.length > 2) {
+          return fail(`run takes at most one Project and one of its Actions\n\n${usage}`);
+        }
+        // An Override belongs to one Action, so there is no saying which of many
+        // a --set meant.
+        if (sets.length > 0 && action === undefined) {
+          return fail(`--set names one Action's Parameter, so it takes a Project and an Action\n\n${usage}`);
+        }
+        // ...and one Action records on its own however many the machine could
+        // have recorded beside it.
+        if (concurrency !== undefined && action !== undefined) {
+          return fail(`--concurrency is how many Actions record at once, so it takes a Project or --all\n\n${usage}`);
+        }
+
+        return project !== undefined && action !== undefined
+          ? await run(project, action, sets, json)
+          : await runEvery(project, concurrency, json);
       }
       case "status": {
         const [project] = operands;
@@ -144,6 +177,9 @@ type Arguments = {
   readonly operands: readonly string[];
   readonly json: boolean;
   readonly sets: readonly string[];
+  readonly all: boolean;
+  /** How many Actions record at once, or nothing when the default stands. */
+  readonly concurrency: number | undefined;
 };
 
 /** The command, its operands, and the options it was given, or a message about one it was not. */
@@ -151,18 +187,24 @@ function parse(argv: string[]): Arguments {
   const words: string[] = [];
   const sets: string[] = [];
   let json = false;
+  let all = false;
+  let concurrency: number | undefined;
 
   for (let at = 0; at < argv.length; at++) {
     const argument = argv[at] ?? "";
 
     if (argument === "--json") {
       json = true;
+    } else if (argument === "--all") {
+      all = true;
     } else if (argument === "--set") {
       const assignment = argv[++at];
       if (assignment === undefined) {
         throw new Error("--set takes name=value");
       }
       sets.push(assignment);
+    } else if (argument === "--concurrency") {
+      concurrency = actionsAtOnce(argv[++at]);
     } else if (argument.startsWith("-")) {
       throw new Error(`unknown option '${argument}'`);
     } else {
@@ -172,7 +214,18 @@ function parse(argv: string[]): Arguments {
 
   const [command = "", ...operands] = words;
 
-  return { command, operands, json, sets };
+  return { command, operands, json, sets, all, concurrency };
+}
+
+/** How many Actions record at once, which is a count of Actions rather than a number. */
+function actionsAtOnce(given: string | undefined): number {
+  const count = Number(given);
+
+  if (given === undefined || !Number.isInteger(count) || count < 1) {
+    throw new Error(`--concurrency takes how many Actions record at once, not '${given ?? ""}'`);
+  }
+
+  return count;
 }
 
 async function projects(json: boolean): Promise<number> {
@@ -207,7 +260,36 @@ async function run(
   const recorded = await runAction(workspace(), project, action);
   warnAbout(recorded.warnings);
 
-  return emit(json, recorded, () => asSummary(recorded));
+  return emit(json, recorded, () => asRun(recorded));
+}
+
+/**
+ * Records every Action of one Project, or of every Project, several at once.
+ *
+ * An Action that failed does not take the others down with it, so the command
+ * fails while still reporting everything that recorded -- and what stopped each
+ * one is said on stderr whichever output was asked for, because a failure is
+ * exactly what must not pass unnoticed.
+ */
+async function runEvery(
+  project: string | undefined,
+  concurrency: number | undefined,
+  json: boolean,
+): Promise<number> {
+  const recorded = await runActions(workspace(), {
+    ...(project === undefined ? {} : { project }),
+    ...(concurrency === undefined ? {} : { concurrency }),
+  });
+
+  warnAbout(recorded.runs.flatMap((run) => run.warnings));
+
+  for (const failure of recorded.failures) {
+    process.stderr.write(`failed: ${failure.project} ${failure.action}: ${failure.message}\n`);
+  }
+
+  emit(json, recorded, () => asRuns(recorded));
+
+  return recorded.failures.length === 0 ? 0 : 1;
 }
 
 /**
@@ -313,7 +395,7 @@ function asParameters(reported: ParameterReport): string {
 }
 
 /** What a Run captured, and what it left behind. */
-function asSummary(report: RunReport): string {
+function asRun(report: RunReport): string {
   const { captured, repeated } = report.frames;
   const seconds = (captured / report.framerate).toFixed(2);
 
@@ -336,6 +418,20 @@ function asSummary(report: RunReport): string {
     `  embed ${report.embed}`,
     "",
   ].join("\n");
+}
+
+/**
+ * What each Action recorded, and a tally of how it went -- the Actions that
+ * failed are named on stderr rather than a second time here, because one
+ * failure said twice reads as two.
+ */
+function asRuns(recorded: RunSummary): string {
+  const asked = recorded.runs.length + recorded.failures.length;
+
+  return [
+    ...recorded.runs.map(asRun),
+    `${recorded.runs.length} of ${asked} Actions recorded, ${recorded.concurrency} at a time\n`,
+  ].join("");
 }
 
 /**

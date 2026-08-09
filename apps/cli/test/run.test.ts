@@ -16,7 +16,7 @@ import { promisify } from "node:util";
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
 import type { Artifact, ArtifactFormat, RunReport } from "@record/core";
 
-import { actionIn, record, removeWorkspaces, workspaceWith } from "./harness.js";
+import { actionIn, contentsOf, record, removeWorkspaces, workspaceWith } from "./harness.js";
 
 const execute = promisify(execFile);
 
@@ -280,6 +280,20 @@ test("the same Action run twice against the same Project produces identical Fram
 });
 
 /**
+ * ...and the Artifacts encoded from those Frames are the same bytes, not merely
+ * the same clip. Encoding is bit-exact for this: a container that stamped in
+ * the moment it was written would make every re-recording of an unchanged
+ * Action look like a change.
+ */
+test("two Runs of an unchanged Action encode identical Artifacts", async () => {
+  const one = await artifactsOf(first);
+  const other = await artifactsOf(second);
+
+  assert.deepEqual(other, one);
+  assert.equal(Object.keys(one).length, 4, "the three Artifacts and the embed snippet");
+});
+
+/**
  * If the count of Frames driven before capture began varied between Runs, so
  * would every Frame after it. Two priming Frames is what the clock spike
  * measured against the Chromium pinned in TOOLING.md, on every run it ever
@@ -319,13 +333,6 @@ test("`run --set` records with the Override and keeps it in the sidecar", async 
   assert.match(await readFile(sidecar, "utf8"), /distance = 40/);
 });
 
-test("`run` without an Action to run says so rather than recording something else", async () => {
-  const { stderr, code } = await record(workspace, "run", "demo");
-
-  assert.equal(code, 1);
-  assert.match(stderr, /run takes the name of one Project and one of its Actions/);
-});
-
 test("naming an Action the Project does not declare fails with a message saying so", async () => {
   const { stderr, code } = await record(workspace, "run", "demo", "nothing-like-it");
 
@@ -354,6 +361,17 @@ async function dominantColour(file: string): Promise<readonly [number, number, n
   const [dominant = 0] = [...counts].sort(([, one], [, other]) => other - one)[0] ?? [];
 
   return [(dominant >> 16) & 0xff, (dominant >> 8) & 0xff, dominant & 0xff];
+}
+
+/**
+ * What a Run left behind, hashed, but for the record it wrote of itself -- that
+ * one names the instant the Run began, which no two Runs could ever share.
+ */
+async function artifactsOf(run: RunReport): Promise<Record<string, string>> {
+  const left = await contentsOf(run.directory);
+  delete left["run.json"];
+
+  return left;
 }
 
 /** The Artifact of one format a Run reported, or a failure naming the format that is missing. */

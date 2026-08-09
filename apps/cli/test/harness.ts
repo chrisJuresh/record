@@ -47,11 +47,19 @@ export async function workspaceWith(projects: Record<string, string>): Promise<s
   await symlink(core, join(workspace, "node_modules", "@record", "core"), "junction");
 
   for (const [name, config] of Object.entries(projects)) {
-    await mkdir(join(workspace, "projects", name), { recursive: true });
-    await writeFile(join(workspace, "projects", name, "project.toml"), config, "utf8");
+    await projectIn(workspace, name, config);
   }
 
   return workspace;
+}
+
+/**
+ * Writes one Project's configuration into a workspace that already exists, for
+ * a test whose Project has to name a path inside it.
+ */
+export async function projectIn(workspace: string, name: string, config: string): Promise<void> {
+  await mkdir(join(workspace, "projects", name), { recursive: true });
+  await writeFile(join(workspace, "projects", name, "project.toml"), config, "utf8");
 }
 
 /** Writes an Action module into a Project of a workspace. */
