@@ -4,7 +4,7 @@
  * snap. The Holds at either end are what make the loop read as a pause rather
  * than a stutter.
  */
-import type { Action } from "@record/core";
+import { motion, type Action } from "@record/core";
 
 const parameters = {
   holdIn: {
@@ -59,17 +59,12 @@ const parameters = {
 const scrollPeek: Action<typeof parameters> = {
   parameters,
   timeline({ holdIn, distance, travel, holdMid, holdOut, framerate, easing }) {
-    return {
-      framerate,
-      startsAt: { scrollTop: 0 },
-      segments: [
-        { kind: "hold", durationMs: holdIn },
-        { kind: "scroll-to", scrollTop: distance, durationMs: travel, easing },
-        { kind: "hold", durationMs: holdMid },
-        { kind: "scroll-to", scrollTop: 0, durationMs: travel, easing },
-        { kind: "hold", durationMs: holdOut },
-      ],
-    };
+    return motion({ framerate })
+      .hold(holdIn)
+      .scrollTo(distance, { durationMs: travel, easing })
+      .hold(holdMid)
+      .scrollTo(0, { durationMs: travel, easing })
+      .hold(holdOut);
   },
 };
 

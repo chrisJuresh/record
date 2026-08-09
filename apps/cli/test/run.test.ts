@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { promisify } from "node:util";
@@ -25,7 +25,7 @@ const execute = promisify(execFile);
  * asserts the same behaviour as a real one at a fraction of the wall-clock.
  */
 const peek = `
-import type { Action } from "@record/core";
+import { motion, type Action } from "@record/core";
 
 const parameters = {
   distance: { kind: "number", describes: "how far the page travels", default: 200, min: 0, max: 2000 },
@@ -35,15 +35,10 @@ const parameters = {
 const peek: Action<typeof parameters> = {
   parameters,
   timeline({ distance, framerate }) {
-    return {
-      framerate,
-      startsAt: { scrollTop: 0 },
-      segments: [
-        { kind: "hold", durationMs: 100 },
-        { kind: "scroll-to", scrollTop: distance, durationMs: 400, easing: "ease-in-out-cubic" },
-        { kind: "hold", durationMs: 100 },
-      ],
-    };
+    return motion({ framerate })
+      .hold(100)
+      .scrollTo(distance, { durationMs: 400, easing: "ease-in-out-cubic" })
+      .hold(100);
   },
 };
 
@@ -58,12 +53,15 @@ let site: FixtureSite;
 let workspace: string;
 
 /**
- * The two Runs every test here reads. Recording is slow enough that repeating
- * it per test would be felt, and the pair is what the determinism assertion
- * needs anyway.
+ * The Runs every test here reads. Recording is slow enough that repeating it
+ * per test would be felt, and the pair of identical Runs is what the
+ * determinism assertion needs anyway. The third is the same Action tuned by
+ * hand, which is only worth a recording because what it proves is that the
+ * tuned value reached the browser.
  */
 let first: RunReport;
 let second: RunReport;
+let tuned: RunReport;
 
 before(async () => {
   site = await startFixtureSite();
@@ -84,6 +82,7 @@ before(async () => {
 
   first = await recordPeek();
   second = await recordPeek();
+  tuned = await recordPeek("--set", "distance=40");
 });
 
 after(async () => {
@@ -91,8 +90,8 @@ after(async () => {
   await removeWorkspaces();
 });
 
-async function recordPeek(): Promise<RunReport> {
-  const { stdout, stderr, code } = await record(workspace, "run", "demo", "peek", "--json");
+async function recordPeek(...args: string[]): Promise<RunReport> {
+  const { stdout, stderr, code } = await record(workspace, "run", "demo", "peek", ...args, "--json");
   assert.equal(code, 0, stderr);
   return JSON.parse(stdout) as RunReport;
 }
@@ -179,6 +178,29 @@ test("the same Action run twice against the same Project produces identical Fram
 test("the Frames driven before capture are a fixed count, not whatever the machine needed", () => {
   assert.deepEqual(first.frames.priming, { compositor: 2, settle: 60 });
   assert.deepEqual(second.frames.priming, first.frames.priming);
+});
+
+test("a Run reports the Parameter values it ran with", () => {
+  assert.deepEqual(first.parameters, { distance: 200, framerate: 20 });
+  assert.deepEqual(first.overridden, []);
+  assert.deepEqual(first.warnings, []);
+});
+
+/**
+ * The whole point of an Override: the value reaches the browser, and it is
+ * still there next time. Asserted through a real recording because a tuned
+ * value that never left the report would be no tuning at all.
+ */
+test("`run --set` records with the Override and keeps it in the sidecar", async () => {
+  assert.deepEqual(tuned.overridden, ["distance"]);
+  assert.equal(tuned.parameters["distance"], 40);
+
+  // Same Timeline, same Frames -- a shorter travel, not a shorter clip.
+  assert.equal(tuned.frames.captured, expectedFrames);
+  assert.notDeepEqual(tuned.frames.hashes, first.frames.hashes);
+
+  const sidecar = join(workspace, "projects", "demo", "actions", "peek.overrides.toml");
+  assert.match(await readFile(sidecar, "utf8"), /distance = 40/);
 });
 
 test("`run` without an Action to run says so rather than recording something else", async () => {

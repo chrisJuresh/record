@@ -15,6 +15,40 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/*
+ * Pinned to the corner at a fixed size: an Action clicks at coordinates, and
+ * those coordinates must not move when anything else on the page does.
+ */
+#controls {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: #1a1a22;
+}
+
+#toggle,
+#note {
+  width: 90px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #2a2a34;
+  border-radius: 4px;
+  background: #101014;
+  color: #f2f2f5;
+  font: inherit;
+  font-size: 14px;
+}
+
+#state {
+  margin: 0;
+  color: #9a9aa8;
+  font-size: 14px;
+}
+
 header {
   padding: 64px 0 32px;
 }

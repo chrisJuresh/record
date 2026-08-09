@@ -8,23 +8,34 @@ import { resolve } from "node:path";
 
 import {
   readActions,
+  readParameters,
   readProjects,
   RecordError,
+  resetOverrides,
   runAction,
+  setOverrides,
+  type ParameterReport,
   type ProjectConfig,
   type RunReport,
 } from "@record/core";
 
 const usage = `record -- repeatable clips of locally-running websites
 
-  record projects              List every configured Project
-  record actions <project>     List a Project's Actions
-  record run <project> <action>  Record one Action and encode its Artifacts
+  record projects                        List every configured Project
+  record actions <project>               List a Project's Actions
+  record parameters <project> <action>   Show an Action's Parameters and their values
+  record set <project> <action> <name>=<value>...   Override Parameters by hand
+  record reset <project> <action> <name>...         Remove Overrides
+  record run <project> <action>          Record one Action and encode its Artifacts
 
+  --set <name>=<value>         Override a Parameter for this Run, and keep it
   --json                       Emit machine-readable output
   --help                       Show this message
 
 The workspace holding projects/ is $RECORD_WORKSPACE, or this checkout.`;
+
+/** Commands that import an Action module, and so need a Node that reads TypeScript. */
+const readsActions = ["run", "parameters", "set", "reset"];
 
 /** Set on the relaunched process, so a Node that still cannot strip types says so once. */
 const relaunched = "RECORD_TYPE_STRIPPING";
@@ -38,14 +49,22 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const options = argv.filter((argument) => argument.startsWith("-"));
-  const unknown = options.find((option) => option !== "--json");
-  if (unknown !== undefined) {
-    return fail(`unknown option '${unknown}'\n\n${usage}`);
+  let parsed: Arguments;
+  try {
+    parsed = parse(argv);
+  } catch (failure) {
+    return fail(`${(failure as Error).message}\n\n${usage}`);
   }
 
-  const json = options.includes("--json");
-  const [command, ...operands] = argv.filter((argument) => !argument.startsWith("-"));
+  const { command, operands, json, sets } = parsed;
+
+  if (sets.length > 0 && command !== "run") {
+    return fail(`only run takes --set\n\n${usage}`);
+  }
+
+  if (readsActions.includes(command) && !process.features.typescript) {
+    return relaunchStrippingTypes(argv);
+  }
 
   try {
     switch (command) {
@@ -61,12 +80,33 @@ async function main(argv: string[]): Promise<number> {
         }
         return await actions(project, json);
       }
+      case "parameters": {
+        const [project, action] = operands;
+        if (project === undefined || action === undefined || operands.length > 2) {
+          return fail(`parameters takes the name of one Project and one of its Actions\n\n${usage}`);
+        }
+        return report(await readParameters(workspace(), project, action), json);
+      }
+      case "set": {
+        const [project, action, ...assignments] = operands;
+        if (project === undefined || action === undefined || assignments.length === 0) {
+          return fail(`set takes a Project, one of its Actions, and name=value\n\n${usage}`);
+        }
+        return report(await setOverrides(workspace(), project, action, assignments), json);
+      }
+      case "reset": {
+        const [project, action, ...names] = operands;
+        if (project === undefined || action === undefined || names.length === 0) {
+          return fail(`reset takes a Project, one of its Actions, and Parameter names\n\n${usage}`);
+        }
+        return report(await resetOverrides(workspace(), project, action, names), json);
+      }
       case "run": {
         const [project, action] = operands;
         if (project === undefined || action === undefined || operands.length > 2) {
           return fail(`run takes the name of one Project and one of its Actions\n\n${usage}`);
         }
-        return await run(project, action, json, argv);
+        return await run(project, action, sets, json);
       }
       default:
         return fail(`unknown command '${command}'\n\n${usage}`);
@@ -77,6 +117,42 @@ async function main(argv: string[]): Promise<number> {
     }
     throw failure;
   }
+}
+
+type Arguments = {
+  readonly command: string;
+  readonly operands: readonly string[];
+  readonly json: boolean;
+  readonly sets: readonly string[];
+};
+
+/** The command, its operands, and the options it was given, or a message about one it was not. */
+function parse(argv: string[]): Arguments {
+  const words: string[] = [];
+  const sets: string[] = [];
+  let json = false;
+
+  for (let at = 0; at < argv.length; at++) {
+    const argument = argv[at] ?? "";
+
+    if (argument === "--json") {
+      json = true;
+    } else if (argument === "--set") {
+      const assignment = argv[++at];
+      if (assignment === undefined) {
+        throw new Error("--set takes name=value");
+      }
+      sets.push(assignment);
+    } else if (argument.startsWith("-")) {
+      throw new Error(`unknown option '${argument}'`);
+    } else {
+      words.push(argument);
+    }
+  }
+
+  const [command = "", ...operands] = words;
+
+  return { command, operands, json, sets };
 }
 
 async function projects(json: boolean): Promise<number> {
@@ -91,14 +167,31 @@ async function actions(project: string, json: boolean): Promise<number> {
   return emit(json, named, () => `${named.join("\n")}\n`);
 }
 
-async function run(project: string, action: string, json: boolean, argv: string[]): Promise<number> {
-  if (!process.features.typescript) {
-    return relaunchStrippingTypes(argv);
+/**
+ * Recording with `--set` sets the Override first and then records with it, so
+ * that the two are the same thing they would have been typed separately as --
+ * and so that tuning survives a Run that fails.
+ */
+async function run(
+  project: string,
+  action: string,
+  sets: readonly string[],
+  json: boolean,
+): Promise<number> {
+  if (sets.length > 0) {
+    warnAbout((await setOverrides(workspace(), project, action, sets)).warnings);
   }
 
-  const report = await runAction(workspace(), project, action);
+  const recorded = await runAction(workspace(), project, action);
+  warnAbout(recorded.warnings);
 
-  return emit(json, report, () => asSummary(report));
+  return emit(json, recorded, () => asSummary(recorded));
+}
+
+function report(reported: ParameterReport, json: boolean): number {
+  warnAbout(reported.warnings);
+
+  return emit(json, reported, () => asParameters(reported));
 }
 
 /**
@@ -135,6 +228,17 @@ function emit(json: boolean, value: unknown, describe: () => string): number {
   return 0;
 }
 
+/**
+ * A stale Override is said out loud on stderr whichever output was asked for,
+ * because it is in the machine-readable case that it would otherwise pass
+ * unnoticed.
+ */
+function warnAbout(warnings: readonly string[]): void {
+  for (const warning of warnings) {
+    process.stderr.write(`warning: ${warning}\n`);
+  }
+}
+
 /** One line per Project: its name, where it serves, and whether it is Published. */
 function asTable(configured: ProjectConfig[]): string {
   const name = widest(configured.map((project) => project.name));
@@ -149,6 +253,21 @@ function asTable(configured: ProjectConfig[]): string {
     .join("");
 }
 
+/** One line per Parameter: what it is worth now, what it would be, and its range. */
+function asParameters(reported: ParameterReport): string {
+  const name = widest(reported.parameters.map((parameter) => parameter.name));
+
+  return reported.parameters
+    .map((parameter) => {
+      const range =
+        parameter.min === undefined ? "" : `  (${parameter.min}..${parameter.max})`;
+      const source = parameter.overridden ? `  overridden, default ${parameter.default}` : "";
+
+      return `${parameter.name.padEnd(name)}  ${parameter.value}${range}${source}\n`;
+    })
+    .join("");
+}
+
 /** What a Run captured, and what it left behind. */
 function asSummary(report: RunReport): string {
   const { captured, repeated } = report.frames;
@@ -157,6 +276,9 @@ function asSummary(report: RunReport): string {
   return [
     `${report.project} ${report.action}`,
     `  ${captured} Frames at ${report.framerate}fps (${seconds}s), ${repeated} repeated`,
+    ...(report.overridden.length === 0
+      ? []
+      : [`  overridden: ${report.overridden.join(", ")}`]),
     ...report.artifacts.map(
       (artifact) => `  ${artifact.format}  ${artifact.width}x${artifact.height}  ${artifact.path}`,
     ),

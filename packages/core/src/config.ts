@@ -82,7 +82,7 @@ export async function readProject(workspace: string, name: string): Promise<Proj
 export async function readActions(workspace: string, name: string): Promise<string[]> {
   await readProject(workspace, name);
 
-  const entries = await readdir(join(projectsDirectory(workspace), name, "actions"), {
+  const entries = await readdir(actionsDirectory(workspace, name), {
     withFileTypes: true,
   }).catch(asMissing);
 
@@ -92,8 +92,33 @@ export async function readActions(workspace: string, name: string): Promise<stri
     .sort();
 }
 
+/** The module declaring one of a Project's Actions, or a failure naming it. */
+export async function actionModule(workspace: string, project: string, action: string): Promise<string> {
+  const file = join(actionsDirectory(workspace, project), `${action}.ts`);
+
+  return access(file).then(
+    () => file,
+    () => {
+      throw new RecordError(`no Action named '${action}' is declared by Project '${project}'`);
+    },
+  );
+}
+
+/**
+ * The sidecar holding one Action's Overrides. It sits beside the module rather
+ * than inside it so that regenerating an Action cannot destroy tuning and
+ * tuning cannot corrupt code (ADR 0005).
+ */
+export function overridesFile(workspace: string, project: string, action: string): string {
+  return join(actionsDirectory(workspace, project), `${action}.overrides.toml`);
+}
+
 function projectsDirectory(workspace: string): string {
   return join(workspace, "projects");
+}
+
+function actionsDirectory(workspace: string, project: string): string {
+  return join(projectsDirectory(workspace), project, "actions");
 }
 
 function configFile(workspace: string, name: string): string {

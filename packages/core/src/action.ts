@@ -3,6 +3,11 @@
  * performing. An Action is a TypeScript module (ADR 0004) declaring its
  * Parameters and building a Timeline from them, loaded from the Project's
  * `actions/` directory.
+ *
+ * The declared defaults belong to whoever wrote the Action; Overrides belong to
+ * whoever is tuning it, and live in a sidecar beside the module (ADR 0005).
+ * Merging the two is a pure function, so which value won is testable without a
+ * browser.
  */
 import { pathToFileURL } from "node:url";
 
@@ -35,6 +40,18 @@ export type ParameterValue<D extends ParameterDeclaration> = D extends NumberPar
 
 export type ParameterValues<P extends Parameters> = { readonly [K in keyof P]: ParameterValue<P[K]> };
 
+/** Values chosen by hand, as they were read from the sidecar. */
+export type Overrides = Readonly<Record<string, number | string>>;
+
+/** What an Action will actually run with, and how it came to be that. */
+export type EffectiveParameters<P extends Parameters = Parameters> = {
+  readonly values: ParameterValues<P>;
+  /** Names taking their value from an Override rather than from the declaration. */
+  readonly overridden: readonly string[];
+  /** Overrides that could not be applied, said out loud rather than dropped. */
+  readonly warnings: readonly string[];
+};
+
 /**
  * What an Action module default-exports. Declaring `parameters` with `as const`
  * is what gives `timeline` a value for each of them under its own name.
@@ -52,12 +69,21 @@ const easingNames: readonly EasingName[] = [
 ];
 
 /**
- * The Parameter values an Action runs with. Today that is what the Action
- * declares; Overrides join them here once they exist, which is why the Timeline
- * is built from this rather than from the declarations directly.
+ * The Parameter values an Action runs with: what it declares, with Overrides
+ * laid over the top.
+ *
+ * An Override the Action no longer declares is a warning rather than a failure.
+ * Tuning outlives the code it was tuning, and a stale sidecar should cost a
+ * line of output rather than the Run -- but it must never pass unmentioned,
+ * because an Override that quietly does nothing is worse than one that fails.
  */
-export function effectiveParameters<P extends Parameters>(parameters: P): ParameterValues<P> {
+export function effectiveParameters<P extends Parameters>(
+  parameters: P,
+  overrides: Overrides = {},
+): EffectiveParameters<P> {
   const values: Record<string, number | EasingName> = {};
+  const overridden: string[] = [];
+  const warnings: string[] = [];
 
   for (const [name, declaration] of Object.entries(parameters)) {
     if (declaration.kind === "number" && !within(declaration)) {
@@ -66,10 +92,67 @@ export function effectiveParameters<P extends Parameters>(parameters: P): Parame
           `${declaration.min}..${declaration.max}`,
       );
     }
-    values[name] = declaration.default;
+
+    const chosen = overrides[name];
+    if (chosen === undefined) {
+      values[name] = declaration.default;
+      continue;
+    }
+
+    const refused = refuses(declaration, chosen);
+    if (refused === undefined) {
+      values[name] = chosen as number | EasingName;
+      overridden.push(name);
+    } else {
+      values[name] = declaration.default;
+      warnings.push(`Override '${name}' ${refused}, so the declared default is used instead`);
+    }
   }
 
-  return values as ParameterValues<P>;
+  for (const name of Object.keys(overrides)) {
+    if (parameters[name] === undefined) {
+      warnings.push(`Override '${name}' names a Parameter this Action no longer declares`);
+    }
+  }
+
+  return { values: values as ParameterValues<P>, overridden, warnings };
+}
+
+/**
+ * One Override as it was typed, checked against what the Action declares.
+ *
+ * This is the gate values come in through, so it refuses rather than warns: a
+ * value rejected here was never written down, and saying so is the only way the
+ * person setting it finds out.
+ */
+export function overrideFrom(parameters: Parameters, name: string, text: string): number | EasingName {
+  const declaration = parameters[name];
+
+  if (declaration === undefined) {
+    const declared = Object.keys(parameters);
+    throw new RecordError(
+      `'${name}' is not a Parameter this Action declares. It declares ` +
+        (declared.length === 0 ? "none" : declared.join(", ")),
+    );
+  }
+
+  if (declaration.kind === "easing") {
+    if (!easingNames.includes(text as EasingName)) {
+      throw new RecordError(`'${name}' takes one of ${easingNames.join(", ")}, not '${text}'`);
+    }
+    return text as EasingName;
+  }
+
+  const value = Number(text);
+  if (text.trim() === "" || !Number.isFinite(value)) {
+    throw new RecordError(`'${name}' takes a number, not '${text}'`);
+  }
+  if (value < declaration.min || value > declaration.max) {
+    throw new RecordError(
+      `'${name}' takes a number between ${declaration.min} and ${declaration.max}, not ${value}`,
+    );
+  }
+  return value;
 }
 
 /** The Action a module file declares, or a message saying how it fails to declare one. */
@@ -91,6 +174,22 @@ export async function loadAction(file: string): Promise<Action> {
   }
 
   return declared as unknown as Action;
+}
+
+/** Why a declaration will not take a value, or undefined if it will. */
+function refuses(declaration: ParameterDeclaration, value: number | string): string | undefined {
+  if (declaration.kind === "easing") {
+    return easingNames.includes(value as EasingName)
+      ? undefined
+      : `is '${String(value)}', which is not one of ${easingNames.join(", ")}`;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return `is '${String(value)}', which is not a number`;
+  }
+  return value >= declaration.min && value <= declaration.max
+    ? undefined
+    : `is ${value}, outside the declared range ${declaration.min}..${declaration.max}`;
 }
 
 function assertDeclares(file: string, name: string, declaration: unknown): void {
