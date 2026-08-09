@@ -8,6 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Viewport } from "./config.js";
+import type { CursorOverlay } from "./cursor.js";
 import { openFrameStepper, type FrameStepper } from "./driver.js";
 import { RecordError } from "./errors.js";
 import type { CursorState, PageEffect, PageState } from "./timeline.js";
@@ -39,6 +40,8 @@ export type CaptureOptions = {
   readonly states: readonly PageState[];
   /** Directory the Frames are written into. Created if it is not there. */
   readonly directory: string;
+  /** The cursor drawn over the page, where this Run draws one at all. */
+  readonly overlay?: CursorOverlay;
 };
 
 /** Smooth scrolling would fight a scroll position chosen per Frame. */
@@ -83,6 +86,7 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
     executable: options.executable,
     viewport: options.viewport,
     framerate: options.framerate,
+    ...(options.overlay === undefined ? {} : { overlay: options.overlay.script }),
   });
 
   try {
@@ -110,6 +114,13 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
 
       for (const effect of state.does) {
         await apply(stepper, effect, state);
+      }
+
+      // Drawn last, so that what the cursor shows is this Frame as it will be
+      // photographed: the page where the Timeline put it, the press already
+      // pressed, and the keys of this Frame already struck.
+      if (options.overlay !== undefined) {
+        await stepper.evaluate(options.overlay.draws(state));
       }
 
       const frame = await stepper.next();

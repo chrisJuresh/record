@@ -92,6 +92,23 @@ export function keyStroke(key: string): KeyStroke {
 }
 
 /**
+ * What one keystroke reads as when it is captioned on screen: the key's own
+ * name where it has one, and otherwise the character it types.
+ *
+ * Read back off the stroke rather than carried alongside it, because a stroke
+ * is what the browser is sent and a caption is what a viewer is shown -- the
+ * two travel together only as far as the Frame they belong to.
+ */
+export function strokeLabel(stroke: KeyStroke): string {
+  return labels[stroke.code] ?? stroke.text ?? stroke.key;
+}
+
+/** The name each named key is known by, found by the code it is dispatched as. */
+const labels: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(named).map(([name, stroke]) => [stroke.code, name]),
+);
+
+/**
  * The keystroke that types one character, whatever it is.
  *
  * Typing has to arrive as keystrokes rather than as inserted text: a page that

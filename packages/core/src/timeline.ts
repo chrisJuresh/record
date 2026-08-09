@@ -9,20 +9,47 @@
  * rather than participating in producing it.
  */
 import { RecordError } from "./errors.js";
-import { characterStroke, keyStroke, type Key, type KeyStroke } from "./keys.js";
+import { characterStroke, keyStroke, strokeLabel, type Key, type KeyStroke } from "./keys.js";
 
 export type Point = { readonly x: number; readonly y: number };
 
 /**
- * Where the cursor is for one Frame, and whether it is held down.
+ * A ring spreading from where a click landed. It keeps its own place, because
+ * a click marks where it happened however far the cursor travels on afterwards.
+ */
+export type Ripple = {
+  readonly x: number;
+  readonly y: number;
+  /** How far it has spread: 0 on the Frame of the press, approaching 1 as it fades. */
+  readonly spread: number;
+};
+
+/**
+ * Where the cursor is for one Frame, whether it is held down, and what its
+ * clicks are still sending out.
  *
  * This is the state a cursor is drawn from -- no Frame contains the operating
- * system's pointer, so one has to be drawn into the page, which is #10's work.
- * It is not how a click reaches the page: a click is an event, and an event
- * shorter than a Frame still has to happen, which a state read once per Frame
- * could not express.
+ * system's pointer, so one has to be drawn into the page. It is not how a click
+ * reaches the page: a click is an event, and an event shorter than a Frame
+ * still has to happen, which a state read once per Frame could not express.
  */
-export type CursorState = { readonly x: number; readonly y: number; readonly pressed: boolean };
+export type CursorState = {
+  readonly x: number;
+  readonly y: number;
+  readonly pressed: boolean;
+  /**
+   * The ripples a click is still sending out, oldest first. Decided here so
+   * that a click looks the same in every Run of the Action -- an animation left
+   * to the page would look like whatever the page felt like that time.
+   */
+  readonly ripples: readonly Ripple[];
+};
+
+/** How long a click's ripple takes to spread and fade, whatever the framerate. */
+const clickRippleMs = 320;
+
+/** How long a caption stays up after the last key struck into it. */
+const captionLingerMs = 600;
 
 /**
  * Something done to the page before a Frame is drawn. A Frame is still a
@@ -43,6 +70,12 @@ export type PageState = {
   readonly scrollTop: number;
   /** Null in an Action that never moves a cursor, which is most of them. */
   readonly cursor: CursorState | null;
+  /**
+   * The keys struck around this Frame, as they would read on screen, or null
+   * where none were. Every Frame carries them; whether they are drawn is a
+   * Parameter, so that turning captions on is not a second Timeline.
+   */
+  readonly caption: string | null;
   readonly does: readonly PageEffect[];
 };
 
@@ -148,11 +181,21 @@ const easings: Record<EasingName, (progress: number) => number> = {
   "ease-in-out-cubic": (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
 };
 
+/**
+ * Where the cursor has reached, before the ripples its clicks send out have
+ * been worked out -- those depend on the Frames around one, and a segment knows
+ * only about itself.
+ */
+type Pointer = { readonly x: number; readonly y: number; readonly pressed: boolean };
+
 /** Where the page has reached, before it is told what happens to it next. */
 type Position = {
   readonly scrollTop: number;
-  readonly cursor: CursorState | null;
+  readonly cursor: Pointer | null;
 };
+
+/** One Frame as its own segment left it, before the drawn cursor is worked out. */
+type Placed = Position & { readonly does: readonly PageEffect[] };
 
 /**
  * One stretch of Timeline with a single motion in it. Most segments are one
@@ -185,7 +228,7 @@ const still = (from: Position): Position => from;
  * carried to the next Frame rather than lost.
  */
 export function evaluateTimeline(timeline: Timeline): PageState[] {
-  const frames: PageState[] = [];
+  const frames: Placed[] = [];
   let reached: Position = {
     scrollTop: timeline.startsAt.scrollTop,
     cursor: startingCursor(timeline.startsAt.cursor),
@@ -221,7 +264,90 @@ export function evaluateTimeline(timeline: Timeline): PageState[] {
   // Anything still carried happens after the last Frame, where no camera is
   // looking: releasing a cursor the clip has already stopped watching changes
   // nothing anyone can see.
-  return frames;
+  return drawnOver(frames, timeline.framerate);
+}
+
+/**
+ * What each Frame shows of the click ripples and the keys struck. This is the
+ * one part of a Frame that depends on the Frames around it -- a ripple outlives
+ * the press that sent it and a caption outlives the key that wrote it -- so
+ * both are worked out over the whole run of Frames rather than inside a
+ * segment, one pass each.
+ */
+function drawnOver(frames: readonly Placed[], framerate: number): PageState[] {
+  const spreading = ripplesOf(frames, framerate);
+  const captions = captionsOf(frames, framerate);
+
+  return frames.map((frame, at) => ({
+    scrollTop: frame.scrollTop,
+    cursor: frame.cursor === null ? null : { ...frame.cursor, ripples: spreading[at] ?? [] },
+    caption: captions[at] ?? null,
+    does: frame.does,
+  }));
+}
+
+/**
+ * The ripples alight on each Frame, each still where the click that sent it
+ * landed. A press is only ever on a Frame that has a cursor, because an Action
+ * that clicks has to have declared where the cursor starts.
+ */
+function ripplesOf(frames: readonly Placed[], framerate: number): Ripple[][] {
+  const lasts = Math.max(1, frameCount(clickRippleMs, framerate));
+  const pressed: { readonly at: number; readonly x: number; readonly y: number }[] = [];
+
+  return frames.map((frame, at) => {
+    if (frame.cursor !== null && frame.does.some((effect) => effect.kind === "cursor-press")) {
+      pressed.push({ at, x: frame.cursor.x, y: frame.cursor.y });
+    }
+    while (pressed.length > 0 && at - (pressed[0]?.at ?? at) >= lasts) {
+      pressed.shift();
+    }
+
+    // Rounded to thousandths, so that what is drawn is a number rather than a
+    // float's tail.
+    return pressed.map(({ at: sent, x, y }) => ({
+      x,
+      y,
+      spread: Math.round(((at - sent) / lasts) * 1000) / 1000,
+    }));
+  });
+}
+
+/**
+ * The caption on each Frame: the burst of keystrokes it belongs to, staying up
+ * for a moment after the last of them, and nothing where no key was struck
+ * near enough to it.
+ */
+function captionsOf(frames: readonly Placed[], framerate: number): (string | null)[] {
+  const lingers = Math.max(1, frameCount(captionLingerMs, framerate));
+  let struck: string[] = [];
+  let showsUntil = 0;
+
+  return frames.map((frame, at) => {
+    const labels = frame.does
+      .filter((effect) => effect.kind === "key")
+      .map((effect) => strokeLabel(effect.stroke));
+
+    if (labels.length > 0) {
+      struck = at < showsUntil ? [...struck, ...labels] : labels;
+      showsUntil = at + lingers;
+    }
+
+    return at < showsUntil ? captionOf(struck) : null;
+  });
+}
+
+/**
+ * A burst of keystrokes as one line: characters run together into the word they
+ * typed, and a key with a name of its own held apart from them.
+ */
+function captionOf(labels: readonly string[]): string {
+  return labels
+    .map((label, at) => {
+      const before = labels[at - 1];
+      return at > 0 && (label.length > 1 || (before?.length ?? 0) > 1) ? ` ${label}` : label;
+    })
+    .join("");
 }
 
 /**
@@ -334,14 +460,14 @@ function held(from: Position, pressed: boolean): Position {
  * A cursor has to start somewhere: no Frame contains the operating system's
  * pointer, so there is no "already" for an Action to be asked about.
  */
-function cursorOf(from: Position, what: string): CursorState {
+function cursorOf(from: Position, what: string): Pointer {
   if (from.cursor === null) {
     throw new RecordError(`an Action that ${what} must declare where the cursor starts`);
   }
   return from.cursor;
 }
 
-function startingCursor(point: Point | null | undefined): CursorState | null {
+function startingCursor(point: Point | null | undefined): Pointer | null {
   return point == null ? null : { x: Math.round(point.x), y: Math.round(point.y), pressed: false };
 }
 

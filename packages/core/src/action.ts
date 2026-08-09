@@ -12,7 +12,9 @@
 import { pathToFileURL } from "node:url";
 
 import { artifactParameters } from "./artifacts.js";
+import { cursorParameters } from "./cursor.js";
 import { RecordError } from "./errors.js";
+import type { ParameterSetting } from "./settings.js";
 import type { EasingName, Timeline } from "./timeline.js";
 
 /** A tunable number -- a distance, a duration, a framerate -- with a range. */
@@ -31,18 +33,43 @@ export type EasingParameter = {
   readonly default: EasingName;
 };
 
-export type ParameterDeclaration = NumberParameter | EasingParameter;
+/** One of a named set, so that tuning it is a choice rather than a spelling. */
+export type ChoiceParameter = {
+  readonly kind: "choice";
+  readonly describes: string;
+  readonly default: string;
+  readonly choices: readonly string[];
+};
+
+/** On or off, and off unless something is deliberately turned on. */
+export type FlagParameter = {
+  readonly kind: "flag";
+  readonly describes: string;
+  readonly default: boolean;
+};
+
+export type ParameterDeclaration =
+  | NumberParameter
+  | EasingParameter
+  | ChoiceParameter
+  | FlagParameter;
 
 export type Parameters = Readonly<Record<string, ParameterDeclaration>>;
 
 export type ParameterValue<D extends ParameterDeclaration> = D extends NumberParameter
   ? number
-  : EasingName;
+  : D extends EasingParameter
+    ? EasingName
+    : D extends FlagParameter
+      ? boolean
+      : D extends ChoiceParameter
+        ? D["choices"][number]
+        : never;
 
 export type ParameterValues<P extends Parameters> = { readonly [K in keyof P]: ParameterValue<P[K]> };
 
 /** Values chosen by hand, as they were read from the sidecar. */
-export type Overrides = Readonly<Record<string, number | string>>;
+export type Overrides = Readonly<Record<string, ParameterSetting>>;
 
 /** What an Action will actually run with, and how it came to be that. */
 export type EffectiveParameters<P extends Parameters = Parameters> = {
@@ -70,17 +97,20 @@ const easingNames: readonly EasingName[] = [
 ];
 
 /**
- * Every Parameter an Action runs with: the ones it declares, and the Artifact
- * Parameters every Action carries whether it names them or not (ADR 0006). The
- * carried ones come last, so that a listing reads as the Action first and what
- * is done with its Frames after.
+ * Every Parameter an Action runs with: the ones it declares, and the ones every
+ * Action carries whether it names them or not -- the cursor drawn over the page
+ * and the Artifacts encoded from it (ADR 0006). The carried ones come last, so
+ * that a listing reads as the Action first, then what is drawn over it, then
+ * what is done with its Frames.
  *
  * An Action naming one of the carried Parameters is refused rather than allowed
  * to shadow it, because two declarations of one name leave no way to say which
  * an Override meant.
  */
 export function allParameters(action: Action): Parameters {
-  for (const name of Object.keys(artifactParameters)) {
+  const carried: Parameters = { ...cursorParameters, ...artifactParameters };
+
+  for (const name of Object.keys(carried)) {
     if (action.parameters[name] !== undefined) {
       throw new RecordError(
         `Parameter '${name}' is carried by every Action already, so declaring it would shadow it`,
@@ -88,7 +118,7 @@ export function allParameters(action: Action): Parameters {
     }
   }
 
-  return { ...action.parameters, ...artifactParameters };
+  return { ...action.parameters, ...carried };
 }
 
 /**
@@ -104,17 +134,12 @@ export function effectiveParameters<P extends Parameters>(
   parameters: P,
   overrides: Overrides = {},
 ): EffectiveParameters<P> {
-  const values: Record<string, number | EasingName> = {};
+  const values: Record<string, ParameterSetting> = {};
   const overridden: string[] = [];
   const warnings: string[] = [];
 
   for (const [name, declaration] of Object.entries(parameters)) {
-    if (declaration.kind === "number" && !within(declaration)) {
-      throw new RecordError(
-        `Parameter '${name}' defaults to ${declaration.default}, outside its own range ` +
-          `${declaration.min}..${declaration.max}`,
-      );
-    }
+    assertDefaults(name, declaration);
 
     const chosen = overrides[name];
     if (chosen === undefined) {
@@ -124,7 +149,7 @@ export function effectiveParameters<P extends Parameters>(
 
     const refused = refuses(declaration, chosen);
     if (refused === undefined) {
-      values[name] = chosen as number | EasingName;
+      values[name] = chosen;
       overridden.push(name);
     } else {
       values[name] = declaration.default;
@@ -148,7 +173,7 @@ export function effectiveParameters<P extends Parameters>(
  * value rejected here was never written down, and saying so is the only way the
  * person setting it finds out.
  */
-export function overrideFrom(parameters: Parameters, name: string, text: string): number | EasingName {
+export function overrideFrom(parameters: Parameters, name: string, text: string): ParameterSetting {
   const declaration = parameters[name];
 
   if (declaration === undefined) {
@@ -159,11 +184,19 @@ export function overrideFrom(parameters: Parameters, name: string, text: string)
     );
   }
 
-  if (declaration.kind === "easing") {
-    if (!easingNames.includes(text as EasingName)) {
-      throw new RecordError(`'${name}' takes one of ${easingNames.join(", ")}, not '${text}'`);
+  if (declaration.kind === "easing" || declaration.kind === "choice") {
+    const choices = choicesOf(declaration);
+    if (!choices.includes(text)) {
+      throw new RecordError(`'${name}' takes one of ${choices.join(", ")}, not '${text}'`);
     }
-    return text as EasingName;
+    return text;
+  }
+
+  if (declaration.kind === "flag") {
+    if (text !== "true" && text !== "false") {
+      throw new RecordError(`'${name}' takes true or false, not '${text}'`);
+    }
+    return text === "true";
   }
 
   const value = Number(text);
@@ -200,11 +233,17 @@ export async function loadAction(file: string): Promise<Action> {
 }
 
 /** Why a declaration will not take a value, or undefined if it will. */
-function refuses(declaration: ParameterDeclaration, value: number | string): string | undefined {
-  if (declaration.kind === "easing") {
-    return easingNames.includes(value as EasingName)
+function refuses(declaration: ParameterDeclaration, value: ParameterSetting): string | undefined {
+  if (declaration.kind === "easing" || declaration.kind === "choice") {
+    const choices = choicesOf(declaration);
+
+    return typeof value === "string" && choices.includes(value)
       ? undefined
-      : `is '${String(value)}', which is not one of ${easingNames.join(", ")}`;
+      : `is '${String(value)}', which is not one of ${choices.join(", ")}`;
+  }
+
+  if (declaration.kind === "flag") {
+    return typeof value === "boolean" ? undefined : `is '${String(value)}', which is not true or false`;
   }
 
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -213,6 +252,32 @@ function refuses(declaration: ParameterDeclaration, value: number | string): str
   return value >= declaration.min && value <= declaration.max
     ? undefined
     : `is ${value}, outside the declared range ${declaration.min}..${declaration.max}`;
+}
+
+/** The values a declaration of a named set will take, whichever set it is. */
+function choicesOf(declaration: EasingParameter | ChoiceParameter): readonly string[] {
+  return declaration.kind === "easing" ? easingNames : declaration.choices;
+}
+
+/**
+ * A declaration whose own default it would refuse is a declaration nobody can
+ * run, so it fails while the Parameters are being resolved rather than leaving
+ * an Action that always warns about itself.
+ */
+function assertDefaults(name: string, declaration: ParameterDeclaration): void {
+  if (declaration.kind === "number" && !within(declaration)) {
+    throw new RecordError(
+      `Parameter '${name}' defaults to ${declaration.default}, outside its own range ` +
+        `${declaration.min}..${declaration.max}`,
+    );
+  }
+
+  if (declaration.kind === "choice" && !declaration.choices.includes(declaration.default)) {
+    throw new RecordError(
+      `Parameter '${name}' defaults to '${declaration.default}', which is not one of ` +
+        `${declaration.choices.join(", ")}`,
+    );
+  }
 }
 
 function assertDeclares(file: string, name: string, declaration: unknown): void {
@@ -233,6 +298,21 @@ function assertDeclares(file: string, name: string, declaration: unknown): void 
       return easingNames.includes(declaration["default"] as EasingName)
         ? undefined
         : wrong(`must default to one of ${easingNames.join(", ")}`);
+    case "choice": {
+      const choices: unknown[] = Array.isArray(declaration["choices"]) ? declaration["choices"] : [];
+      const chosen: unknown = declaration["default"];
+
+      return choices.length > 0 &&
+        choices.every((choice) => typeof choice === "string") &&
+        typeof chosen === "string" &&
+        choices.includes(chosen)
+        ? undefined
+        : wrong("must declare the choices it takes, and default to one of them");
+    }
+    case "flag":
+      return typeof declaration["default"] === "boolean"
+        ? undefined
+        : wrong("must default to true or false");
     default:
       return wrong(`declares an unknown kind '${String(declaration["kind"])}'`);
   }

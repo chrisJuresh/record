@@ -309,9 +309,16 @@ test("a Run reports the Parameter values it ran with, the Artifacts' included", 
   assert.deepEqual(first.parameters, {
     distance: 200,
     framerate: 20,
+    cursor: "auto",
+    cursorStyle: "soft-dot",
+    cursorCaptions: false,
     gifWidth: 640,
     gifFramerate: 20,
   });
+
+  // An Action that only travels draws no cursor, so this clip is the page and
+  // nothing else.
+  assert.deepEqual(first.cursor, { shown: false, style: "soft-dot", captions: false });
   assert.deepEqual(first.overridden, []);
   assert.deepEqual(first.warnings, []);
 });

@@ -189,30 +189,65 @@ each Parameter under its own name.
   run.
 - `{ kind: "easing", describes, default }` — one of `linear`, `ease-in-cubic`,
   `ease-out-cubic`, `ease-in-out-cubic`.
+- `{ kind: "choice", describes, default, choices }` — one of a named set, so
+  tuning it is picking rather than spelling. The default has to be one of them.
+- `{ kind: "flag", describes, default }` — on or off, set as `name=true` or
+  `name=false`.
 
 `describes` is read by the person tuning the Action, so write it for them.
 
 ### Parameters every Action carries
 
-Two Parameters arrive without being declared, because they describe how the
-Frames are encoded rather than what moves, and an Action describes motion:
+Five Parameters arrive without being declared, because they describe what is
+drawn over the Frames and how they are encoded rather than what moves, and an
+Action describes motion:
 
+- `cursor` — `auto`, `shown` or `hidden`.
+- `cursorStyle` — `soft-dot`, `arrow-light` or `arrow-dark`.
+- `cursorCaptions` — off.
 - `gifWidth` — 640, between 120 and 1920.
 - `gifFramerate` — 20, between 5 and 50.
 
 The GIF is the one Artifact that can balloon and the only one a README plays
 (ADR 0006), so its size levers are tunable per Action — `record set photos
-scroll-peek gifWidth=480` — without any Action mentioning them. **Declaring
-either name in an Action is refused**, because two declarations of one name
+scroll-peek gifWidth=480` — without any Action mentioning them. **Declaring any
+of these names in an Action is refused**, because two declarations of one name
 leave no way to say which an Override meant. The video Artifacts keep the
 Project's `video_width` and the Timeline's framerate.
+
+### The drawn cursor
+
+No Frame contains the operating system's pointer and there is no real mouse in
+a stepped headless browser, so a cursor is **drawn**: an overlay injected into
+the page before its own scripts run, positioned each Frame from the evaluated
+Timeline. Where it is, whether it is held down, how far each click's ripple has
+spread and which keys were struck near a Frame are all decided by Timeline
+evaluation, so two Runs of one Action draw the same cursor in the same places —
+an animation left to the page would draw whatever the page felt like that time.
+
+`cursor` is `auto` by default, which draws one for an Action containing a
+`click` or a `type` primitive and none for an Action that only travels, so a
+pointer never sits idle in frame. `shown` and `hidden` say so outright, and an
+Action asked to show a cursor it never placed fails rather than drawing nothing
+— **an Action that shows a cursor declares where it starts**, as
+`motion({ startsAt: { cursor } })`.
+
+`cursorCaptions` puts the keys an Action strikes on screen, gathered into the
+burst that typed them and lingering a moment after the last of them. It is off
+until it is turned on: a clip explaining a shortcut wants it and a clip of a
+form being filled in does not.
+
+The styles are a registry in `packages/core/src/cursor.ts` — a shape, where its
+point sits inside it, how far it shrinks under a press, and the ring a click
+sends out. **Adding a cursor is adding an entry**: nothing outside the registry
+names a style, so a new one is settable the moment it is written.
 
 ### The primitives
 
 `motion({ framerate, startsAt })` begins a Timeline and every primitive returns
 another one. `startsAt` defaults to `{ scrollTop: 0, cursor: null }`; an Action
-that moves or clicks a cursor has to declare where the cursor starts, because
-no Frame contains a real pointer to ask about.
+that moves, clicks or draws a cursor has to declare where the cursor starts,
+because no Frame contains a real pointer to ask about.
 
 | Primitive | What it adds to the Timeline |
 |---|---|
@@ -287,9 +322,15 @@ Issues and specs live as GitHub issues on `chrisJuresh/record`, driven through t
 as prose. See `docs/agents/issue-tracker.md`.
 
 **Every issue resolved by a code change lands through a pull request** — a
-branch named `<issue-number>-<slug>`, a PR opened at the first push whose body
-says `Closes #<number>`, and a merge that closes the issue. Nothing is committed
-to `main` directly, and no agent merges or closes on its own.
+branch named `<issue-number>-<slug>`, a PR whose body says `Closes #<number>`,
+and a merge that closes the issue. Nothing is committed to `main` directly.
+
+**Committing is not delivering.** An agent that has committed against an issue
+**pushes the branch and opens the PR itself**, unasked — work left on a local
+branch is work nobody can see, and a PR opened early is where the diff is read
+while it is still cheap to change. Only the merge waits: agents open, push to
+and update PRs and answer review comments on them, and never merge or close the
+issue behind the PR's back.
 
 ### Triage labels
 

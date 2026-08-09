@@ -135,7 +135,14 @@ test("a Run is kept with its timestamp, the Project's commit, its Parameters and
   assert.deepEqual(kept, first, "what a Run reported is what it kept");
   assert.equal(kept.commit, await headOf(repository));
   assert.equal(new Date(kept.recordedAt).toISOString(), kept.recordedAt);
-  assert.deepEqual(kept.parameters, { framerate: 10, gifWidth: 640, gifFramerate: 20 });
+  assert.deepEqual(kept.parameters, {
+    framerate: 10,
+    cursor: "auto",
+    cursorStyle: "soft-dot",
+    cursorCaptions: false,
+    gifWidth: 640,
+    gifFramerate: 20,
+  });
 
   // The versions of the tools that actually made this clip: a Frame captured by
   // a different Chromium is a different Frame, and both are on this machine.
