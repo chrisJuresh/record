@@ -177,8 +177,8 @@
   /* ------------------------------------------------------------- fake clip */
 
   /* Stands in for an Artifact. Deliberately not a photograph of anything:
-     these directions are judged on arrangement, and a real still would pull
-     the eye. The Mockup sheet is where real stills are looked at. */
+     these directions are judged on arrangement, and a real Frame would pull
+     the eye. The Mockup sheet is where real Frames are looked at. */
   .clip {
     position: relative;
     aspect-ratio: 8 / 5;
@@ -536,28 +536,26 @@ const SELECTED = { project: "photos", action: "scroll-peek" };
 
 // --------------------------------------------------------------- fragments
 
-const h = (html) => html;
-
-const clip = (badge = "latest") => h(`
+const clip = (badge = "latest") => `
   <div class="clip">
     <div class="page">${"<i></i>".repeat(12)}</div>
     <span class="badge">${badge}</span>
   </div>
-`);
+`;
 
 const staleDot = (a) => (a.stale ? '<span class="dot-stale" title="Stale"></span>' : "");
 
 const overridePill = (n) =>
   n ? `<span class="pill override num">${n} override${n === 1 ? "" : "s"}</span>` : "";
 
-const topbar = (right) => h(`
+const topbar = (right) => `
   <div class="topbar">
     <span class="wordmark">record</span>
     <span class="faint">3 Projects · 8 Actions · <span class="num">3</span> Stale</span>
     <span class="spacer"></span>
     ${right}
   </div>
-`);
+`;
 
 const paramControl = (p) => {
   const overridden = p.value !== p.def;
@@ -565,7 +563,7 @@ const paramControl = (p) => {
     p.options
       ? `<select disabled>${p.options.map((o) => `<option ${o === p.value ? "selected" : ""}>${o}</option>`).join("")}</select>`
       : `<input type="range" min="${p.min}" max="${p.max}" value="${p.value}" disabled>`;
-  return h(`
+  return `
     <div class="param ${overridden ? "overridden" : ""}">
       <div class="row">
         <label>${p.name}</label>
@@ -574,12 +572,12 @@ const paramControl = (p) => {
       ${control}
       <div class="describes">${p.describes}${overridden ? ` · default ${p.def}${p.unit || ""}` : ""}</div>
     </div>
-  `);
+  `;
 };
 
 // ------------------------------------------------------------ A: rail+stage
 
-const directionA = () => h(`
+const directionA = () => `
   <div class="app">
     ${topbar(`
       <button class="act small">Publish…</button>
@@ -629,11 +627,11 @@ const directionA = () => h(`
       </aside>
     </div>
   </div>
-`);
+`;
 
 // --------------------------------------------------------- B: contact sheet
 
-const directionB = () => h(`
+const directionB = () => `
   <div class="app">
     ${topbar(`
       <button class="act small">Publish…</button>
@@ -692,18 +690,18 @@ const directionB = () => h(`
       `).join("")}
     </div>
   </div>
-`);
+`;
 
 // ---------------------------------------------------------------- C: feed
 
-const inlineParam = (p) => h(`
+const inlineParam = (p) => `
   <div class="inline-param ${p.value !== p.def ? "overridden" : ""}">
     <span>${p.name}</span>
     <span class="v num">${p.value}${p.unit || ""}</span>
   </div>
-`);
+`;
 
-const directionC = () => h(`
+const directionC = () => `
   <div class="app">
     ${topbar(`
       <button class="act small">Publish…</button>
@@ -743,11 +741,11 @@ const directionC = () => h(`
       </div>
     </div>
   </div>
-`);
+`;
 
 // ------------------------------------------------------- D: compare bench
 
-const directionD = () => h(`
+const directionD = () => `
   <div class="app">
     ${topbar(`
       <button class="act small">Publish…</button>
@@ -808,7 +806,7 @@ const directionD = () => h(`
       </div>
     </div>
   </div>
-`);
+`;
 
 // ------------------------------------------------------------- directions
 
@@ -841,8 +839,8 @@ const DIRECTIONS = [
     id: "d",
     title: "Compare bench",
     gist: "A flat list of every Action; Latest against Previous side by side; Parameters as a tray underneath.",
-    good: "Built around the loop the tool exists for — change a value, run it, look at it beside the last one. The frame scrubber makes two Runs comparable at an instant rather than as two loops.",
-    cost: "Projects are demoted to a qualifier on a list row, so it stops looking like a per-site tool. Compare is dead weight for an Action that has only ever run once.",
+    good: "Built around the loop the tool exists for — change a value, run it, look at it beside the last one. The Frame scrubber makes two Runs comparable at an instant rather than as two loops.",
+    cost: "Projects are demoted to a qualifier on a list row, so it stops looking like a per-Project tool. Compare is dead weight for an Action that has only ever run once.",
     render: directionD,
   },
 ];

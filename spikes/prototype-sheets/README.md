@@ -35,9 +35,15 @@ not how they are coloured.
 
 ## mockups.html
 
-Six candidate surrounds around the same still: none, rounded, a browser window
-in light and in dark, a laptop, and a phone. Silhouettes are generic rather than
-modelled on identifiable hardware, because Published clips are public.
+Six candidate surrounds around the same Frame. Four are the presets the spec
+asked for — **none**, **a browser window**, **a laptop**, **a phone** — and two
+are on the sheet to be argued with rather than because anything asked for them:
+**rounded**, which is the cheapest thing that is not nothing, and the browser
+window split into **light and dark**, because they do not read the same way.
+Choosing fewer than six is a valid outcome.
+
+Silhouettes are generic rather than modelled on identifiable hardware, because
+Published clips are public.
 
 Two controls matter more than they look:
 
@@ -47,14 +53,18 @@ Two controls matter more than they look:
   looks considered at 1120px can leave the clip inside it unreadable at the GIF
   default of 640px. Judge at both.
 
-### Getting a real still into it
+"None" carries no shadow, unlike every other candidate. A shadow is a decision a
+Mockup makes, and lending one to the undecorated baseline would rig the
+comparison the sheet exists to make.
 
-The committed sheet carries a synthetic placeholder still. This repository is
-public and the `photos` Project renders a real photo library, so no capture of it
-is committed — the same reason publishing is off for that Project (ADR 0007).
+### Getting a real Frame into it
+
+The committed sheet carries a synthetic placeholder. This repository is public
+and the `photos` Project renders a real photo library, so no Frame of it is
+committed — the same reason publishing is off for that Project (ADR 0007).
 
 ```bash
-node spikes/prototype-sheets/inline-still.mjs
+node spikes/prototype-sheets/inline-frame.mjs
 ```
 
 That takes one Frame out of the newest Run under `runs/photos/scroll-peek`,
@@ -66,8 +76,10 @@ something first if there is nothing there yet:
 pnpm record run photos scroll-peek
 ```
 
-It also accepts a directory or a file, and `--at <seconds>` to take the still
-from a different instant of the clip.
+It also accepts a directory or a file, and `--at <seconds>` to take the Frame
+from a different instant of the clip. It finds the newest file rather than
+asking the CLI for Latest, so that a spike does not need the workspace built to
+locate one MP4.
 
 ## The choice
 
