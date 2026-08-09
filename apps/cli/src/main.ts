@@ -415,6 +415,7 @@ function asRun(report: RunReport): string {
       : `  recorded the Project already answering at ${readyUrl}`,
     `  ${captured} Frames at ${report.framerate}fps (${seconds}s), ${repeated} repeated`,
     ...asCursor(report),
+    ...asText(report),
     ...(report.overridden.length === 0
       ? []
       : [`  overridden: ${report.overridden.join(", ")}`]),
@@ -440,6 +441,28 @@ function asCursor(report: RunReport): string[] {
   ];
 
   return drawn.length === 0 ? [] : [`  drew ${drawn.join(" and ")}`];
+}
+
+/**
+ * The copy substituted into the page, and nothing at all for the Actions that
+ * substituted none -- which is most of them. What each selector matched is
+ * worth saying: one that matched more than the wording was meant for is a
+ * clip nobody has looked at yet.
+ */
+function asText(report: RunReport): string[] {
+  if (report.text.length === 0) {
+    return [];
+  }
+
+  const elements = report.text.reduce((total, substitution) => total + substitution.matched, 0);
+
+  return [`  substituted copy for ${many(report.text.length, "selector")}, ` +
+    `into ${many(elements, "element")}`];
+}
+
+/** A count and what it counts, said so that one of something reads as one. */
+function many(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /**

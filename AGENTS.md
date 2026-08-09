@@ -270,6 +270,44 @@ nothing comes back, because Timeline evaluation happens before any browser
 exists. Reach for it to *do* something the primitives cannot say, and use
 `waitFor` to find out whether it worked.
 
+### Text overrides
+
+An Action can also declare **replacement copy**, so a clip shows the wording it
+was meant to show rather than whatever the running site happens to contain that
+day. It is a mapping from element selector to copy, declared beside the Timeline
+rather than inside it, because what the page says is not something a Frame does.
+
+```ts
+const lightbox: Action<typeof parameters> = {
+  parameters,
+  text: {
+    "#heading": "Everything, in one place",
+    ".card:first-child h2": "Shipped this morning",
+  },
+  timeline({ hold }) {
+    return motion({ framerate: 60 }).hold(hold);
+  },
+};
+```
+
+The copy is substituted once, after the page has loaded and before the first
+captured Frame, so the Frames are photographs of the page as reworded. A field's
+copy becomes its value and everything else's becomes its text, because copy
+written into an input is copy nobody can see. Substitution is decided entirely
+by the declaration, so it cannot make two Runs of one Action differ — and a Run
+reports what it substituted and how many elements each selector matched, so a
+clip showing wording the site never had says where that wording came from.
+
+**A selector matching nothing fails the Run**, naming the selector, as does one
+the page cannot read. Copy that quietly failed to land is a clip of the wrong
+words, which is the one outcome worse than not recording at all. A page that
+writes its own copy after load will overwrite what was substituted; that is what
+`.evaluate()` and `.waitFor()` are for.
+
+This is a presentation feature and **not a privacy one**. Nothing here redacts
+anything — a Project whose content must not be exposed stays unpublished
+(ADR 0007).
+
 ### Conventions
 
 - **Declare every timing value as a Parameter.** A duration written inline is a
@@ -284,6 +322,9 @@ exists. Reach for it to *do* something the primitives cannot say, and use
   after it, which a looping clip wants anyway.
 - **Reach for `evaluate` last.** It is there for what the primitives cannot say,
   not for what they say verbosely.
+- **Declare replacement copy, never type it into the site.** `text` is how a
+  clip shows intended wording; editing the running Project to record it is a
+  change somebody has to remember to undo.
 - **Never write a tuned value into the module.** Overrides belong in the sidecar
   (ADR 0005): `record set <project> <action> distance=240` writes one,
   `record reset <project> <action> distance` removes it, and

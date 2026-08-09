@@ -15,6 +15,7 @@ import { artifactParameters } from "./artifacts.js";
 import { cursorParameters } from "./cursor.js";
 import { RecordError } from "./errors.js";
 import type { ParameterSetting } from "./settings.js";
+import { assertTextOverrides, type TextOverrides } from "./text.js";
 import type { EasingName, Timeline } from "./timeline.js";
 
 /** A tunable number -- a distance, a duration, a framerate -- with a range. */
@@ -86,6 +87,12 @@ export type EffectiveParameters<P extends Parameters = Parameters> = {
  */
 export type Action<P extends Parameters = Parameters> = {
   readonly parameters: P;
+  /**
+   * Replacement copy substituted into the page before the first Frame, by the
+   * selector of the elements it replaces. Copy rather than motion, so it is
+   * declared beside the Timeline rather than inside it.
+   */
+  readonly text?: TextOverrides;
   timeline(values: ParameterValues<P>): Timeline;
 };
 
@@ -227,6 +234,11 @@ export async function loadAction(file: string): Promise<Action> {
 
   for (const [name, declaration] of Object.entries(parameters)) {
     assertDeclares(file, name, declaration);
+  }
+
+  const text = declared["text"];
+  if (text !== undefined) {
+    assertTextOverrides(file, text);
   }
 
   return declared as unknown as Action;

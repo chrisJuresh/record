@@ -29,6 +29,7 @@ import { ensureRunning, type RunningProject } from "./lifecycle.js";
 import { readOverrides } from "./overrides.js";
 import { headCommit, repositoryOf } from "./repository.js";
 import type { ParameterSetting } from "./settings.js";
+import { textSubstitution, type Substitution } from "./text.js";
 import { toolVersions, type ToolVersions } from "./tools.js";
 import { evaluateTimeline } from "./timeline.js";
 
@@ -58,6 +59,12 @@ export type RunReport = {
     readonly style: string;
     readonly captions: boolean;
   };
+  /**
+   * The copy substituted into the page before the first Frame, and what each
+   * selector matched -- so a clip showing wording the running site never had
+   * says where that wording came from.
+   */
+  readonly text: readonly Substitution[];
   /** What the Action actually ran with, declarations and Overrides together. */
   readonly parameters: Readonly<Record<string, ParameterSetting>>;
   /** Which of those came from an Override rather than the declaration. */
@@ -306,6 +313,10 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     const cursor = cursorSettings(effective.values, timeline);
     const overlay = cursorOverlay(cursor);
 
+    // Copy rather than motion, and so decided here beside the cursor rather
+    // than by the Timeline: what the page says is not something a Frame does.
+    const substitution = textSubstitution(action.text ?? {});
+
     // Before anything is written, and before a Project is asked for at all: an
     // Action that cannot describe a clip costs nothing to find out about, and
     // the retained Runs are still where they were.
@@ -335,6 +346,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       states,
       directory: frames,
       ...(overlay === undefined ? {} : { overlay }),
+      ...(substitution === undefined ? {} : { substitution }),
     });
 
     const encoded = await encodeArtifacts({
@@ -363,6 +375,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       tools,
       framerate: timeline.framerate,
       cursor: { shown: cursor.shown, style: cursor.style.name, captions: cursor.captions },
+      text: captured.substituted,
       parameters: effective.values,
       overridden: effective.overridden,
       warnings: effective.warnings,
