@@ -20,7 +20,7 @@ import {
   type ParameterDeclaration,
   type Parameters,
 } from "./action.js";
-import { actionModule, overridesFile } from "./config.js";
+import { actionModule, overridesFile, readProject } from "./config.js";
 import { RecordError } from "./errors.js";
 import type { ParameterSetting } from "./settings.js";
 
@@ -151,16 +151,20 @@ export async function resetOverrides(
 }
 
 /**
- * Everything tunable about one Action -- what it declares and what every Action
- * carries -- and what has been tuned on top of it. The Overrides come back as a
- * copy, because every caller but one is about to change them.
+ * Everything tunable about one Action -- what it declares, what every Action
+ * carries, and what its Project chose for the ones it chooses -- and what has
+ * been tuned on top of it. The Overrides come back as a copy, because every
+ * caller but one is about to change them.
  */
 async function tuning(
   workspace: string,
   project: string,
   action: string,
 ): Promise<{ declared: Parameters; overrides: Record<string, ParameterSetting> }> {
-  const declared = allParameters(await loadAction(await actionModule(workspace, project, action)));
+  // The Action first, so that a name nobody declared is answered by the Action
+  // that does not exist rather than by the Project that does.
+  const module = await loadAction(await actionModule(workspace, project, action));
+  const declared = allParameters(module, await readProject(workspace, project));
 
   return { declared, overrides: { ...(await readOverrides(workspace, project, action)) } };
 }

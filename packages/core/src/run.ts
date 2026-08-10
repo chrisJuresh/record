@@ -19,14 +19,16 @@ import { join } from "node:path";
 import { allParameters, effectiveParameters, loadAction } from "./action.js";
 import { gifSettings, type Artifact } from "./artifacts.js";
 import { findHeadlessShell } from "./browser.js";
-import { captureFrames } from "./capture.js";
+import { captureFrames, type ColourScheme } from "./capture.js";
 import { actionModule, readActions, readProject, readProjects, type ProjectConfig } from "./config.js";
 import { cursorOverlay, cursorSettings } from "./cursor.js";
 import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
 import { beginRun, pruneHistory, writeRun } from "./history.js";
 import { ensureRunning, type RunningProject } from "./lifecycle.js";
+import { mockupAsked, mockupFor, noMockup } from "./mockup.js";
 import { readOverrides } from "./overrides.js";
+import { renderMockup, writeMockup, type Composite } from "./render.js";
 import { headCommit, repositoryOf } from "./repository.js";
 import type { ParameterSetting } from "./settings.js";
 import { textSubstitution, type Substitution } from "./text.js";
@@ -65,6 +67,17 @@ export type RunReport = {
    * says where that wording came from.
    */
   readonly text: readonly Substitution[];
+  /**
+   * The surround composited around the Frames. `asked` is what was chosen and
+   * `name` is what that came to, which differ only where the page chose -- and
+   * `name` is 'none' for the Run that composited nothing.
+   */
+  readonly mockup: {
+    readonly asked: string;
+    readonly name: string;
+    /** How the page reads, which is what a Mockup left to choose itself went by. */
+    readonly colourScheme: ColourScheme;
+  };
   /** What the Action actually ran with, declarations and Overrides together. */
   readonly parameters: Readonly<Record<string, ParameterSetting>>;
   /** Which of those came from an Override rather than the declaration. */
@@ -297,7 +310,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     const action = await loadAction(await actionModule(workspace, projectName, actionName));
 
     const effective = effectiveParameters(
-      allParameters(action),
+      allParameters(action, project),
       await readOverrides(workspace, projectName, actionName),
     );
 
@@ -316,6 +329,10 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     // Copy rather than motion, and so decided here beside the cursor rather
     // than by the Timeline: what the page says is not something a Frame does.
     const substitution = textSubstitution(action.text ?? {});
+
+    // Which surround was asked for. What that comes to may be the page's
+    // answer, so it is only settled once there is a page to ask.
+    const asked = mockupAsked(effective.values);
 
     // Before anything is written, and before a Project is asked for at all: an
     // Action that cannot describe a clip costs nothing to find out about, and
@@ -349,6 +366,15 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       ...(substitution === undefined ? {} : { substitution }),
     });
 
+    // Rendered after the Frames rather than before them, because a Mockup left
+    // to choose itself is chosen by the page the Frames are of. It lands beside
+    // them, so it is swept up with them.
+    const surround = await composite(asked, captured.colourScheme, {
+      executable,
+      viewport: project.viewport,
+      file: join(frames, "mockup.png"),
+    });
+
     const encoded = await encodeArtifacts({
       frames,
       frameCount: states.length,
@@ -356,6 +382,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       viewport: project.viewport,
       videoWidth: project.videoWidth,
       gif: gifSettings(effective.values),
+      ...(surround === undefined ? {} : { mockup: surround.composite }),
       directory: begun.directory,
       name: actionName,
     });
@@ -376,6 +403,11 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       framerate: timeline.framerate,
       cursor: { shown: cursor.shown, style: cursor.style.name, captions: cursor.captions },
       text: captured.substituted,
+      mockup: {
+        asked,
+        name: surround?.name ?? noMockup,
+        colourScheme: captured.colourScheme,
+      },
       parameters: effective.values,
       overridden: effective.overridden,
       warnings: effective.warnings,
@@ -407,6 +439,35 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     // ever asked for -- a lease nobody let go of is a Project left running.
     await release(lease);
   }
+}
+
+/**
+ * The surround this Run composites its Frames into, rendered and written where
+ * the encoder can read it -- or nothing at all where the Run composites
+ * nothing, which encodes the Frames exactly as a Run without the feature would.
+ *
+ * Rendered by the same browser that captured the Frames, so a template is CSS
+ * somebody can open rather than drawing instructions the encoder has to be
+ * taught. Every preset goes through this, which is what makes adding one adding
+ * a template.
+ */
+async function composite(
+  asked: string,
+  scheme: ColourScheme,
+  into: { executable: string; viewport: ProjectConfig["viewport"]; file: string },
+): Promise<{ name: string; composite: Composite } | undefined> {
+  const mockup = mockupFor(asked, scheme);
+
+  if (mockup === undefined) {
+    return undefined;
+  }
+
+  const rendered = await renderMockup(mockup, {
+    executable: into.executable,
+    viewport: into.viewport,
+  });
+
+  return { name: rendered.name, composite: await writeMockup(rendered, into.file) };
 }
 
 /**

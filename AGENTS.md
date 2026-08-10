@@ -25,7 +25,9 @@ A pnpm workspace of TypeScript packages, built with project references.
   repository (ADR 0003).
 - `runs/<project>/<action>/<run>/` — one directory per Run, named for the
   instant it began (ADR 0009). The ten most recent Runs of each Action are kept
-  and older ones pruned. On this machine only, and never committed.
+  and older ones pruned. On this machine only, and never committed. A contact
+  sheet of the Mockups lands beside them, under `mockups/`, where pruning does
+  not reach it.
 - `spikes/` — throwaway evidence behind a decision: what an ADR was settled by,
   and the prototype sheets a design choice was made from. Not the engine;
   nothing imports it.
@@ -73,6 +75,10 @@ pnpm record parameters photos scroll-peek
 
 ```bash
 pnpm record status
+```
+
+```bash
+pnpm record mockups photos scroll-peek
 ```
 
 `record` reads its Projects from `$RECORD_WORKSPACE`, defaulting to this
@@ -198,13 +204,14 @@ each Parameter under its own name.
 
 ### Parameters every Action carries
 
-Five Parameters arrive without being declared, because they describe what is
-drawn over the Frames and how they are encoded rather than what moves, and an
+Six Parameters arrive without being declared, because they describe what is
+drawn around the Frames and how they are encoded rather than what moves, and an
 Action describes motion:
 
 - `cursor` — `auto`, `shown` or `hidden`.
 - `cursorStyle` — `soft-dot`, `arrow-light` or `arrow-dark`.
 - `cursorCaptions` — off.
+- `mockup` — the Project's own choice, which is `auto` unless it said otherwise.
 - `gifWidth` — 640, between 120 and 1920.
 - `gifFramerate` — 20, between 5 and 50.
 
@@ -269,6 +276,46 @@ The escape hatch is an expression evaluated in the page, not a handle on it:
 nothing comes back, because Timeline evaluation happens before any browser
 exists. Reach for it to *do* something the primitives cannot say, and use
 `waitFor` to find out whether it worked.
+
+### Mockups
+
+A **Mockup** is the decorative surround composited around the Frames — a
+browser window, a laptop, a phone — so that a clip looks deliberate rather than
+like a cropped screenshot. It is an HTML/CSS template rendered once by the same
+browser into a transparent image with an **Aperture** cut through it, and the
+Frames are composited into that Aperture on the way to the Artifacts
+(ADR 0010). Nothing about it is drawn into the page: a surround inside the
+Frames is a surround the page can scroll underneath.
+
+A Project chooses one, and any of its Actions may override it:
+
+```toml
+mockup = "browser-light"
+```
+
+```bash
+pnpm record run photos scroll-peek --set mockup=laptop
+```
+
+`auto` is the default and asks the page: a page that paints itself dark is shown
+in `browser-dark`, and everything else in `browser-light`. The rest are `none`,
+`rounded`, `browser-light`, `browser-dark`, `laptop` and `phone`. `phone` is
+portrait whatever the clip is, so a landscape clip is cropped to the middle of
+it — recording at a phone viewport is what fills it.
+
+An Artifact keeps the width it was asked for whichever Mockup it is in, so a
+surround costs room inside the clip rather than around it. Compositing does not
+perturb determinism: two Runs of an unchanged Action inside a Mockup are the
+same bytes, exactly as they are without one.
+
+**Adding a Mockup is adding an entry** to the registry in
+`packages/core/src/mockup.ts` — a name, a line about what it costs, a backdrop
+and a document. Nothing outside the registry names a template, and
+`record mockups <project> <action>` renders every one of them around a real
+Frame of an Action to show it. `record mockups` on its own lists them.
+
+Silhouettes are generic rather than modelled on identifiable hardware, because
+Published clips are public.
 
 ### Text overrides
 

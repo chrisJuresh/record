@@ -80,6 +80,7 @@ function project(baseUrl: string, sourceRepository: string): string {
     `base_url = "${baseUrl}"`,
     `source_repository = ${JSON.stringify(sourceRepository)}`,
     "video_width = 320",
+    'mockup = "none"',
     "",
     "[viewport]",
     "width = 400",
@@ -140,6 +141,7 @@ test("a Run is kept with its timestamp, the Project's commit, its Parameters and
     cursor: "auto",
     cursorStyle: "soft-dot",
     cursorCaptions: false,
+    mockup: "none",
     gifWidth: 640,
     gifFramerate: 20,
   });

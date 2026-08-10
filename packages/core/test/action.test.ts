@@ -62,12 +62,12 @@ test("the effective Parameters are what the Action declares, under the names it 
 });
 
 /**
- * Every Run draws its own cursor and encodes a GIF as well as the video
- * Artifacts (ADR 0006), and both are tunable per Action. Neither is motion, so
- * an Action declares neither -- it carries them, and tuning one is the same act
- * as tuning a distance.
+ * Every Run draws its own cursor, composites a Mockup around the Frames and
+ * encodes a GIF as well as the video Artifacts (ADR 0006), and all three are
+ * tunable per Action. None of them is motion, so an Action declares none of
+ * them -- it carries them, and tuning one is the same act as tuning a distance.
  */
-test("every Action carries the cursor and Artifact Parameters as well as the ones it declares", () => {
+test("every Action carries the cursor, Mockup and Artifact Parameters as well as the ones it declares", () => {
   const declared = allParameters(peek);
 
   assert.deepEqual(Object.keys(declared), [
@@ -78,6 +78,7 @@ test("every Action carries the cursor and Artifact Parameters as well as the one
     "cursor",
     "cursorStyle",
     "cursorCaptions",
+    "mockup",
     "gifWidth",
     "gifFramerate",
   ]);
@@ -87,9 +88,22 @@ test("every Action carries the cursor and Artifact Parameters as well as the one
   assert.equal(effective.values["cursor"], "auto");
   assert.equal(effective.values["cursorStyle"], "soft-dot");
   assert.equal(effective.values["cursorCaptions"], false);
+  assert.equal(effective.values["mockup"], "auto");
   assert.equal(effective.values["gifWidth"], 640);
   assert.equal(effective.values["gifFramerate"], 20);
   assert.deepEqual(effective.warnings, []);
+});
+
+/**
+ * ...and the Mockup is the one of them whose default is not a constant: a
+ * Mockup is chosen for a Project, and an Action carries that choice as the
+ * default an Override replaces.
+ */
+test("the Mockup an Action carries defaults to the one its Project chose", () => {
+  const declared = allParameters(peek, { mockup: "laptop" });
+
+  assert.equal(effectiveParameters(declared).values["mockup"], "laptop");
+  assert.equal(effectiveParameters(declared, { mockup: "none" }).values["mockup"], "none");
 });
 
 /**

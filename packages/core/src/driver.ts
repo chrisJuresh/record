@@ -73,13 +73,29 @@ export type StepperOptions = {
   readonly overlay?: string;
 };
 
-export async function openFrameStepper(url: string, options: StepperOptions): Promise<FrameStepper> {
-  const interval = 1000 / options.framerate;
+/**
+ * A browser of this tool's own, open on a page whose compositor advances only
+ * when told to, and everything needed to drive it.
+ *
+ * There is one way of opening Chrome here, and this is it (ADR 0008): the
+ * switches, the target created with begin-frame control, and the clearing up
+ * of the profile directory afterwards are the same however the page is used.
+ */
+export type OpenPage = {
+  /** Sends a command to this page and resolves with its result. */
+  send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /** Resolves with the next occurrence of an event. Subscribe before provoking it. */
+  once(event: string): Promise<Record<string, unknown>>;
+  /** Closes the browser, its renderers and the profile it was launched with. */
+  close(): Promise<void>;
+};
+
+export async function openPage(executable: string): Promise<OpenPage> {
   const profile = await mkdtemp(join(tmpdir(), "record-chrome-"));
 
   let browser: Launched;
   try {
-    browser = await launch(options.executable, profile);
+    browser = await launch(executable, profile);
   } catch (failure) {
     await rm(profile, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
     throw failure;
@@ -93,22 +109,9 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
     throw failure;
   }
 
-  /**
-   * Cursor moves the browser has been sent but not yet answered. It coalesces
-   * them and answers when it next draws, so awaiting one before the Frame it
-   * belongs to would cost fifteen seconds a Frame. Commands are processed in
-   * the order they were sent, so the move still reaches the page before the
-   * Frame that shows it -- only the acknowledgement waits.
-   */
-  const moving: Promise<unknown>[] = [];
-  const settled = () => Promise.all(moving.splice(0));
-
   // Asking the browser to close takes its renderer processes with it, which
   // killing the one process it was launched as does not.
-  const shutDown = async () => {
-    // A move left unanswered by a Run that failed would be rejected by the
-    // socket closing under it, with nobody left to hear it.
-    await settled().catch(() => undefined);
+  const close = async () => {
     await cdp.send("Browser.close").catch(() => undefined);
     cdp.close();
     await stop(browser.process, profile);
@@ -121,8 +124,41 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
       enableBeginFrameControl: true,
     });
     const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-    const send = (method: string, params?: Record<string, unknown>) =>
-      cdp.send(method, params, sessionId as string);
+
+    return {
+      send: (method, params) => cdp.send(method, params, sessionId as string),
+      once: (event) => cdp.once(event),
+      close,
+    };
+  } catch (failure) {
+    await close();
+    throw failure;
+  }
+}
+
+export async function openFrameStepper(url: string, options: StepperOptions): Promise<FrameStepper> {
+  const interval = 1000 / options.framerate;
+  const page = await openPage(options.executable);
+
+  /**
+   * Cursor moves the browser has been sent but not yet answered. It coalesces
+   * them and answers when it next draws, so awaiting one before the Frame it
+   * belongs to would cost fifteen seconds a Frame. Commands are processed in
+   * the order they were sent, so the move still reaches the page before the
+   * Frame that shows it -- only the acknowledgement waits.
+   */
+  const moving: Promise<unknown>[] = [];
+  const settled = () => Promise.all(moving.splice(0));
+
+  const shutDown = async () => {
+    // A move left unanswered by a Run that failed would be rejected by the
+    // socket closing under it, with nobody left to hear it.
+    await settled().catch(() => undefined);
+    await page.close();
+  };
+
+  try {
+    const send = page.send;
 
     await send("Page.enable");
     await send("Runtime.enable");
@@ -137,7 +173,7 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
       await send("Page.addScriptToEvaluateOnNewDocument", { source: options.overlay });
     }
 
-    const loaded = cdp.once("Page.loadEventFired");
+    const loaded = page.once("Page.loadEventFired");
     const navigation = await send("Page.navigate", { url });
     if (typeof navigation["errorText"] === "string") {
       throw new RecordError(`${url} did not load: ${navigation["errorText"]}`);
@@ -155,7 +191,7 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
     let counter = 0;
 
     const advanceTimerQueue = async () => {
-      const expired = cdp.once("Emulation.virtualTimeBudgetExpired");
+      const expired = page.once("Emulation.virtualTimeBudgetExpired");
       await send("Emulation.setVirtualTimePolicy", { policy: "advance", budget: interval });
       await expired;
     };

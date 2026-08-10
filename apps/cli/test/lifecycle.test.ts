@@ -123,6 +123,7 @@ function project(
     `base_url = "${baseUrl}"`,
     `source_repository = "."`,
     "video_width = 320",
+    'mockup = "none"',
     ...(extras.startCommand === undefined ? [] : [`start_command = ${JSON.stringify(extras.startCommand)}`]),
     ...(extras.workingDirectory === undefined
       ? []

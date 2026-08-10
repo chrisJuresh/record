@@ -12,7 +12,6 @@
  * motion. So no Action declares them: every Action carries them, and a new
  * Action is tunable the moment it exists.
  */
-import type { Viewport } from "./config.js";
 import { RecordError } from "./errors.js";
 import { numberSetting, type Settled } from "./settings.js";
 
@@ -70,13 +69,18 @@ export function gifSettings(values: Settled): GifSettings {
 }
 
 /**
- * The size an Artifact is encoded at: the Project's viewport scaled to the
- * requested width, keeping its shape. H.264 needs both dimensions even, and no
- * other format minds them being so.
+ * The size an Artifact is encoded at: what was captured scaled to the requested
+ * width, keeping its shape. H.264 needs both dimensions even, and no other
+ * format minds them being so.
+ *
+ * What was captured is the Project's viewport, or the whole composited surround
+ * where a Mockup was wrapped around it -- an Artifact is as wide as it was
+ * asked to be either way, so a Mockup costs room inside the clip rather than
+ * around it.
  */
-export function artifactDimensions(viewport: Viewport, artifactWidth: number): Dimensions {
+export function artifactDimensions(captured: Dimensions, artifactWidth: number): Dimensions {
   const width = even(artifactWidth);
-  return { width, height: even((width * viewport.height) / viewport.width) };
+  return { width, height: even((width * captured.height) / captured.width) };
 }
 
 function even(value: number): number {

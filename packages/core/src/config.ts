@@ -9,6 +9,7 @@ import { extname, join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 
 import { RecordError } from "./errors.js";
+import { automaticMockup, mockupNames } from "./mockup.js";
 
 export type Viewport = {
   readonly width: number;
@@ -32,6 +33,11 @@ export type ProjectConfig = {
   readonly viewport: Viewport;
   /** Width the video Artifacts are encoded at, below the captured viewport. */
   readonly videoWidth: number;
+  /**
+   * The Mockup composited around this Project's clips, which every one of its
+   * Actions carries as the default of a Parameter it can override.
+   */
+  readonly mockup: string;
   /** Off unless deliberately turned on -- ADR 0007. */
   readonly published: boolean;
 };
@@ -156,8 +162,26 @@ function projectFrom(name: string, table: Record<string, unknown>, file: string)
         optionalNumber(viewport, "device_scale_factor", file) ?? defaultViewport.deviceScaleFactor,
     },
     videoWidth: optionalNumber(table, "video_width", file) ?? defaultVideoWidth,
+    mockup: chosenMockup(table, file),
     published: optionalBoolean(table, "published", file) ?? false,
   };
+}
+
+/**
+ * The Mockup this Project's clips are shown in. A name that is not one of them
+ * is refused here, where the message can name the file it was written in --
+ * every Action of the Project would otherwise fail one at a time.
+ */
+function chosenMockup(table: Record<string, unknown>, file: string): string {
+  const chosen = optionalString(table, "mockup", file) ?? automaticMockup;
+
+  if (!mockupNames.includes(chosen)) {
+    throw new RecordError(
+      `${file}: 'mockup' is '${chosen}', which is not one of ${mockupNames.join(", ")}`,
+    );
+  }
+
+  return chosen;
 }
 
 function requiredString(table: Record<string, unknown>, key: string, file: string): string {

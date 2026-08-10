@@ -79,6 +79,18 @@ window, a laptop, a phone. Deliberately not called a "frame", because a Frame is
 a single captured image.
 _Avoid_: frame, chrome, bezel, device, skin, shell
 
+**Aperture**:
+The opening in a Mockup that the Frames are composited into. A Mockup declares
+where its Aperture is by putting an element there; where that lands is measured
+rather than agreed in advance.
+_Avoid_: hole, screen, window, cutout, slot
+
+**Backdrop**:
+The colour a Mockup is composited onto, filling everything its template leaves
+transparent — the page a surround is drawn to sit on, and the thing its shadow
+falls on.
+_Avoid_: background, canvas, page, matte
+
 **Cursor style**:
 The appearance and behaviour of the synthetic pointer drawn into an Action —
 its shape, its click feedback, whether keystrokes are captioned. No real mouse
