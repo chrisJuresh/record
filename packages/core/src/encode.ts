@@ -21,22 +21,7 @@ import { framePattern } from "./capture.js";
 import type { Viewport } from "./config.js";
 import { embedSnippet } from "./embed.js";
 import { RecordError } from "./errors.js";
-import type { Aperture } from "./render.js";
-
-/**
- * A rendered Mockup, as the encoder composites the clip into it: an image with
- * a hole in it, and where in that image the hole is.
- */
-export type Composite = {
-  /** The rendered surround, as a file ffmpeg reads. */
-  readonly image: string;
-  readonly width: number;
-  readonly height: number;
-  /** Where the clip goes inside it, in the image's own pixels. */
-  readonly aperture: Aperture;
-  /** What everything the template left transparent is composited onto. */
-  readonly backdrop: string;
-};
+import type { Composite } from "./render.js";
 
 export type EncodeOptions = {
   /** Directory the Frames were written into. */
@@ -169,13 +154,11 @@ function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string):
     "0",
     "-i",
     join(options.frames, framePattern),
-    // The surround, if there is one: one image behind and around every Frame,
-    // read as a second input rather than baked into the Frames themselves.
-    ...(options.mockup === undefined ? [] : ["-i", options.mockup.image]),
+    ...compositeInput(options.mockup),
     "-frames:v",
     String(encoding.frames),
     "-filter_complex",
-    filterGraph(options, encoding),
+    `${compositeChain(options.mockup, options.framerate)};${formatChain(encoding)}`,
     "-map",
     "[out]",
     ...formatArguments(encoding),
@@ -185,34 +168,36 @@ function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string):
 }
 
 /**
- * Everything done to the Frames on the way to one Artifact: the Mockup
- * composited around them, and then the scaling and resampling that Artifact's
- * format asks for.
+ * The surround, if there is one: one image behind and around every Frame, read
+ * as a second input rather than baked into the Frames themselves.
  */
-function filterGraph(options: EncodeOptions, encoding: Encoding): string {
-  const shown =
-    options.mockup === undefined ? "[0:v]null[shown]" : compositeChain(options.mockup, options.framerate);
-
-  return `${shown};${formatChain(encoding)}`;
+function compositeInput(mockup: Composite | undefined): string[] {
+  return mockup === undefined ? [] : ["-i", mockup.image];
 }
 
 /**
  * How a clip is put inside a Mockup, and the only way any of them is: the
- * backdrop the template left transparent, the clip fitted into the aperture,
- * and the surround laid over the top so that whatever it draws over the screen
- * is drawn over the clip.
+ * backdrop the template left transparent, the clip fitted into the Aperture,
+ * and the surround laid over the top so that whatever it draws across the clip
+ * is drawn across the clip.
  *
  * This is the whole of what "adding a Mockup is adding a template" rests on --
  * every preset that ships is composited by these four filters, which is what
- * the contact sheet renders every one of them to show.
+ * the contact sheet renders every one of them to show. A Run compositing
+ * nothing passes its Frames straight through, so it encodes exactly what a Run
+ * without the feature encoded.
  */
-export function compositeChain(mockup: Composite, framerate: number): string {
+function compositeChain(mockup: Composite | undefined, framerate: number): string {
+  if (mockup === undefined) {
+    return "[0:v]null[shown]";
+  }
+
   const { x, y, width, height } = mockup.aperture;
 
   return (
     `color=c=${ffmpegColour(mockup.backdrop)}:s=${mockup.width}x${mockup.height}:r=${framerate}[backdrop];` +
-    // Fitted to fill the aperture and cropped to the middle of what is left
-    // over, because an aperture the shape of the clip crops nothing and one
+    // Fitted to fill the Aperture and cropped to the middle of what is left
+    // over, because an Aperture the shape of the clip crops nothing and one
     // that is not -- a handset around a landscape clip -- must not squash it.
     `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,` +
     `crop=${width}:${height}[clip];` +
@@ -322,8 +307,6 @@ export type CompositeFrameOptions = {
  */
 export async function compositeFrame(options: CompositeFrameOptions): Promise<Dimensions> {
   const size = artifactDimensions(options.mockup ?? options.captured, options.width);
-  const shown =
-    options.mockup === undefined ? "[0:v]null[shown]" : compositeChain(options.mockup, 1);
 
   await ffmpeg([
     "-hide_banner",
@@ -331,9 +314,9 @@ export async function compositeFrame(options: CompositeFrameOptions): Promise<Di
     "-y",
     "-i",
     options.frame,
-    ...(options.mockup === undefined ? [] : ["-i", options.mockup.image]),
+    ...compositeInput(options.mockup),
     "-filter_complex",
-    `${shown};[shown]scale=${size.width}:${size.height}:flags=lanczos[out]`,
+    `${compositeChain(options.mockup, 1)};[shown]scale=${size.width}:${size.height}:flags=lanczos[out]`,
     "-map",
     "[out]",
     "-frames:v",

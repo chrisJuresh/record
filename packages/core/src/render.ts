@@ -1,25 +1,22 @@
 /**
  * Rendering a Mockup: one template, laid out by the browser and photographed
- * once into a transparent image with a hole where the screen goes.
+ * once into a transparent image with its Aperture cut through it.
  *
  * The browser is the same `chrome-headless-shell` that captured the Frames, so
  * a template is CSS a person can open in a browser rather than drawing
- * instructions somebody has to reimplement. Where the aperture ends up is
- * measured off the laid-out document, so a template says where its screen goes
- * by putting an element there -- and the pipeline never learns the name of a
+ * instructions somebody has to reimplement. Where the Aperture ends up is
+ * measured off the laid-out document, so a template says where the clip goes by
+ * putting an element there -- and the pipeline never learns the name of a
  * single one of them.
  *
  * Two passes, because a surround is as big as its own layout: the template is
  * laid out first to find out how large it is, and then photographed at exactly
  * that size so the image is the surround and nothing around it.
  */
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
 
-import { connect, type Cdp } from "./cdp.js";
 import type { Viewport } from "./config.js";
-import { launch, stop, type Launched } from "./driver.js";
+import { openPage } from "./driver.js";
 import { RecordError } from "./errors.js";
 import type { Mockup } from "./mockup.js";
 
@@ -42,6 +39,30 @@ export type RenderedMockup = {
   /** The colour everything the template left transparent is composited onto. */
   readonly backdrop: string;
 };
+
+/**
+ * A rendered Mockup as the encoder composites a clip into it: the same surround
+ * once it is a file ffmpeg can read rather than bytes in hand.
+ */
+export type Composite = Omit<RenderedMockup, "name" | "image"> & {
+  readonly image: string;
+};
+
+/**
+ * Writes a rendered surround where the encoder can read it. Both the Runs and
+ * the contact sheet composite from a file, because ffmpeg reads files.
+ */
+export async function writeMockup(rendered: RenderedMockup, file: string): Promise<Composite> {
+  await writeFile(file, rendered.image);
+
+  return {
+    image: file,
+    width: rendered.width,
+    height: rendered.height,
+    aperture: rendered.aperture,
+    backdrop: rendered.backdrop,
+  };
+}
 
 export type RenderOptions = {
   readonly executable: string;
@@ -69,36 +90,14 @@ export async function renderMockup(
 ): Promise<RenderedMockup> {
   const scale = options.viewport.deviceScaleFactor;
   const clip = { width: options.viewport.width, height: options.viewport.height };
-  const profile = await mkdtemp(join(tmpdir(), "record-mockup-"));
 
-  let browser: Launched;
-  try {
-    browser = await launch(options.executable, profile);
-  } catch (failure) {
-    await rm(profile, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
-    throw failure;
-  }
-
-  let cdp: Cdp;
-  try {
-    cdp = await connect(browser.wsUrl);
-  } catch (failure) {
-    await stop(browser.process, profile);
-    throw failure;
-  }
+  // The same browser under the same switches as capture (ADR 0008), which also
+  // means the surround is photographed the way a Frame is: by stepping the
+  // compositor, because this browser has been told not to draw on its own.
+  const page = await openPage(options.executable);
 
   try {
-    // Photographed the way a Frame is photographed, by stepping the compositor:
-    // the browser is launched with the switches that stop it drawing on its own
-    // (ADR 0008), so asking it for a screenshot any other way is asking a
-    // compositor that has been told to wait.
-    const { targetId } = await cdp.send("Target.createTarget", {
-      url: "about:blank",
-      enableBeginFrameControl: true,
-    });
-    const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-    const send = (method: string, params?: Record<string, unknown>) =>
-      cdp.send(method, params, sessionId as string);
+    const send = page.send;
 
     await send("Page.enable");
     await send("Runtime.enable");
@@ -122,7 +121,7 @@ export async function renderMockup(
     // is what the first pass is for.
     await size(clip.width * roomToLayOut, clip.height * roomToLayOut);
 
-    const loaded = cdp.once("Page.loadEventFired");
+    const loaded = page.once("Page.loadEventFired");
     const navigation = await send("Page.navigate", { url: documentUrl(mockup, clip) });
     if (typeof navigation["errorText"] === "string") {
       throw new RecordError(
@@ -170,9 +169,7 @@ export async function renderMockup(
       backdrop: mockup.backdrop,
     };
   } finally {
-    await cdp.send("Browser.close").catch(() => undefined);
-    cdp.close();
-    await stop(browser.process, profile);
+    await page.close();
   }
 }
 
@@ -250,16 +247,16 @@ function measured(
  */
 function aperture(
   mockup: Mockup,
-  measured: Rect,
+  laidOut: Rect,
   scale: number,
   width: number,
   height: number,
 ): Aperture {
   const placed = {
-    x: Math.round(measured.x * scale),
-    y: Math.round(measured.y * scale),
-    width: Math.round(measured.width * scale),
-    height: Math.round(measured.height * scale),
+    x: Math.round(laidOut.x * scale),
+    y: Math.round(laidOut.y * scale),
+    width: Math.round(laidOut.width * scale),
+    height: Math.round(laidOut.height * scale),
   };
 
   if (

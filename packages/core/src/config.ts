@@ -9,7 +9,7 @@ import { extname, join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 
 import { RecordError } from "./errors.js";
-import { assertMockup, automaticMockup } from "./mockup.js";
+import { automaticMockup, mockupNames } from "./mockup.js";
 
 export type Viewport = {
   readonly width: number;
@@ -175,7 +175,11 @@ function projectFrom(name: string, table: Record<string, unknown>, file: string)
 function chosenMockup(table: Record<string, unknown>, file: string): string {
   const chosen = optionalString(table, "mockup", file) ?? automaticMockup;
 
-  assertMockup(chosen, (offered) => `${file}: 'mockup' is '${chosen}', which is not one of ${offered}`);
+  if (!mockupNames.includes(chosen)) {
+    throw new RecordError(
+      `${file}: 'mockup' is '${chosen}', which is not one of ${mockupNames.join(", ")}`,
+    );
+  }
 
   return chosen;
 }

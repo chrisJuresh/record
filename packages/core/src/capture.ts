@@ -147,17 +147,17 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
 
     await stepper.evaluate(findScroller);
 
-    // Asked of the page as it will be photographed, replacement copy included:
-    // what a Mockup left to choose itself is chosen by is the page the Frames
-    // are of rather than the page as it was served. Asked once, so it cannot
-    // make two Runs of one Action differ.
-    const reads: ColourScheme =
-      (await stepper.evaluate(colourScheme)) === "dark" ? "dark" : "light";
-
     for (let frame = 0; frame < settlingFrames; frame++) {
       await stepper.next();
     }
     const repeatedWhileSettling = stepper.repeatedFrames;
+
+    // Asked once the page has settled, so what is read is the page the Frames
+    // are about to be of rather than the page as it was served -- a page that
+    // paints its dark theme on the way up is dark by now. Asked once, so it
+    // cannot make two Runs of one Action differ.
+    const reads: ColourScheme =
+      (await stepper.evaluate(colourScheme)) === "dark" ? "dark" : "light";
 
     const hashes: string[] = [];
     let cursor: CursorState | null = null;

@@ -80,7 +80,7 @@ a single captured image.
 _Avoid_: frame, chrome, bezel, device, skin, shell
 
 **Aperture**:
-The hole in a Mockup that the Frames are composited into. A Mockup declares
+The opening in a Mockup that the Frames are composited into. A Mockup declares
 where its Aperture is by putting an element there; where that lands is measured
 rather than agreed in advance.
 _Avoid_: hole, screen, window, cutout, slot

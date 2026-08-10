@@ -13,7 +13,7 @@
  * clock rather than on wall-clock time (ADR 0001) -- however busy the machine
  * gets, the Frames are the ones the Timeline declared.
  */
-import { rm, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { allParameters, effectiveParameters, loadAction } from "./action.js";
@@ -22,13 +22,13 @@ import { findHeadlessShell } from "./browser.js";
 import { captureFrames, type ColourScheme } from "./capture.js";
 import { actionModule, readActions, readProject, readProjects, type ProjectConfig } from "./config.js";
 import { cursorOverlay, cursorSettings } from "./cursor.js";
-import { encodeArtifacts, type Composite } from "./encode.js";
+import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
 import { beginRun, pruneHistory, writeRun } from "./history.js";
 import { ensureRunning, type RunningProject } from "./lifecycle.js";
 import { mockupAsked, mockupFor, noMockup } from "./mockup.js";
 import { readOverrides } from "./overrides.js";
-import { renderMockup } from "./render.js";
+import { renderMockup, writeMockup, type Composite } from "./render.js";
 import { headCommit, repositoryOf } from "./repository.js";
 import type { ParameterSetting } from "./settings.js";
 import { textSubstitution, type Substitution } from "./text.js";
@@ -372,7 +372,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     const surround = await composite(asked, captured.colourScheme, {
       executable,
       viewport: project.viewport,
-      into: join(frames, "mockup.png"),
+      file: join(frames, "mockup.png"),
     });
 
     const encoded = await encodeArtifacts({
@@ -454,7 +454,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
 async function composite(
   asked: string,
   scheme: ColourScheme,
-  where: { executable: string; viewport: ProjectConfig["viewport"]; into: string },
+  into: { executable: string; viewport: ProjectConfig["viewport"]; file: string },
 ): Promise<{ name: string; composite: Composite } | undefined> {
   const mockup = mockupFor(asked, scheme);
 
@@ -463,22 +463,11 @@ async function composite(
   }
 
   const rendered = await renderMockup(mockup, {
-    executable: where.executable,
-    viewport: where.viewport,
+    executable: into.executable,
+    viewport: into.viewport,
   });
 
-  await writeFile(where.into, rendered.image);
-
-  return {
-    name: rendered.name,
-    composite: {
-      image: where.into,
-      width: rendered.width,
-      height: rendered.height,
-      aperture: rendered.aperture,
-      backdrop: rendered.backdrop,
-    },
-  };
+  return { name: rendered.name, composite: await writeMockup(rendered, into.file) };
 }
 
 /**

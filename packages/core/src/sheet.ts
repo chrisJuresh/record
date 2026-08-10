@@ -22,13 +22,13 @@ import { findHeadlessShell } from "./browser.js";
 import { captureFrames, frameFile } from "./capture.js";
 import { actionModule, readProject, type Viewport } from "./config.js";
 import { cursorOverlay, cursorSettings } from "./cursor.js";
-import { compositeFrame, type Composite } from "./encode.js";
+import { compositeFrame } from "./encode.js";
 import { RecordError } from "./errors.js";
 import { historyDirectory } from "./history.js";
 import { ensureRunning } from "./lifecycle.js";
 import { mockups, noMockup } from "./mockup.js";
 import { readOverrides } from "./overrides.js";
-import { renderMockup } from "./render.js";
+import { renderMockup, writeMockup } from "./render.js";
 import { textSubstitution } from "./text.js";
 import { evaluateTimeline } from "./timeline.js";
 
@@ -177,7 +177,7 @@ export async function renderContactSheet(
 /** One Frame inside one preset, written where the sheet can show it. */
 async function around(
   name: string,
-  where: {
+  photographed: {
     frame: string;
     captured: Dimensions;
     width: number;
@@ -186,14 +186,14 @@ async function around(
     viewport: Viewport;
   },
 ): Promise<SheetEntry> {
-  const image = join(where.into, `${name}.png`);
+  const image = join(photographed.into, `${name}.png`);
   const mockup = mockups[name];
 
   if (mockup === undefined) {
     const size = await compositeFrame({
-      frame: where.frame,
-      captured: where.captured,
-      width: where.width,
+      frame: photographed.frame,
+      captured: photographed.captured,
+      width: photographed.width,
       file: image,
     });
 
@@ -205,31 +205,23 @@ async function around(
     };
   }
 
-  const surround = await renderMockup(mockup, {
-    executable: where.executable,
-    viewport: where.viewport,
+  const rendered = await renderMockup(mockup, {
+    executable: photographed.executable,
+    viewport: photographed.viewport,
   });
-  const composite: Composite = {
-    image: join(where.into, `${name}.surround.png`),
-    width: surround.width,
-    height: surround.height,
-    aperture: surround.aperture,
-    backdrop: surround.backdrop,
-  };
-
-  await writeFile(composite.image, surround.image);
+  const surround = await writeMockup(rendered, join(photographed.into, `${name}.surround.png`));
 
   const size = await compositeFrame({
-    frame: where.frame,
-    captured: where.captured,
-    mockup: composite,
-    width: where.width,
+    frame: photographed.frame,
+    captured: photographed.captured,
+    mockup: surround,
+    width: photographed.width,
     file: image,
   });
 
   // The rendered surround was the means rather than the point; what the sheet
   // is looked at for is the clip inside it.
-  await rm(composite.image, { force: true, maxRetries: 5 }).catch(() => undefined);
+  await rm(surround.image, { force: true, maxRetries: 5 }).catch(() => undefined);
 
   return {
     mockup: name,

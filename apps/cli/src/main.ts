@@ -10,6 +10,7 @@ import {
   actionModule,
   defaultConcurrency,
   mockups,
+  noMockup,
   readActions,
   readHistory,
   readParameters,
@@ -538,7 +539,7 @@ function asCursor(report: RunReport): string[] {
  * choice was not written down anywhere the operator can read it.
  */
 function asMockup(report: RunReport): string[] {
-  if (report.mockup.name === "none") {
+  if (report.mockup.name === noMockup) {
     return [];
   }
 

@@ -1,9 +1,9 @@
-# A Mockup is a browser-rendered template with a hole in it
+# A Mockup is a browser-rendered template with an Aperture
 
 A Mockup is an HTML/CSS document, rendered once per Run by the same
 `chrome-headless-shell` that captured the Frames, into a transparent image with
-an aperture where the screen goes. The Frames are composited into that aperture
-by ffmpeg, on the way to the Artifacts.
+an Aperture cut through it. The Frames are composited into that Aperture by
+ffmpeg, on the way to the Artifacts.
 
 Two rejected alternatives explain the shape of it.
 
@@ -19,8 +19,8 @@ agreeing with the first.
 
 A template therefore declares nothing about geometry. It marks one element
 `data-record-aperture` and fills everything around it — a spread `box-shadow`
-rather than a background, so the aperture is a hole rather than a rectangle
-painted over. Where that hole ends up is **measured off the laid-out document**,
+rather than a background, so the Aperture is cut through the surround rather
+than painted over. Where it ends up is **measured off the laid-out document**,
 so what a template has to get right is what it looks like.
 
 ## Consequences

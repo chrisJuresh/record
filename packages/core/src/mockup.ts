@@ -2,11 +2,11 @@
  * Mockups: the decorative surround composited around the captured Frames.
  *
  * A Mockup is an HTML/CSS template rendered once, by the same browser that
- * captured the Frames, into a transparent image with an aperture where the
- * screen goes. The Frames are then composited into that aperture. Nothing about
- * a Mockup is drawn into the page, because a surround is not something the page
- * does -- and drawing it into the page would put it inside the Frames, where
- * the clip could scroll underneath it.
+ * captured the Frames, into a transparent image with an Aperture cut through
+ * it. The Frames are then composited into that Aperture. Nothing about a Mockup
+ * is drawn into the page, because a surround is not something the page does --
+ * and drawing it into the page would put it inside the Frames, where the clip
+ * could scroll underneath it.
  *
  * The templates are a registry. Adding a Mockup is adding an entry: the
  * pipeline names no template, measures every aperture the same way, and
@@ -156,13 +156,6 @@ export function mockupFor(asked: string, scheme: ColourScheme): Mockup | undefin
   return mockup;
 }
 
-/** How a name that is not one of the Mockups is refused, wherever it was written. */
-export function assertMockup(name: string, describe: (offered: string) => string): void {
-  if (!mockupNames.includes(name)) {
-    throw new RecordError(describe(mockupNames.join(", ")));
-  }
-}
-
 /** Which window a page that never declared one is shown in. */
 function automatic(scheme: ColourScheme): string {
   return scheme === "dark" ? "browser-dark" : "browser-light";
@@ -178,18 +171,18 @@ function scaled(clip: Dimensions, fraction: number, least: number): number {
  * request, no text, and a transparent page -- what a template contributes is a
  * silhouette and an aperture, and the two together are all the pipeline reads.
  */
-function document_(style: string, body: string): string {
+function template(style: string, body: string): string {
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"><title>Mockup</title><style>',
     "*{box-sizing:border-box;margin:0;padding:0}",
     "html,body{background:transparent}",
     "body{width:max-content}",
-    // How every aperture is punched: a spread far enough to reach the edge of
-    // any canvas a clip could be laid out on, so the surround is filled around
-    // the aperture rather than painted behind it -- a background behind the
-    // aperture is a surround with no hole in it. A template wanting a shadow
-    // cast from the aperture itself sets --cast; the rest cast none.
+    // How every Aperture is cut: a spread far enough to reach the edge of any
+    // canvas a clip could be laid out on, so the surround is filled around the
+    // Aperture rather than painted behind it -- a background behind the
+    // Aperture is a surround the clip cannot be seen through. A template
+    // wanting a shadow cast from the Aperture itself sets --cast.
     ".fills{box-shadow:var(--cast,0 0 0 rgba(0,0,0,0)),0 0 0 9999px var(--fill)}",
     style,
     "</style></head><body>",
@@ -210,13 +203,13 @@ function roundedDocument(clip: Dimensions, backdrop: string): string {
   const margin = scaled(clip, 0.03, 6);
   const radius = scaled(clip, 0.014, 3);
 
-  return document_(
+  return template(
     [
       `#mockup{padding:${margin}px}`,
-      `#screen{--fill:${backdrop};--cast:${shadow(clip)};width:${clip.width}px;` +
+      `#aperture{--fill:${backdrop};--cast:${shadow(clip)};width:${clip.width}px;` +
         `height:${clip.height}px;border-radius:${radius}px}`,
     ].join(""),
-    '<div id="mockup" data-record-mockup><div id="screen" data-record-aperture class="fills"></div></div>',
+    '<div id="mockup" data-record-mockup><div id="aperture" data-record-aperture class="fills"></div></div>',
   );
 }
 
@@ -259,7 +252,7 @@ function browserDocument(clip: Dimensions, chrome: Chrome): string {
   const pad = scaled(clip, 0.013, 3);
   const address = scaled(clip, 0.019, 4);
 
-  return document_(
+  return template(
     [
       `#mockup{padding:${margin}px}`,
       `#window{position:relative;width:${clip.width}px;border-radius:${radius}px;` +
@@ -271,56 +264,61 @@ function browserDocument(clip: Dimensions, chrome: Chrome): string {
       `#lights i{display:block;width:${light}px;height:${light}px;border-radius:50%;background:${chrome.light}}`,
       `#address{flex:0 1 46%;height:${address}px;border-radius:999px;background:${chrome.address};` +
         `border:1px solid ${chrome.addressLine}}`,
-      `#screen{--fill:${chrome.bar};width:${clip.width}px;height:${clip.height}px}`,
+      `#aperture{--fill:${chrome.bar};width:${clip.width}px;height:${clip.height}px}`,
     ].join(""),
     '<div id="mockup" data-record-mockup><div id="window">' +
       '<div id="bar"><span id="lights"><i></i><i></i><i></i></span><span id="address"></span></div>' +
-      '<div id="screen" data-record-aperture class="fills"></div>' +
+      '<div id="aperture" data-record-aperture class="fills"></div>' +
       "</div></div>",
   );
 }
 
 /**
- * A lid holding the screen over a base wider than it is, tapering away from the
+ * A lid holding the clip over a base wider than it is, tapering away from the
  * viewer. Every proportion comes off the clip, so the surround is the same
  * surround whatever it is wrapped around.
  */
 function laptopDocument(clip: Dimensions): string {
   const margin = scaled(clip, 0.028, 6);
-  const bezel = scaled(clip, 0.014, 3);
-  const chin = scaled(clip, 0.03, 6);
+  const bezel = scaled(clip, 0.011, 2);
+  const chin = scaled(clip, 0.028, 6);
   const lid = clip.width + bezel * 2;
   const base = Math.round(lid * 1.075);
-  const baseHeight = scaled(clip, 0.02, 5);
-  const radius = scaled(clip, 0.012, 3);
+  const baseHeight = scaled(clip, 0.019, 5);
+  const radius = scaled(clip, 0.013, 3);
+  const foot = Math.max(1, Math.round(radius / 3));
   const camera = Math.max(1, Math.round(bezel / 2));
 
-  return document_(
+  return template(
     [
       `#mockup{width:${base + margin * 2}px;padding:${margin}px}`,
       `#lid{position:relative;width:${lid}px;margin:0 auto;padding:${bezel}px;` +
-        `padding-bottom:${chin}px;border-radius:${radius}px ${radius}px ${Math.round(radius / 3)}px ` +
-        `${Math.round(radius / 3)}px;overflow:hidden;box-shadow:${shadow(clip)}}`,
-      `#screen{--fill:#2b2b31;width:${clip.width}px;height:${clip.height}px;` +
-        `border-radius:${Math.max(1, Math.round(radius / 4))}px}`,
+        `padding-bottom:${chin}px;border-radius:${radius}px ${radius}px ${foot}px ${foot}px;` +
+        `overflow:hidden;box-shadow:${shadow(clip)}}`,
+      `#aperture{--fill:#2b2b31;width:${clip.width}px;height:${clip.height}px}`,
       // Drawn over the fill rather than under it: everything inside the lid but
-      // the aperture is the fill, so anything else the lid shows is stacked.
+      // the Aperture is the fill, so anything else the lid shows is stacked.
       `#camera{position:absolute;z-index:2;top:${Math.max(1, Math.round((bezel - camera) / 2))}px;` +
         `left:50%;transform:translateX(-50%);width:${camera}px;height:${camera}px;` +
         "border-radius:50%;background:#4a4a55}",
-      `#rim{position:absolute;z-index:2;inset:0;border-radius:${radius}px ${radius}px ` +
-        `${Math.round(radius / 3)}px ${Math.round(radius / 3)}px;` +
-        "box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}",
+      // Two rings: the lid's own lit edge, and the darker one the screen sits
+      // in. Both are drawn over the clip, which is what an edge is.
+      `#rim{position:absolute;z-index:2;inset:0;border-radius:${radius}px ${radius}px ${foot}px ${foot}px;` +
+        "box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}",
+      `#edge{position:absolute;z-index:2;top:${bezel}px;left:${bezel}px;` +
+        `width:${clip.width}px;height:${clip.height}px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}`,
       `#base{position:relative;width:${base}px;height:${baseHeight}px;` +
-        "background:linear-gradient(#c9c9d0,#a9a9b3);" +
-        "clip-path:polygon(0 0,100% 0,97.2% 100%,2.8% 100%);" +
+        "background:linear-gradient(#d3d3d9 0 18%,#bcbcc4 55%,#9d9da8);" +
+        "clip-path:polygon(0 0,100% 0,96.8% 100%,3.2% 100%);" +
         `border-radius:0 0 ${Math.round(radius / 2)}px ${Math.round(radius / 2)}px}`,
-      `#lip{position:absolute;top:0;left:50%;transform:translateX(-50%);width:14%;` +
-        `height:${Math.max(1, Math.round(baseHeight / 3))}px;background:#94949f;border-radius:0 0 999px 999px}`,
+      // The lip you push the lid open by, and the deck edge it is cut into.
+      `#lip{position:absolute;top:0;left:50%;transform:translateX(-50%);width:13%;` +
+        `height:${Math.max(1, Math.round(baseHeight / 3))}px;background:#8f8f9b;` +
+        "border-radius:0 0 999px 999px}",
     ].join(""),
     '<div id="mockup" data-record-mockup>' +
-      '<div id="lid"><div id="screen" data-record-aperture class="fills"></div>' +
-      '<div id="camera"></div><div id="rim"></div></div>' +
+      '<div id="lid"><div id="aperture" data-record-aperture class="fills"></div>' +
+      '<div id="camera"></div><div id="edge"></div><div id="rim"></div></div>' +
       '<div id="base"><div id="lip"></div></div>' +
       "</div>",
   );
@@ -339,26 +337,34 @@ function phoneDocument(clip: Dimensions): string {
   const margin = scaled(clip, 0.03, 6);
   const height = clip.height;
   const width = Math.max(24, Math.round(height / phoneAspect));
-  const bezel = Math.max(2, Math.round(width * 0.03));
-  const radius = Math.max(4, Math.round(width * 0.13));
-  const island = Math.max(2, Math.round(width * 0.035));
+  const bezel = Math.max(2, Math.round(width * 0.028));
+  const radius = Math.max(4, Math.round(width * 0.145));
+  const island = Math.max(2, Math.round(width * 0.032));
+  const button = Math.max(1, Math.round(width * 0.012));
 
-  return document_(
+  return template(
     [
-      `#mockup{display:flex;align-items:center;justify-content:center;` +
+      `#mockup{position:relative;display:flex;align-items:center;justify-content:center;` +
         `width:${clip.width + margin * 2}px;height:${clip.height + margin * 2}px;padding:${margin}px}`,
       `#body{position:relative;width:${width}px;height:${height}px;padding:${bezel}px;` +
         `border-radius:${radius}px;overflow:hidden;box-shadow:${shadow(clip)}}`,
-      `#screen{--fill:#26262c;width:${width - bezel * 2}px;height:${height - bezel * 2}px;` +
+      `#aperture{--fill:#26262c;width:${width - bezel * 2}px;height:${height - bezel * 2}px;` +
         `border-radius:${Math.max(2, radius - bezel)}px}`,
+      // The pill cut out of the top of the screen, and the lit edge of the body.
       `#island{position:absolute;z-index:2;top:${bezel + island}px;left:50%;transform:translateX(-50%);` +
-        `width:28%;height:${island}px;border-radius:999px;background:rgba(255,255,255,.22)}`,
+        `width:26%;height:${island}px;border-radius:999px;background:#1b1b20}`,
       `#rim{position:absolute;z-index:2;inset:0;border-radius:${radius}px;` +
-        "box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}",
+        "box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}",
+      // Buttons on the sides rather than the front, so they read as a handset
+      // without anything being drawn over the clip.
+      `.button{position:absolute;z-index:1;width:${button}px;background:#1f1f25;border-radius:999px}`,
+      `#volume{left:calc(50% - ${Math.round(width / 2) + button}px);top:34%;height:9%}`,
+      `#power{left:calc(50% + ${Math.round(width / 2)}px);top:38%;height:12%}`,
     ].join(""),
-    '<div id="mockup" data-record-mockup><div id="body">' +
-      '<div id="screen" data-record-aperture class="fills"></div>' +
-      '<div id="island"></div><div id="rim"></div>' +
-      "</div></div>",
+    '<div id="mockup" data-record-mockup>' +
+      '<span id="volume" class="button"></span><span id="power" class="button"></span>' +
+      '<div id="body"><div id="aperture" data-record-aperture class="fills"></div>' +
+      '<div id="island"></div><div id="rim"></div></div>' +
+      "</div>",
   );
 }

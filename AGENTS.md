@@ -282,8 +282,8 @@ exists. Reach for it to *do* something the primitives cannot say, and use
 A **Mockup** is the decorative surround composited around the Frames — a
 browser window, a laptop, a phone — so that a clip looks deliberate rather than
 like a cropped screenshot. It is an HTML/CSS template rendered once by the same
-browser into a transparent image with an **Aperture** where the screen goes, and
-the Frames are composited into that Aperture on the way to the Artifacts
+browser into a transparent image with an **Aperture** cut through it, and the
+Frames are composited into that Aperture on the way to the Artifacts
 (ADR 0010). Nothing about it is drawn into the page: a surround inside the
 Frames is a surround the page can scroll underneath.
 

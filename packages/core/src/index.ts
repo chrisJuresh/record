@@ -19,7 +19,7 @@ export { RecordError } from "./errors.js";
 export { readHistory } from "./history.js";
 export type { Key, KeyName, KeyStroke } from "./keys.js";
 export type { ColourScheme } from "./capture.js";
-export { mockups } from "./mockup.js";
+export { mockupNames, mockups, noMockup } from "./mockup.js";
 export type { Mockup } from "./mockup.js";
 export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
