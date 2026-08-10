@@ -10,18 +10,28 @@
  * back off the page rather than assumed from the switch having been thrown.
  */
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { after, before, test } from "node:test";
-import { promisify } from "node:util";
 
-import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
+import {
+  fixtureSiteCommand,
+  fixtureSiteDirectory,
+  freePort,
+  startFixtureSite,
+  type FixtureSite,
+} from "@record/fixture-site";
 import type { RunReport, RunSummary } from "@record/core";
 
-import { actionIn, artifactsOf, record, removeWorkspaces, workspaceWith } from "./harness.js";
-
-const execute = promisify(execFile);
+import {
+  actionIn,
+  artifactsOf,
+  probeSize,
+  projectIn,
+  record,
+  removeWorkspaces,
+  workspaceWith,
+} from "./harness.js";
 
 /** Four Frames of a page travelling a little: enough to be a clip, and no more. */
 const peek = `
@@ -64,6 +74,11 @@ let unhooked: RunSummary;
 /** Two schemes against two widths, recorded at once and one at a time. */
 let crossed: RunSummary;
 let serial: RunSummary;
+/** Every Action of a Project the tool had to start, across two schemes. */
+let wholeProject: RunSummary;
+/** How many times that Project's start command ran, and where it answered. */
+let startedTimes: number;
+let startableUrl: string;
 
 before(async () => {
   site = await startFixtureSite();
@@ -90,6 +105,13 @@ before(async () => {
   const cross = ["--scheme", "light,dark", "--width", "320,480"];
   crossed = await recordMatrix("preferred", "peek", ...cross);
   serial = await recordMatrix("preferred", "peek", ...cross, "--concurrency", "1");
+
+  // Two Actions of a Project the tool has to start, across two schemes: four
+  // Runs sharing one start, which is where a Matrix could stop behaving like
+  // any other Runs without anything else noticing.
+  startableUrl = await startableProject("startable", "first", "second");
+  wholeProject = await recordMatrix("startable", undefined, "--scheme", "light,dark");
+  startedTimes = await timesStarted("startable");
 }, { timeout: 900_000 });
 
 after(async () => {
@@ -122,16 +144,17 @@ async function recordOne(project: string, action: string): Promise<RunReport> {
   return JSON.parse(stdout) as RunReport;
 }
 
+/** A Matrix of one named Action, or of every Action a Project declares. */
 async function recordMatrix(
   project: string,
-  action: string,
+  action: string | undefined,
   ...options: string[]
 ): Promise<RunSummary> {
   const { stdout, stderr, code } = await record(
     workspace,
     "run",
     project,
-    action,
+    ...(action === undefined ? [] : [action]),
     ...options,
     "--json",
   );
@@ -141,6 +164,76 @@ async function recordMatrix(
   assert.deepEqual(summary.failures, [], "a Condition failed to record");
 
   return summary;
+}
+
+/**
+ * A Project the tool has to start for itself, whose start command leaves a line
+ * behind every time it runs. How many lines there are is the whole of how a
+ * Project started once for its Runs is told from one started for each.
+ */
+async function startableProject(name: string, ...actions: string[]): Promise<string> {
+  const port = await freePort();
+  const marker = join(workspace, `${name}.starts`);
+  const script = join(workspace, `${name}-starting.mjs`);
+
+  await writeFile(marker, "", "utf8");
+  await writeFile(
+    script,
+    [
+      `import { appendFileSync } from "node:fs";`,
+      `appendFileSync(${JSON.stringify(marker)}, "started\\n");`,
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  await projectIn(
+    workspace,
+    name,
+    [
+      `base_url = "http://127.0.0.1:${port}/scheme.html"`,
+      `ready_path = "/"`,
+      `source_repository = "."`,
+      "video_width = 320",
+      'mockup = "none"',
+      `start_command = ${JSON.stringify(`"${process.execPath}" "${script}" && ${fixtureSiteCommand({ port })}`)}`,
+      `working_directory = ${JSON.stringify(fixtureSiteDirectory)}`,
+      "",
+      "[viewport]",
+      "width = 400",
+      "height = 300",
+      "device_scale_factor = 1",
+      "",
+    ].join("\n"),
+  );
+
+  for (const action of actions) {
+    await actionIn(workspace, name, action, peek);
+  }
+
+  return `http://127.0.0.1:${port}/`;
+}
+
+/** How many times a startable Project's start command has run. */
+async function timesStarted(name: string): Promise<number> {
+  const marker = await readFile(join(workspace, `${name}.starts`), "utf8");
+
+  return marker.split("\n").filter((line) => line !== "").length;
+}
+
+/**
+ * Whether anything is serving at a URL. Deliberately the test's own probe
+ * rather than the tool's: what is being asserted is what actually ran, which is
+ * worth nothing if it is asked with the code under test.
+ */
+async function answers(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
+    await response.body?.cancel();
+    return response.status < 400;
+  } catch {
+    return false;
+  }
 }
 
 /** The Run of one Condition, or a failure naming the Condition that is missing. */
@@ -315,6 +408,67 @@ test("a Matrix records several Conditions at once rather than one after the othe
   );
 });
 
+/**
+ * A Matrix over a whole Project is the Actions multiplied by the Conditions,
+ * and every one of those Runs shares the Project the way any other Runs of it
+ * would: started **once** for all four and stopped when the last is done.
+ *
+ * Starting one per Run would be a second server fighting the first for the
+ * port, and stopping one per Run would stop it under the Runs still recording.
+ * Both are ruled out by the start command having run exactly once.
+ */
+test("a Matrix over a whole Project records every Action under every Condition, sharing one start", async () => {
+  assert.deepEqual(
+    wholeProject.runs.map((run) => `${run.action} ${run.condition?.name ?? ""}`).sort(),
+    ["first dark", "first light", "second dark", "second light"],
+  );
+
+  assert.equal(startedTimes, 1, "the Project was started more than once for its Matrix");
+
+  for (const run of wholeProject.runs) {
+    assert.equal(run.lifecycle.started, true, `${run.action} ${run.condition?.name ?? ""}`);
+  }
+});
+
+/** ...and the machine is left as it was found, however many Conditions recorded. */
+test("a Project the tool started for a Matrix is stopped once its Conditions have recorded", async () => {
+  assert.equal(await answers(startableUrl), false, "the Project it started is still up");
+});
+
+/**
+ * A hook the page will not run is a Run recorded in whatever theme the page
+ * happened to be in, under a name claiming otherwise -- which is the one
+ * outcome worse than not recording at all.
+ */
+test("a theme hook the page rejects fails the Run rather than recording the wrong theme", async () => {
+  await projectIn(
+    workspace,
+    "broken",
+    project(`${site.url}themed.html`, {
+      light: "nothingDefinesThis()",
+      dark: "nothingDefinesThis()",
+    }),
+  );
+  await actionIn(workspace, "broken", "peek", peek);
+
+  const { stdout, stderr, code } = await record(
+    workspace,
+    "run",
+    "broken",
+    "peek",
+    "--scheme",
+    "dark",
+    "--json",
+  );
+
+  assert.equal(code, 1);
+  assert.match(stderr, /failed: broken peek \(dark\): /);
+  assert.match(stderr, /the page rejected an expression/);
+
+  const summary = JSON.parse(stdout) as RunSummary;
+  assert.deepEqual(summary.runs, [], "a Run that could not switch the theme left Artifacts behind");
+});
+
 /** A request that varies nothing records exactly what it always has. */
 test("a Run asked for on its own is unchanged by the feature", async () => {
   assert.equal(plain.condition, null);
@@ -330,28 +484,38 @@ test("a Run asked for on its own is unchanged by the feature", async () => {
 });
 
 /**
- * A Matrix's Runs are Runs of the Action they were asked for, so they are
- * listed among its own -- each naming the Condition it recorded under, since
- * that is the only thing telling one of eleven Runs from another.
+ * Every history is one stream with one Latest, so a Condition's Runs are kept
+ * beside the Action's own rather than folded into them. Folding them in would
+ * make the newest of the pile answer for all of them -- an Action recorded in
+ * light alone would read as current while its dark clip went on being out of
+ * date, which is the whole thing staleness exists to catch.
  */
-test("history lists a Matrix's Runs among the Action's own, newest first", async () => {
-  const { stdout, stderr, code } = await record(workspace, "history", "preferred", "peek", "--json");
-  assert.equal(code, 0, stderr);
-
-  const kept = JSON.parse(stdout) as RunReport[];
+test("a Condition keeps a history of its own, and does not answer for the Action's", async () => {
+  const own = await historyOf("preferred", "peek");
 
   assert.deepEqual(
-    [...kept].map((run) => run.id).sort().reverse(),
-    kept.map((run) => run.id),
-    "history reads newest first",
+    own.map((run) => run.id),
+    [plain.id],
+    "the Action's own history is the Runs asked for on their own, and no others",
   );
+
+  const dark = await historyOf("preferred", "peek", "dark");
 
   assert.deepEqual(
-    [...new Set(kept.map((run) => run.condition?.name ?? "none"))].sort(),
-    ["dark", "dark-320w", "dark-480w", "light", "light-320w", "light-480w", "none"],
+    dark.map((run) => run.condition?.name),
+    ["dark"],
+    "a Condition's history is its own Runs, newest first",
   );
+  assert.equal(dark[0]?.id, under(schemes, "dark").id);
 
-  assert.equal(kept.at(-1)?.id, plain.id, "the plain Run is the oldest of them, and still there");
+  // ...and the Conditions a Matrix recorded are named, so that they are
+  // findable rather than merely kept.
+  const { stdout } = await record(workspace, "history", "preferred", "peek");
+
+  assert.match(
+    stdout,
+    /also recorded under dark, dark-320w, dark-480w, light, light-320w, light-480w/,
+  );
 });
 
 test("`--scheme` takes a colour scheme this tool records in, and refuses anything else", async () => {
@@ -423,7 +587,7 @@ test("`--concurrency` alongside one Action is refused only where it records once
   );
 
   assert.equal(code, 1);
-  assert.match(stderr, /--concurrency is how many Actions record at once/);
+  assert.match(stderr, /--concurrency is how many Runs record at once/);
 });
 
 test("naming an Action the Project does not declare fails the Matrix rather than each Condition", async () => {
@@ -440,26 +604,29 @@ test("naming an Action the Project does not declare fails the Matrix rather than
   assert.match(stderr, /no Action named 'nothing-like-it' is declared by Project 'preferred'/);
 });
 
-/** What ffprobe says an Artifact actually is, rather than what it was meant to be. */
+/** What `record history` kept, for an Action or for one of its Conditions. */
+async function historyOf(
+  project: string,
+  action: string,
+  condition?: string,
+): Promise<RunReport[]> {
+  const { stdout, stderr, code } = await record(
+    workspace,
+    "history",
+    project,
+    action,
+    ...(condition === undefined ? [] : [condition]),
+    "--json",
+  );
+  assert.equal(code, 0, stderr);
+
+  return JSON.parse(stdout) as RunReport[];
+}
+
+/** The size one Run's video Artifact was actually encoded at. */
 async function encoded(run: RunReport): Promise<{ width: number; height: number }> {
   const artifact = run.artifacts.find((one) => one.format === "mp4");
   assert.ok(artifact !== undefined, "the Run reported no mp4");
 
-  const { stdout } = await execute("ffprobe", [
-    "-v",
-    "error",
-    "-select_streams",
-    "v:0",
-    "-show_entries",
-    "stream=width,height",
-    "-of",
-    "json",
-    artifact.path,
-  ]);
-
-  const probed = JSON.parse(stdout) as { streams?: { width: number; height: number }[] };
-  const stream = probed.streams?.[0];
-  assert.ok(stream !== undefined, `ffprobe found no video stream in ${artifact.path}`);
-
-  return { width: stream.width, height: stream.height };
+  return probeSize(artifact.path);
 }

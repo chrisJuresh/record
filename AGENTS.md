@@ -125,9 +125,21 @@ A Condition varies the circumstances the page is photographed under and never
 what the Action does, which is why it is asked for at the command rather than
 declared in the module — how a clip is lit is not motion. Every Condition is an
 ordinary Run: it keeps a directory of its own under `conditions/<condition>/`,
-prunes its own ten, appears in `record history`, and **queues for the machine
-beside every other Run** at `--concurrency`. Because a Matrix is several Runs
-however few Actions it names, it reports as a summary even for one Action.
+prunes its own ten, and **queues for the machine beside every other Run** at
+`--concurrency`, sharing one start of the Project with them. Because a Matrix is
+several Runs however few Actions it names, it reports as a summary even for one
+Action.
+
+**Each Condition keeps a history of its own**, which
+`record history <project> <action> <condition>` lists —
+`record history <project> <action>` is the Action's own Runs and names the
+Conditions beside them. They are deliberately not merged: every history is one
+stream with one Latest, and folding them together would let an Action recorded
+in light alone read as current while its dark clip went on being out of date.
+For the same reason `record status` reports an Action against the Runs asked for
+on their own, so an Action only ever recorded as a Matrix reads as never run
+rather than as current — under-claiming, which is the direction staleness errs
+in everywhere else.
 
 Its Artifacts are named apart — `<action>-dark.mp4`, `<action>-light-480w.gif` —
 because the clip of the light theme and the clip of the dark one are two clips,
@@ -146,8 +158,12 @@ dark = "document.documentElement.dataset.theme = 'dark'"
 
 Both schemes are declared together, because a hook that can only go one way
 would record the second Condition in the first one's theme. The expression is
-evaluated after the page has loaded and before the first captured Frame, and a
-Run fails if the page rejects it.
+evaluated once, after the page has loaded and before the first captured Frame,
+and **a Run fails if the page rejects it** — a hook that quietly did nothing is
+a clip of the wrong theme under a name claiming otherwise. As with replacement
+copy, it is one pass rather than a standing instruction: an Action that
+navigates with `.evaluate()` leaves the theme behind with the document it
+switched.
 
 Whether the page then *changes* is reported and never insisted on — a site with
 one theme has one theme, and a Run says what the page it photographed reads as.
@@ -171,8 +187,9 @@ written.
 Runs are not disposable (ADR 0009). Each keeps its timestamp, the Project's
 commit at the time, the effective Parameters and the versions of the tools that
 made it, and the ten most recent Runs of an Action survive — `record history
-<project> <action>` lists them, newest first. Latest is the newest of them, so
-nothing reads a Run's path off a template.
+<project> <action>` lists them, newest first, and a trailing Condition lists
+that Condition's instead. Latest is the newest of them, so nothing reads a Run's
+path off a template.
 
 `record status` says which Actions have gone **Stale**: the Project's
 `source_repository` has been committed to since that Action last ran. Only

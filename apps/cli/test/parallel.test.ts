@@ -358,7 +358,7 @@ test("--concurrency takes a count of Actions and refuses anything else", async (
     const { stderr, code } = await record(recorded, "run", "demo", "--concurrency", given);
 
     assert.equal(code, 1, `--concurrency ${given} was accepted`);
-    assert.match(stderr, /--concurrency takes how many Actions record at once/);
+    assert.match(stderr, /--concurrency takes how many Runs record at once/);
   }
 });
 
@@ -465,5 +465,5 @@ test("`--concurrency` alongside one Action to record says so rather than being i
   const { stderr, code } = await record(recorded, "run", "demo", "one", "--concurrency", "4");
 
   assert.equal(code, 1);
-  assert.match(stderr, /--concurrency is how many Actions record at once/);
+  assert.match(stderr, /--concurrency is how many Runs record at once/);
 });

@@ -115,9 +115,14 @@ export async function writeRun(report: RunReport): Promise<void> {
 }
 
 /**
- * Every Run kept for an Action, newest first, the Runs of each of its
- * Conditions among them -- a Matrix's Runs are Runs of the same Action, and one
- * recorded in dark is not a different Action for having been.
+ * Every Run kept for one history, newest first -- an Action's own, or one of
+ * its Conditions' where a Condition is named.
+ *
+ * A Condition's Runs are deliberately **not** folded into the Action's. Every
+ * history here is one stream with one Latest, and merging them would make the
+ * newest of the pile answer for all of them: an Action recorded in light alone
+ * would read as current while its dark clip went on being months out of date,
+ * and staleness quietly under-reported is worse than not reported at all.
  *
  * A directory holding no readable record is a Run that was interrupted before
  * it left one, and is passed over rather than reported as a Run that happened.
@@ -126,29 +131,10 @@ export async function readHistory(
   workspace: string,
   project: string,
   action: string,
+  condition?: string,
 ): Promise<RunReport[]> {
-  const own = historyDirectory(workspace, project, action);
-  const conditions = await readdir(join(own, conditionsDirectory), {
-    withFileTypes: true,
-  }).catch(asMissing);
+  const directory = historyDirectory(workspace, project, action, condition);
 
-  const kept = await Promise.all([
-    runsIn(own),
-    ...conditions
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => runsIn(join(own, conditionsDirectory, entry.name))),
-  ]);
-
-  // Sorted across the Conditions rather than within each: what is being read is
-  // the Action's history, and two Runs that began at the same instant are put
-  // in the order their Conditions are named in so that the answer is settled.
-  return kept
-    .flat()
-    .sort((one, other) => compare(other.id, one.id) || compare(nameOf(one), nameOf(other)));
-}
-
-/** The Runs kept in one directory, whether it holds an Action's or a Condition's. */
-async function runsIn(directory: string): Promise<RunReport[]> {
   const kept = await Promise.all(
     (await runIds(directory)).map((id) => readRun(join(directory, id))),
   );
@@ -156,13 +142,23 @@ async function runsIn(directory: string): Promise<RunReport[]> {
   return kept.filter((run) => run !== undefined);
 }
 
-/** Which Condition a Run was recorded under, and nothing for one recorded under none. */
-function nameOf(run: RunReport): string {
-  return run.condition?.name ?? "";
-}
+/**
+ * The Conditions an Action has been recorded under and still keeps Runs of, in
+ * the order they are named. Reading one of their histories is asking for it by
+ * name, so there has to be somewhere the names come from.
+ */
+export async function readConditions(
+  workspace: string,
+  project: string,
+  action: string,
+): Promise<string[]> {
+  const directory = join(historyDirectory(workspace, project, action), conditionsDirectory);
+  const entries = await readdir(directory, { withFileTypes: true }).catch(asMissing);
 
-function compare(one: string, other: string): number {
-  return one > other ? 1 : one < other ? -1 : 0;
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
 }
 
 /**

@@ -14,10 +14,10 @@
  * the Frames are the ones the Timeline declared.
  *
  * A Matrix asks for several of them from one request, by varying the Condition
- * an Action records under rather than the Action. Everything a Condition
- * touches is settled in one place here: where the Run is kept, how wide the
- * page is, how it is put into a colour scheme, and what its Artifacts are
- * called. Nothing else in the pipeline knows there is such a thing.
+ * an Action records under rather than the Action. What a Condition comes to is
+ * read in one place here -- the directory the Run is kept in, how wide the page
+ * is, how it is put into a colour scheme, and what its Artifacts are called --
+ * and handed onward as the ordinary arguments each of those already took.
  */
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -43,7 +43,7 @@ import { themeSwitch } from "./theme.js";
 import { toolVersions, type ToolVersions } from "./tools.js";
 import { evaluateTimeline } from "./timeline.js";
 
-/** How many Actions record at once when nobody says otherwise. */
+/** How many Runs record at once when nobody says otherwise. */
 export const defaultConcurrency = 4;
 
 export type RunReport = {
@@ -232,13 +232,7 @@ export async function runActions(
 
   const requested = await Promise.all(
     configured.map(async (project) => {
-      // A named Action is checked here rather than left to fail as a Run, so
-      // that a misspelling fails the command outright instead of arriving as
-      // one entry in a summary for each Condition it would have recorded under.
-      const named =
-        options.action === undefined
-          ? await readActions(workspace, project.name)
-          : [await namedAction(workspace, project.name, options.action)];
+      const named = await declaredActions(workspace, project.name, options.action);
 
       // One lease per Project, shared by every Run recording against it, so
       // that the Project is started once rather than once a Run.
@@ -271,10 +265,25 @@ export async function runActions(
   return { concurrency, conditions: conditions.map((one) => one.name), runs, failures };
 }
 
-/** The name of an Action the Project declares, or a failure naming the one it does not. */
-async function namedAction(workspace: string, project: string, action: string): Promise<string> {
-  await actionModule(workspace, project, action);
-  return action;
+/**
+ * The Actions this request names: every one the Project declares, or the single
+ * one it asked for.
+ *
+ * A named Action is checked for here rather than left to fail as a Run, so that
+ * a misspelling fails the command outright instead of arriving as one entry in
+ * a summary for each Condition it would have recorded under.
+ */
+async function declaredActions(
+  workspace: string,
+  project: string,
+  only: string | undefined,
+): Promise<string[]> {
+  if (only === undefined) {
+    return readActions(workspace, project);
+  }
+
+  await actionModule(workspace, project, only);
+  return [only];
 }
 
 /** One Run asked for, and the lease its Project is shared through. */

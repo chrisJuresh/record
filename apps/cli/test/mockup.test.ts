@@ -10,17 +10,21 @@
  * that every preset that ships came out of the same code path.
  */
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { after, before, test } from "node:test";
-import { promisify } from "node:util";
 
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
 import type { ContactSheetReport, RunReport } from "@record/core";
 
-import { actionIn, artifactsOf, projectIn, record, removeWorkspaces, workspaceWith } from "./harness.js";
-
-const execute = promisify(execFile);
+import {
+  actionIn,
+  artifactsOf,
+  probeSize,
+  projectIn,
+  record,
+  removeWorkspaces,
+  workspaceWith,
+} from "./harness.js";
 
 /** Small on purpose: every Frame is a screenshot, an encode and a composite. */
 const peek = `
@@ -125,7 +129,7 @@ test("a Mockup is composited around the Frames, and the Artifact keeps its decla
   assert.equal(inWindow.mockup.name, "browser-light");
   assert.deepEqual(inWindow.frames.hashes, bare.frames.hashes, "the same Frames were captured");
 
-  const mp4 = await probe(artifact(inWindow, "mp4"));
+  const mp4 = await probeSize(artifact(inWindow, "mp4"));
 
   assert.equal(mp4.width, bareSize.width, "as wide as the Project asked for");
   assert.ok(
@@ -272,32 +276,4 @@ function artifact(report: RunReport, format: string): string {
   const found = report.artifacts.find((candidate) => candidate.format === format);
   assert.ok(found !== undefined, `the Run reported no ${format}`);
   return found.path;
-}
-
-async function probeSize(file: string): Promise<{ width: number; height: number }> {
-  const { width, height } = await probe(file);
-  return { width, height };
-}
-
-/** What ffprobe says the file actually is, rather than what we meant it to be. */
-async function probe(file: string): Promise<{ width: number; height: number }> {
-  await stat(file);
-
-  const { stdout } = await execute("ffprobe", [
-    "-v",
-    "error",
-    "-select_streams",
-    "v:0",
-    "-show_entries",
-    "stream=width,height",
-    "-of",
-    "json",
-    file,
-  ]);
-
-  const probed = JSON.parse(stdout) as { streams?: { width: number; height: number }[] };
-  const stream = probed.streams?.[0];
-  assert.ok(stream !== undefined, `ffprobe found no image in ${file}`);
-
-  return { width: stream.width, height: stream.height };
 }

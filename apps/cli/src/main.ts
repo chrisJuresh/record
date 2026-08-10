@@ -13,6 +13,7 @@ import {
   mockups,
   noMockup,
   readActions,
+  readConditions,
   readHistory,
   readParameters,
   readProjects,
@@ -44,6 +45,7 @@ const usage = `record -- repeatable clips of locally-running websites
   record run --all                       Record every Action of every Project, at once
   record status [project]                Say which Actions have gone Stale
   record history <project> <action>      List the Runs of an Action still kept
+  record history <project> <action> <condition>    ...of one Matrix Condition
   record mockups                         List every Mockup a clip can be shown in
   record mockups <project> <action>      Render every Mockup around a Frame of an Action
 
@@ -143,7 +145,6 @@ async function main(argv: string[]): Promise<number> {
       }
       case "run": {
         const [project, action] = operands;
-        const matrix = conditionsFor({ schemes, widths });
 
         if (all && operands.length > 0) {
           return fail(`run --all records every Project, so it takes no Project\n\n${usage}`);
@@ -159,12 +160,17 @@ async function main(argv: string[]): Promise<number> {
         if (sets.length > 0 && action === undefined) {
           return fail(`--set names one Action's Parameter, so it takes a Project and an Action\n\n${usage}`);
         }
+        // Read once there is something to record it against, so that a command
+        // naming no Project is answered about the Project rather than about a
+        // Matrix it was never going to get as far as.
+        const matrix = conditionsFor({ schemes, widths });
+
         // ...and one Action on its own records once, however many the machine
         // could have recorded beside it. Under a Matrix it records several
         // times, and how many at once is worth asking for again.
         if (concurrency !== undefined && action !== undefined && matrix.length === 0) {
           return fail(
-            "--concurrency is how many Actions record at once, so it takes a Project, --all, " +
+            "--concurrency is how many Runs record at once, so it takes a Project, --all, " +
               `or a Matrix\n\n${usage}`,
           );
         }
@@ -193,11 +199,14 @@ async function main(argv: string[]): Promise<number> {
         return await status(project, json);
       }
       case "history": {
-        const [project, action] = operands;
-        if (project === undefined || action === undefined || operands.length > 2) {
-          return fail(`history takes the name of one Project and one of its Actions\n\n${usage}`);
+        const [project, action, condition] = operands;
+        if (project === undefined || action === undefined || operands.length > 3) {
+          return fail(
+            "history takes the name of one Project, one of its Actions, and at most one " +
+              `Condition\n\n${usage}`,
+          );
         }
-        return await history(project, action, json);
+        return await history(project, action, condition, json);
       }
       case "mockups": {
         const [project, action] = operands;
@@ -267,7 +276,7 @@ function parse(argv: string[]): Arguments {
     } else if (argument === "--width") {
       widths.push(...listed(argv[++position], "--width"));
     } else if (argument === "--concurrency") {
-      concurrency = actionsAtOnce(argv[++position]);
+      concurrency = runsAtOnce(argv[++position]);
     } else if (argument === "--at") {
       at = instantOf(argv[++position]);
     } else if (argument.startsWith("-")) {
@@ -301,12 +310,12 @@ function listed(given: string | undefined, option: string): string[] {
   return entries;
 }
 
-/** How many Actions record at once, which is a count of Actions rather than a number. */
-function actionsAtOnce(given: string | undefined): number {
+/** How many Runs happen at once, which is a count of Runs rather than a number. */
+function runsAtOnce(given: string | undefined): number {
   const count = Number(given);
 
   if (given === undefined || !Number.isInteger(count) || count < 1) {
-    throw new Error(`--concurrency takes how many Actions record at once, not '${given ?? ""}'`);
+    throw new Error(`--concurrency takes how many Runs record at once, not '${given ?? ""}'`);
   }
 
   return count;
@@ -389,15 +398,28 @@ async function status(project: string | undefined, json: boolean): Promise<numbe
   return emit(json, reported, () => asStatus(reported));
 }
 
-/** The Runs of one Action still kept on this machine, newest first. */
-async function history(project: string, action: string, json: boolean): Promise<number> {
+/**
+ * The Runs of one Action still kept on this machine, newest first -- or of one
+ * of its Conditions, which keeps a history of its own rather than being folded
+ * into the Action's.
+ */
+async function history(
+  project: string,
+  action: string,
+  condition: string | undefined,
+  json: boolean,
+): Promise<number> {
   // Asked of the Action first: an Action nobody has run has no history, which
   // is a different answer from a name nobody declared.
   await actionModule(workspace(), project, action);
 
-  const kept = await readHistory(workspace(), project, action);
+  const kept = await readHistory(workspace(), project, action, condition);
+  // Named only where the Action's own Runs were asked for: a Condition's
+  // history is one stream, and pointing from it back at its siblings is noise.
+  const conditions =
+    condition === undefined ? await readConditions(workspace(), project, action) : [];
 
-  return emit(json, kept, () => asHistory(kept));
+  return emit(json, kept, () => asHistory(kept, conditions));
 }
 
 /**
@@ -692,22 +714,20 @@ function asStatus(reported: StatusReport): string {
 }
 
 /**
- * One line per retained Run, newest first: when it ran, under what Condition,
- * against what, and how it was tuned. A Matrix's Runs are Runs of the Action
- * they were asked for, so they are listed among its own.
+ * One line per retained Run, newest first: when it ran, against what, and how
+ * it was tuned -- followed by the Conditions that keep histories of their own,
+ * so that a Matrix's Runs are findable rather than merely kept.
  */
-function asHistory(kept: readonly RunReport[]): string {
-  const under = widest(kept.map((run) => run.condition?.name ?? ""));
-
-  return kept
-    .map((run) => {
+function asHistory(kept: readonly RunReport[], conditions: readonly string[]): string {
+  return [
+    ...kept.map((run) => {
       const commit = run.commit === null ? "no commit" : shortCommit(run.commit);
       const tuned = run.overridden.length === 0 ? "" : `  overridden: ${run.overridden.join(", ")}`;
-      const condition = under === 0 ? "" : `  ${(run.condition?.name ?? "").padEnd(under)}`;
 
-      return `${run.recordedAt}${condition}  ${commit}  ${run.frames.captured} Frames at ${run.framerate}fps${tuned}\n`;
-    })
-    .join("");
+      return `${run.recordedAt}  ${commit}  ${run.frames.captured} Frames at ${run.framerate}fps${tuned}\n`;
+    }),
+    ...(conditions.length === 0 ? [] : [`also recorded under ${conditions.join(", ")}\n`]),
+  ].join("");
 }
 
 /** As much of a commit as a person reads, which is as much as git itself shows. */

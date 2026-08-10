@@ -16,14 +16,14 @@ import type { ColourScheme } from "./capture.js";
 import { RecordError } from "./errors.js";
 
 /** The colour schemes a Matrix can put a page into. */
-export const colourSchemes: readonly ColourScheme[] = ["light", "dark"];
+const colourSchemes: readonly ColourScheme[] = ["light", "dark"];
 
 /**
  * The narrowest and widest viewport a Matrix will record at. Wide enough for a
  * desktop breakpoint at the top, and narrow enough at the bottom that the page
  * still has somewhere to lay out.
  */
-export const widthRange = { min: 120, max: 7680 } as const;
+const widthRange = { min: 120, max: 7680 } as const;
 
 /** One set of circumstances an Action is recorded under, within a Matrix. */
 export type Condition = {

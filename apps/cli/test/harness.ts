@@ -5,7 +5,7 @@
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -114,6 +114,42 @@ export async function artifactsOf(run: { readonly directory: string }): Promise<
   delete left["run.json"];
 
   return left;
+}
+
+/**
+ * How big an encoded file actually is, as ffprobe reads it back -- rather than
+ * what the Run meant it to be, which the Run's own report already says.
+ *
+ * Asserting a size any other way would be asserting the tool against itself, so
+ * this is how the CLI seam checks that a viewport or a Mockup reached the
+ * encoder at all. A test wanting Frame counts or duration as well probes for
+ * itself; this is the size, which is what most of them want.
+ */
+export async function probeSize(file: string): Promise<{ width: number; height: number }> {
+  // Read first, so a file that was never written fails as a missing file rather
+  // than as ffprobe having nothing to say about it.
+  await stat(file);
+
+  const { stdout } = await execute("ffprobe", [
+    "-v",
+    "error",
+    "-select_streams",
+    "v:0",
+    "-show_entries",
+    "stream=width,height",
+    "-of",
+    "json",
+    file,
+  ]);
+
+  const probed = JSON.parse(stdout) as { streams?: { width: number; height: number }[] };
+  const stream = probed.streams?.[0];
+
+  if (stream === undefined) {
+    throw new Error(`ffprobe found no image in ${file}`);
+  }
+
+  return { width: stream.width, height: stream.height };
 }
 
 /** Registered with `after` by every file that makes a workspace. */
