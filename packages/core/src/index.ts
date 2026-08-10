@@ -16,11 +16,13 @@ export type { Artifact, ArtifactFormat } from "./artifacts.js";
 export { actionModule, overridesFile, readActions, readProject, readProjects } from "./config.js";
 export type { ProjectConfig, Viewport } from "./config.js";
 export { RecordError } from "./errors.js";
-export { readHistory } from "./history.js";
+export { readConditions, readHistory } from "./history.js";
 export type { Key, KeyName, KeyStroke } from "./keys.js";
 export type { ColourScheme } from "./capture.js";
 export { mockupNames, mockups, noMockup } from "./mockup.js";
 export type { Mockup } from "./mockup.js";
+export { conditionsFor } from "./matrix.js";
+export type { Condition, MatrixRequest } from "./matrix.js";
 export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
 export { readOverrides, readParameters, resetOverrides, setOverrides } from "./overrides.js";
@@ -33,6 +35,7 @@ export type { ContactSheetOptions, ContactSheetReport, SheetEntry } from "./shee
 export { readStatus } from "./status.js";
 export type { ActionStatus, LastRun, ProjectStatus, StatusReport } from "./status.js";
 export type { Substitution, TextOverrides } from "./text.js";
+export type { ThemeHooks } from "./theme.js";
 export { evaluateTimeline } from "./timeline.js";
 export type {
   Click,

@@ -115,6 +115,20 @@ A set of Runs of a single Action across varied conditions — light and dark, or
 several viewport widths — produced by one request.
 _Avoid_: variants, sweep, permutations, batch
 
+**Condition**:
+One set of circumstances within a Matrix that an Action is recorded under — a
+colour scheme, a viewport width, or both. A Condition varies how the page is
+photographed and never what the Action does. Each has a Latest and a Run history
+of its own, and names the Artifacts it produced.
+_Avoid_: variant, case, combination, axis
+
+**Theme hook**:
+The pair of expressions a Project declares for putting its own page into light
+and into dark, for a site whose theme is a class or a stored preference rather
+than the reader's system setting. Used in preference to emulating the media
+query, never alongside it.
+_Avoid_: theme switcher, toggle, adapter, driver
+
 **Stale**:
 The state of an Action whose most recent Run predates commits made to its
 Project since. Staleness is reported, never acted on automatically.

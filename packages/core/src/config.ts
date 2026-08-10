@@ -10,6 +10,7 @@ import { parse as parseToml } from "smol-toml";
 
 import { RecordError } from "./errors.js";
 import { automaticMockup, mockupNames } from "./mockup.js";
+import type { ThemeHooks } from "./theme.js";
 
 export type Viewport = {
   readonly width: number;
@@ -38,6 +39,12 @@ export type ProjectConfig = {
    * Actions carries as the default of a Parameter it can override.
    */
   readonly mockup: string;
+  /**
+   * How this Project switches its own theme, where it does not follow the
+   * reader's preference. A Matrix recording it in light and dark uses this in
+   * preference to emulating the media query.
+   */
+  readonly theme?: ThemeHooks;
   /** Off unless deliberately turned on -- ADR 0007. */
   readonly published: boolean;
 };
@@ -146,6 +153,7 @@ function projectFrom(name: string, table: Record<string, unknown>, file: string)
   const viewport = optionalTable(table, "viewport", file) ?? {};
   const startCommand = optionalString(table, "start_command", file);
   const workingDirectory = optionalString(table, "working_directory", file);
+  const theme = themeHooks(table, file);
 
   return {
     name,
@@ -163,8 +171,37 @@ function projectFrom(name: string, table: Record<string, unknown>, file: string)
     },
     videoWidth: optionalNumber(table, "video_width", file) ?? defaultVideoWidth,
     mockup: chosenMockup(table, file),
+    ...(theme === undefined ? {} : { theme }),
     published: optionalBoolean(table, "published", file) ?? false,
   };
+}
+
+/**
+ * How this Project switches its own theme, for a site whose theme is a class or
+ * a stored preference rather than the reader's system preference.
+ *
+ * Both schemes are required together, because a hook that can only go one way
+ * would record a Matrix's second Condition in the first one's theme -- and a
+ * clip labelled dark that is light is exactly the outcome worth failing over.
+ */
+function themeHooks(table: Record<string, unknown>, file: string): ThemeHooks | undefined {
+  const declared = optionalTable(table, "theme", file);
+
+  if (declared === undefined) {
+    return undefined;
+  }
+
+  const light = optionalString(declared, "light", file);
+  const dark = optionalString(declared, "dark", file);
+
+  if (light === undefined || dark === undefined) {
+    throw new RecordError(
+      `${file}: 'theme' switches this Project between schemes, so it declares an expression ` +
+        "for both 'light' and 'dark'",
+    );
+  }
+
+  return { light, dark };
 }
 
 /**

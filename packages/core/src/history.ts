@@ -19,6 +19,16 @@ import type { RunReport } from "./run.js";
 /** How many Runs of one Action are kept. Older ones are pruned as a Run succeeds. */
 export const retainedRuns = 10;
 
+/**
+ * Where the Runs of a Matrix are kept: one directory per Condition, under the
+ * Action's own rather than among its Runs.
+ *
+ * Each Condition therefore has a Latest of its own and prunes its own ten,
+ * which is the whole point -- light and dark recorded into one pile would leave
+ * "the newest Run" meaning whichever of the two finished last.
+ */
+const conditionsDirectory = "conditions";
+
 /** The record a Run leaves of itself, beside what it produced. */
 const recordFile = "run.json";
 
@@ -40,9 +50,19 @@ export type BegunRun = {
   readonly directory: string;
 };
 
-/** Where every retained Run of one Action is kept. */
-export function historyDirectory(workspace: string, project: string, action: string): string {
-  return join(workspace, "runs", project, action);
+/**
+ * Where every retained Run of one Action is kept, or of one of its Conditions
+ * where a Matrix recorded it under one.
+ */
+export function historyDirectory(
+  workspace: string,
+  project: string,
+  action: string,
+  condition?: string,
+): string {
+  const own = join(workspace, "runs", project, action);
+
+  return condition === undefined ? own : join(own, conditionsDirectory, condition);
 }
 
 /** The name a Run beginning at an instant takes, in a form every filesystem accepts. */
@@ -62,8 +82,9 @@ export async function beginRun(
   project: string,
   action: string,
   at: Date,
+  condition?: string,
 ): Promise<BegunRun> {
-  const history = historyDirectory(workspace, project, action);
+  const history = historyDirectory(workspace, project, action, condition);
   await mkdir(history, { recursive: true });
 
   for (let later = 0; later < idAttempts; later++) {
@@ -94,16 +115,25 @@ export async function writeRun(report: RunReport): Promise<void> {
 }
 
 /**
- * Every Run kept for an Action, newest first. A directory holding no readable
- * record is a Run that was interrupted before it left one, and is passed over
- * rather than reported as a Run that happened.
+ * Every Run kept for one history, newest first -- an Action's own, or one of
+ * its Conditions' where a Condition is named.
+ *
+ * A Condition's Runs are deliberately **not** folded into the Action's. Every
+ * history here is one stream with one Latest, and merging them would make the
+ * newest of the pile answer for all of them: an Action recorded in light alone
+ * would read as current while its dark clip went on being months out of date,
+ * and staleness quietly under-reported is worse than not reported at all.
+ *
+ * A directory holding no readable record is a Run that was interrupted before
+ * it left one, and is passed over rather than reported as a Run that happened.
  */
 export async function readHistory(
   workspace: string,
   project: string,
   action: string,
+  condition?: string,
 ): Promise<RunReport[]> {
-  const directory = historyDirectory(workspace, project, action);
+  const directory = historyDirectory(workspace, project, action, condition);
 
   const kept = await Promise.all(
     (await runIds(directory)).map((id) => readRun(join(directory, id))),
@@ -113,7 +143,28 @@ export async function readHistory(
 }
 
 /**
- * Removes every Run of an Action but the most recent `retainedRuns`.
+ * The Conditions an Action has been recorded under and still keeps Runs of, in
+ * the order they are named. Reading one of their histories is asking for it by
+ * name, so there has to be somewhere the names come from.
+ */
+export async function readConditions(
+  workspace: string,
+  project: string,
+  action: string,
+): Promise<string[]> {
+  const directory = join(historyDirectory(workspace, project, action), conditionsDirectory);
+  const entries = await readdir(directory, { withFileTypes: true }).catch(asMissing);
+
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+}
+
+/**
+ * Removes every Run of an Action but the most recent `retainedRuns`, or of one
+ * of its Conditions where a Matrix recorded it under one -- each Condition
+ * keeps a full history of its own, since one is not a worse Run of the other.
  *
  * The leavings of an interrupted Run count as one of the ten, which is how they
  * are eventually swept up rather than accumulating unnoticed. Pruning cannot
@@ -124,8 +175,9 @@ export async function pruneHistory(
   workspace: string,
   project: string,
   action: string,
+  condition?: string,
 ): Promise<void> {
-  const directory = historyDirectory(workspace, project, action);
+  const directory = historyDirectory(workspace, project, action, condition);
   const older = (await runIds(directory)).slice(retainedRuns);
 
   await Promise.all(

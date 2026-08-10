@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as after } from "node:timers/promises";
 
+import type { ColourScheme } from "./capture.js";
 import { connect, type Cdp } from "./cdp.js";
 import type { Viewport } from "./config.js";
 import { RecordError } from "./errors.js";
@@ -71,6 +72,12 @@ export type StepperOptions = {
    * in any document it goes on to load. What the drawn cursor is installed by.
    */
   readonly overlay?: string;
+  /**
+   * The colour scheme the reader is said to prefer, told to the browser before
+   * the page is navigated to so that the page loads in it rather than being
+   * caught changing into it.
+   */
+  readonly scheme?: ColourScheme;
 };
 
 /**
@@ -168,6 +175,12 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
       deviceScaleFactor: options.viewport.deviceScaleFactor,
       mobile: false,
     });
+
+    if (options.scheme !== undefined) {
+      await send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-color-scheme", value: options.scheme }],
+      });
+    }
 
     if (options.overlay !== undefined) {
       await send("Page.addScriptToEvaluateOnNewDocument", { source: options.overlay });
