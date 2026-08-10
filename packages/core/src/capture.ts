@@ -12,6 +12,7 @@ import type { CursorOverlay } from "./cursor.js";
 import { openFrameStepper, type FrameStepper } from "./driver.js";
 import { RecordError } from "./errors.js";
 import type { Substitution, TextSubstitution } from "./text.js";
+import type { ThemeSwitch } from "./theme.js";
 import type { CursorState, PageEffect, PageState } from "./timeline.js";
 
 /**
@@ -53,6 +54,8 @@ export type CaptureOptions = {
   readonly overlay?: CursorOverlay;
   /** The copy substituted into the page, where the Action declares any. */
   readonly substitution?: TextSubstitution;
+  /** How the page is put into a colour scheme, where a Condition asked for one. */
+  readonly theme?: ThemeSwitch;
 };
 
 /** How a page reads, which is one of the things a Run reports about the page it recorded. */
@@ -132,10 +135,20 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
     viewport: options.viewport,
     framerate: options.framerate,
     ...(options.overlay === undefined ? {} : { overlay: options.overlay.script }),
+    // Told to the browser before the page is navigated to, so a page built on
+    // the media query loads in the scheme rather than changing into it.
+    ...(options.theme?.kind === "emulated" ? { scheme: options.theme.scheme } : {}),
   });
 
   try {
     await stepper.evaluate(stopSmoothScrolling);
+
+    // A Project that switches its own theme is switched by its own hook, before
+    // anything is substituted into the page: a theme is free to change what the
+    // page says as well as how it looks.
+    if (options.theme?.kind === "hook") {
+      await stepper.evaluate(options.theme.expression);
+    }
 
     // Before the scroller is found and before anything settles: replacement
     // copy is as free to change the page's height as its wording, so the Run

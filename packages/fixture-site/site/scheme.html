@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>record fixture site — by preference</title>
+    <style>
+      /*
+       * A site that follows the reader's preference and nothing else, so that a
+       * Matrix recording it in light and dark is recording the emulated media
+       * query rather than anything this page was configured with. Deliberately
+       * plain for the same reason the rest of the fixture is: everything here
+       * has to look the same way twice.
+       */
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 0 48px 96px;
+        background: #f7f7f9;
+        color: #18181b;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      .card {
+        margin: 16px 0;
+        padding: 24px;
+        border: 1px solid #dcdce0;
+        border-radius: 6px;
+        background: #ffffff;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #101014;
+          color: #f2f2f5;
+        }
+
+        .card {
+          border-color: #2a2a34;
+          background: #1a1a22;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="heading">Fixture site, by preference</h1>
+      <p id="tagline">Committed here so no test needs a real Project.</p>
+    </header>
+    <main>
+      <section class="card"><h2>One</h2></section>
+      <section class="card"><h2>Two</h2></section>
+      <section class="card"><h2>Three</h2></section>
+      <section class="card"><h2>Four</h2></section>
+      <section class="card"><h2>Five</h2></section>
+      <section class="card"><h2>Six</h2></section>
+      <section class="card"><h2>Seven</h2></section>
+      <section class="card"><h2>Eight</h2></section>
+      <section class="card"><h2>Nine</h2></section>
+      <section class="card"><h2>Ten</h2></section>
+      <section class="card"><h2>Eleven</h2></section>
+      <section class="card"><h2>Twelve</h2></section>
+    </main>
+  </body>
+</html>

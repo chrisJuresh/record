@@ -9,9 +9,15 @@
  * beside a record of the conditions it was produced under, until ten newer Runs
  * of the same Action have replaced it.
  *
- * Many Actions record at once, because a Run's output depends on the stepped
- * clock rather than on wall-clock time (ADR 0001) -- however busy the machine
- * gets, the Frames are the ones the Timeline declared.
+ * Many Runs happen at once, because a Run's output depends on the stepped clock
+ * rather than on wall-clock time (ADR 0001) -- however busy the machine gets,
+ * the Frames are the ones the Timeline declared.
+ *
+ * A Matrix asks for several of them from one request, by varying the Condition
+ * an Action records under rather than the Action. Everything a Condition
+ * touches is settled in one place here: where the Run is kept, how wide the
+ * page is, how it is put into a colour scheme, and what its Artifacts are
+ * called. Nothing else in the pipeline knows there is such a thing.
  */
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -26,12 +32,14 @@ import { encodeArtifacts } from "./encode.js";
 import { RecordError } from "./errors.js";
 import { beginRun, pruneHistory, writeRun } from "./history.js";
 import { ensureRunning, type RunningProject } from "./lifecycle.js";
+import type { Condition } from "./matrix.js";
 import { mockupAsked, mockupFor, noMockup } from "./mockup.js";
 import { readOverrides } from "./overrides.js";
 import { renderMockup, writeMockup, type Composite } from "./render.js";
 import { headCommit, repositoryOf } from "./repository.js";
 import type { ParameterSetting } from "./settings.js";
 import { textSubstitution, type Substitution } from "./text.js";
+import { themeSwitch } from "./theme.js";
 import { toolVersions, type ToolVersions } from "./tools.js";
 import { evaluateTimeline } from "./timeline.js";
 
@@ -47,6 +55,19 @@ export type RunReport = {
   readonly recordedAt: string;
   /** Where its Artifacts, its snippet and this record are kept. */
   readonly directory: string;
+  /**
+   * The Condition a Matrix recorded this Run under, and nothing at all for a
+   * Run asked for on its own. `switched` is how the colour scheme was put --
+   * the Project's own hook where it declared one, and the emulated media query
+   * otherwise. Whether the page then changed is reported by `mockup.colourScheme`
+   * rather than insisted on: a site with one theme has one theme.
+   */
+  readonly condition: {
+    readonly name: string;
+    readonly scheme: ColourScheme | null;
+    readonly width: number | null;
+    readonly switched: "emulated" | "hook" | null;
+  } | null;
   /** The Project's commit when it was recorded, which is what staleness compares. */
   readonly commit: string | null;
   /** The versions of the external tools that made it. */
@@ -112,28 +133,42 @@ export type RunReport = {
   };
 };
 
-/** One Action that failed, named beside the others that recorded regardless. */
+/** One Run that failed, named beside the others that recorded regardless. */
 export type RunFailure = {
   readonly project: string;
   readonly action: string;
+  /** The Condition it was being recorded under, and nothing where it was not. */
+  readonly condition: string | null;
   /** What stopped it, as recording that Action on its own would have said. */
   readonly message: string;
 };
 
 /** What recording many Actions produced, and what it could not. */
 export type RunSummary = {
-  /** How many Actions were allowed to record at once. */
+  /** How many Runs were allowed to record at once. */
   readonly concurrency: number;
-  /** What each Action that recorded produced, in the order they were asked for. */
+  /** The Conditions a Matrix varied, in order, and none for a plain request. */
+  readonly conditions: readonly string[];
+  /** What each Run that recorded produced, in the order they were asked for. */
   readonly runs: readonly RunReport[];
-  /** The Actions that did not record, and what stopped each. */
+  /** The Runs that did not record, and what stopped each. */
   readonly failures: readonly RunFailure[];
 };
 
 export type RunManyOptions = {
   /** Only this Project's Actions; every Project's when it is not named. */
   readonly project?: string;
-  /** How many Actions record at once, rather than `defaultConcurrency`. */
+  /**
+   * Only this Action of that Project. Named alongside Conditions, so that one
+   * Action can be recorded across a Matrix without every other one being.
+   */
+  readonly action?: string;
+  /**
+   * The Conditions to record each Action under, which is the Matrix. None of
+   * them records each Action exactly once, as a plain request always has.
+   */
+  readonly conditions?: readonly Condition[];
+  /** How many Runs record at once, rather than `defaultConcurrency`. */
   readonly concurrency?: number;
 };
 
@@ -169,14 +204,17 @@ export async function runAction(
 }
 
 /**
- * Runs every Action of one Project, or every Action of every Project, several
+ * Runs every Action of one Project, or every Action of every Project, or one
+ * named Action, each of them under every Condition a Matrix asked for -- several
  * at once.
  *
  * Recording concurrently is safe because a Run's output depends on the stepped
  * clock and not on wall-clock time (ADR 0001): contention for the machine
- * cannot perturb what the Frames are, only when they arrive.
+ * cannot perturb what the Frames are, only when they arrive. A Matrix's Runs
+ * queue here with every other Run for exactly that reason -- a Condition varies
+ * the circumstances the page is photographed under, not what a Frame is.
  *
- * One Action failing does not abandon the others. Each is recorded on its own
+ * One Run failing does not abandon the others. Each is recorded on its own
  * terms and the summary names the ones that failed, because a Project of twenty
  * Actions is not worth giving up over the one that cannot record.
  */
@@ -185,6 +223,7 @@ export async function runActions(
   options: RunManyOptions = {},
 ): Promise<RunSummary> {
   const concurrency = concurrencyOf(options.concurrency);
+  const conditions = options.conditions ?? [];
 
   const configured =
     options.project === undefined
@@ -193,12 +232,23 @@ export async function runActions(
 
   const requested = await Promise.all(
     configured.map(async (project) => {
-      const named = await readActions(workspace, project.name);
-      // One lease per Project, shared by every Action recording against it, so
-      // that the Project is started once rather than once an Action.
-      const lease: Lease = { outstanding: named.length };
+      // A named Action is checked here rather than left to fail as a Run, so
+      // that a misspelling fails the command outright instead of arriving as
+      // one entry in a summary for each Condition it would have recorded under.
+      const named =
+        options.action === undefined
+          ? await readActions(workspace, project.name)
+          : [await namedAction(workspace, project.name, options.action)];
 
-      return named.map((action) => ({ project, action, lease }));
+      // One lease per Project, shared by every Run recording against it, so
+      // that the Project is started once rather than once a Run.
+      const lease: Lease = { outstanding: named.length * Math.max(conditions.length, 1) };
+
+      return named.flatMap((action) =>
+        conditions.length === 0
+          ? [{ project, action, lease }]
+          : conditions.map((condition) => ({ project, action, lease, condition })),
+      );
     }),
   );
 
@@ -212,19 +262,28 @@ export async function runActions(
       failures.push({
         project: outcome.asked.project.name,
         action: outcome.asked.action,
+        condition: outcome.asked.condition?.name ?? null,
         message: messageOf(outcome.failure),
       });
     }
   }
 
-  return { concurrency, runs, failures };
+  return { concurrency, conditions: conditions.map((one) => one.name), runs, failures };
 }
 
-/** One Action asked for, and the lease its Project is shared through. */
+/** The name of an Action the Project declares, or a failure naming the one it does not. */
+async function namedAction(workspace: string, project: string, action: string): Promise<string> {
+  await actionModule(workspace, project, action);
+  return action;
+}
+
+/** One Run asked for, and the lease its Project is shared through. */
 type RunRequest = {
   readonly project: ProjectConfig;
   readonly action: string;
   readonly lease: Lease;
+  /** The Condition it records under, and nothing at all where it varies none. */
+  readonly condition?: Condition;
 };
 
 /**
@@ -236,13 +295,13 @@ type RunRequest = {
  * recording against it.
  */
 type Lease = {
-  /** How many of the Project's Actions have still to let go of it. */
+  /** How many of the Project's Runs have still to let go of it. */
   outstanding: number;
   /** The Project answering, started once and shared, or nothing until one needs it. */
   running?: Promise<RunningProject>;
 };
 
-/** What one Action recorded, or what stopped it. */
+/** What one Run recorded, or what stopped it. */
 type Outcome =
   | { readonly asked: RunRequest; readonly report: RunReport }
   | { readonly asked: RunRequest; readonly failure: unknown };
@@ -300,8 +359,20 @@ function concurrencyOf(asked: number | undefined): number {
 
 /** Everything one Run does, from the Action's declaration to its Artifacts. */
 async function record(workspace: string, asked: RunRequest): Promise<RunReport> {
-  const { project, action: actionName, lease } = asked;
+  const { project, action: actionName, lease, condition } = asked;
   const projectName = project.name;
+
+  // A Condition varies the circumstances rather than the Action, so everything
+  // it touches is settled here: where the Run is kept, how wide the page is,
+  // how it is put into a colour scheme, and what its Artifacts are called.
+  const viewport =
+    condition?.width === undefined
+      ? project.viewport
+      : { ...project.viewport, width: condition.width };
+  const theme = themeSwitch(condition?.scheme, project.theme);
+  // Named apart, because the Artifacts of light and dark are two clips: a
+  // README naming one of them must not be able to be handed the other.
+  const named = condition === undefined ? actionName : `${actionName}-${condition.name}`;
 
   /** This Run's own directory, once it has one to clean up after itself. */
   let produced: string | undefined;
@@ -344,7 +415,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
 
     const executable = await findHeadlessShell();
 
-    const begun = await beginRun(workspace, projectName, actionName, new Date());
+    const begun = await beginRun(workspace, projectName, actionName, new Date(), condition?.name);
     produced = begun.directory;
     const frames = join(begun.directory, "frames");
 
@@ -358,12 +429,13 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     const captured = await captureFrames({
       url: project.baseUrl,
       executable,
-      viewport: project.viewport,
+      viewport,
       framerate: timeline.framerate,
       states,
       directory: frames,
       ...(overlay === undefined ? {} : { overlay }),
       ...(substitution === undefined ? {} : { substitution }),
+      ...(theme === undefined ? {} : { theme }),
     });
 
     // Rendered after the Frames rather than before them, because a Mockup left
@@ -371,7 +443,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     // them, so it is swept up with them.
     const surround = await composite(asked, captured.colourScheme, {
       executable,
-      viewport: project.viewport,
+      viewport,
       file: join(frames, "mockup.png"),
     });
 
@@ -379,12 +451,12 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       frames,
       frameCount: states.length,
       framerate: timeline.framerate,
-      viewport: project.viewport,
+      viewport,
       videoWidth: project.videoWidth,
       gif: gifSettings(effective.values),
       ...(surround === undefined ? {} : { mockup: surround.composite }),
       directory: begun.directory,
-      name: actionName,
+      name: named,
     });
 
     // Frames are the bulk of a Run by far, and their only purpose was to be
@@ -398,6 +470,15 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       id: begun.id,
       recordedAt: begun.recordedAt,
       directory: begun.directory,
+      condition:
+        condition === undefined
+          ? null
+          : {
+              name: condition.name,
+              scheme: condition.scheme ?? null,
+              width: condition.width ?? null,
+              switched: theme?.kind ?? null,
+            },
       commit,
       tools,
       framerate: timeline.framerate,
@@ -423,7 +504,7 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     };
 
     await writeRun(report);
-    await pruneHistory(workspace, projectName, actionName);
+    await pruneHistory(workspace, projectName, actionName, condition?.name);
 
     return report;
   } catch (failure) {

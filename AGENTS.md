@@ -27,7 +27,8 @@ A pnpm workspace of TypeScript packages, built with project references.
   instant it began (ADR 0009). The ten most recent Runs of each Action are kept
   and older ones pruned. On this machine only, and never committed. A contact
   sheet of the Mockups lands beside them, under `mockups/`, where pruning does
-  not reach it.
+  not reach it, and the Runs of a Matrix under `conditions/<condition>/`, each
+  Condition keeping a Latest and a history of its own.
 - `spikes/` — throwaway evidence behind a decision: what an ADR was settled by,
   and the prototype sheets a design choice was made from. Not the engine;
   nothing imports it.
@@ -70,6 +71,14 @@ pnpm record run --all
 ```
 
 ```bash
+pnpm record run photos scroll-peek --scheme light,dark
+```
+
+```bash
+pnpm record run photos scroll-peek --width 480,900,1440
+```
+
+```bash
 pnpm record parameters photos scroll-peek
 ```
 
@@ -103,6 +112,48 @@ be started is started **once** and shared by every Action recording against it,
 and stopped when the last of them is done. **One Action failing does not abandon
 the others**: the rest record, the summary names what failed, and the command
 still fails.
+
+### Matrix Runs
+
+`--scheme light,dark` and `--width 480,900,1440` record one request across
+varied **Conditions**, so that showing a theme or a responsive layout is not
+maintaining near-identical duplicate Actions. Given together they multiply:
+`--scheme light,dark --width 480,1200` is four Runs. Both work alongside a
+Project or `--all` as well as one Action.
+
+A Condition varies the circumstances the page is photographed under and never
+what the Action does, which is why it is asked for at the command rather than
+declared in the module — how a clip is lit is not motion. Every Condition is an
+ordinary Run: it keeps a directory of its own under `conditions/<condition>/`,
+prunes its own ten, appears in `record history`, and **queues for the machine
+beside every other Run** at `--concurrency`. Because a Matrix is several Runs
+however few Actions it names, it reports as a summary even for one Action.
+
+Its Artifacts are named apart — `<action>-dark.mp4`, `<action>-light-480w.gif` —
+because the clip of the light theme and the clip of the dark one are two clips,
+and a README naming one must not be able to be handed the other.
+
+Colour scheme is switched by telling the browser what the reader prefers, which
+costs a Project built on `prefers-color-scheme` no configuration at all. A
+Project that decides its own theme declares a **theme hook** instead, and it is
+used **in preference to** the media query rather than as well as it:
+
+```toml
+[theme]
+light = "document.documentElement.dataset.theme = 'light'"
+dark = "document.documentElement.dataset.theme = 'dark'"
+```
+
+Both schemes are declared together, because a hook that can only go one way
+would record the second Condition in the first one's theme. The expression is
+evaluated after the page has loaded and before the first captured Frame, and a
+Run fails if the page rejects it.
+
+Whether the page then *changes* is reported and never insisted on — a site with
+one theme has one theme, and a Run says what the page it photographed reads as.
+Emulating a width is not so forgiving: the viewport really is that wide, so a
+narrower page is a taller clip at the Project's `video_width`, which is what
+makes three widths comparable side by side.
 
 Recording also needs `chrome-headless-shell` and `ffmpeg`, which are found on
 this machine unless `$RECORD_CHROME` or `$RECORD_FFMPEG` name a copy. Every Run
