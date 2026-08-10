@@ -126,6 +126,17 @@ test("`parameters --json` reports what an Action declares and what it will run w
       overridden: false,
     },
     {
+      name: "mockup",
+      kind: "choice",
+      describes: "The surround composited around the Frames",
+      // The Project said nothing about a surround, so this Action carries what
+      // a Project that says nothing gets.
+      default: "auto",
+      choices: ["auto", "none", "rounded", "browser-light", "browser-dark", "laptop", "phone"],
+      value: "auto",
+      overridden: false,
+    },
+    {
       name: "gifWidth",
       kind: "number",
       describes: "Width the GIF is encoded at, in pixels",
@@ -192,6 +203,7 @@ test("`set` writes an Override to the sidecar beside the Action, not into it", a
       ["cursor", "auto", false],
       ["cursorStyle", "soft-dot", false],
       ["cursorCaptions", false, false],
+      ["mockup", "auto", false],
       ["gifWidth", 640, false],
       ["gifFramerate", 20, false],
     ],

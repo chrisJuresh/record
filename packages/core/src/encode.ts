@@ -21,6 +21,22 @@ import { framePattern } from "./capture.js";
 import type { Viewport } from "./config.js";
 import { embedSnippet } from "./embed.js";
 import { RecordError } from "./errors.js";
+import type { Aperture } from "./render.js";
+
+/**
+ * A rendered Mockup, as the encoder composites the clip into it: an image with
+ * a hole in it, and where in that image the hole is.
+ */
+export type Composite = {
+  /** The rendered surround, as a file ffmpeg reads. */
+  readonly image: string;
+  readonly width: number;
+  readonly height: number;
+  /** Where the clip goes inside it, in the image's own pixels. */
+  readonly aperture: Aperture;
+  /** What everything the template left transparent is composited onto. */
+  readonly backdrop: string;
+};
 
 export type EncodeOptions = {
   /** Directory the Frames were written into. */
@@ -32,6 +48,8 @@ export type EncodeOptions = {
   /** Width the video Artifacts are encoded at, from the Project's configuration. */
   readonly videoWidth: number;
   readonly gif: GifSettings;
+  /** The Mockup composited around the Frames, where the Run composites one. */
+  readonly mockup?: Composite;
   /** Directory the Artifacts are written into, and the name they take. */
   readonly directory: string;
   readonly name: string;
@@ -62,7 +80,7 @@ type Planned = {
 };
 
 export async function encodeArtifacts(options: EncodeOptions): Promise<Encoded> {
-  const video = artifactDimensions(options.viewport, options.videoWidth);
+  const video = artifactDimensions(options.mockup ?? options.viewport, options.videoWidth);
   const planned = plan(options, video);
 
   // Every encode is waited for even once one has failed, so that cleaning up
@@ -99,7 +117,7 @@ function plan(options: EncodeOptions, video: Dimensions): Planned[] {
     { format: "webm", ...video, ...asCaptured },
     {
       format: "gif",
-      ...artifactDimensions(options.viewport, options.gif.width),
+      ...artifactDimensions(options.mockup ?? options.viewport, options.gif.width),
       framerate: options.gif.framerate,
       // Rounded up, because this only ever caps what the fps filter emits: a
       // cap below what the clip holds would shorten the GIF rather than guard
@@ -151,12 +169,72 @@ function argumentsFor(options: EncodeOptions, encoding: Encoding, file: string):
     "0",
     "-i",
     join(options.frames, framePattern),
+    // The surround, if there is one: one image behind and around every Frame,
+    // read as a second input rather than baked into the Frames themselves.
+    ...(options.mockup === undefined ? [] : ["-i", options.mockup.image]),
     "-frames:v",
     String(encoding.frames),
+    "-filter_complex",
+    filterGraph(options, encoding),
+    "-map",
+    "[out]",
     ...formatArguments(encoding),
     ...bitExactArguments,
     file,
   ];
+}
+
+/**
+ * Everything done to the Frames on the way to one Artifact: the Mockup
+ * composited around them, and then the scaling and resampling that Artifact's
+ * format asks for.
+ */
+function filterGraph(options: EncodeOptions, encoding: Encoding): string {
+  const shown =
+    options.mockup === undefined ? "[0:v]null[shown]" : compositeChain(options.mockup, options.framerate);
+
+  return `${shown};${formatChain(encoding)}`;
+}
+
+/**
+ * How a clip is put inside a Mockup, and the only way any of them is: the
+ * backdrop the template left transparent, the clip fitted into the aperture,
+ * and the surround laid over the top so that whatever it draws over the screen
+ * is drawn over the clip.
+ *
+ * This is the whole of what "adding a Mockup is adding a template" rests on --
+ * every preset that ships is composited by these four filters, which is what
+ * the contact sheet renders every one of them to show.
+ */
+export function compositeChain(mockup: Composite, framerate: number): string {
+  const { x, y, width, height } = mockup.aperture;
+
+  return (
+    `color=c=${ffmpegColour(mockup.backdrop)}:s=${mockup.width}x${mockup.height}:r=${framerate}[backdrop];` +
+    // Fitted to fill the aperture and cropped to the middle of what is left
+    // over, because an aperture the shape of the clip crops nothing and one
+    // that is not -- a handset around a landscape clip -- must not squash it.
+    `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,` +
+    `crop=${width}:${height}[clip];` +
+    `[backdrop][clip]overlay=${x}:${y}:shortest=1[inside];` +
+    "[inside][1:v]overlay=0:0[shown]"
+  );
+}
+
+/** What one Artifact's format does to the composited clip on the way out. */
+function formatChain(encoding: Encoding): string {
+  if (encoding.format !== "gif") {
+    return `[shown]${scale(encoding)}[out]`;
+  }
+
+  // A palette generated from the clip itself: the resampled Frames are split in
+  // two, one branch measures the colours the clip actually uses and the other
+  // is mapped through them. 256 colours chosen from the clip beat any fixed set
+  // of 256, by a margin that is plainly visible.
+  return (
+    `[shown]fps=${encoding.framerate},${scale(encoding)},split[measured][mapped];` +
+    "[measured]palettegen[palette];[mapped][palette]paletteuse[out]"
+  );
 }
 
 /** What distinguishes one Artifact's format from the others'. */
@@ -195,32 +273,76 @@ function formatArguments(encoding: Encoding): string[] {
         "2",
       ];
     case "gif":
-      return [
-        // A palette generated from the clip itself: the resampled Frames are
-        // split in two, one branch measures the colours the clip actually uses
-        // and the other is mapped through them. 256 colours chosen from the
-        // clip beat any fixed set of 256, by a margin that is plainly visible.
-        "-filter_complex",
-        `fps=${encoding.framerate},${scale(encoding)},split[measured][mapped];` +
-          "[measured]palettegen[palette];[mapped][palette]paletteuse",
-        // Loop forever: a clip that holds at both ends is meant to.
-        "-loop",
-        "0",
-      ];
+      // Loop forever: a clip that holds at both ends is meant to.
+      return ["-loop", "0"];
   }
 }
 
 /**
- * What both video Artifacts do the same way, whatever encodes them: the scale
- * down from the captured Frames, the pixel format every player can decode, and
- * the framerate the Frames were captured at.
+ * What both video Artifacts do the same way, whatever encodes them: the pixel
+ * format every player can decode, and the framerate the Frames were captured
+ * at.
  */
 function videoArguments(encoding: Encoding): string[] {
-  return ["-vf", scale(encoding), "-pix_fmt", "yuv420p", "-r", String(encoding.framerate)];
+  return ["-pix_fmt", "yuv420p", "-r", String(encoding.framerate)];
 }
 
 function scale(encoding: Encoding): string {
   return `scale=${encoding.width}:${encoding.height}:flags=lanczos`;
+}
+
+/** A backdrop as ffmpeg reads a colour, or a failure naming the one that is not one. */
+function ffmpegColour(css: string): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(css);
+
+  if (hex === null) {
+    throw new RecordError(`'${css}' is not a Mockup's backdrop, which is written #rrggbb`);
+  }
+  return `0x${hex[1] ?? ""}`;
+}
+
+export type CompositeFrameOptions = {
+  /** One Frame, as an image file. */
+  readonly frame: string;
+  /** Its size, which is what an Artifact of it alone would keep the shape of. */
+  readonly captured: Dimensions;
+  /** The Mockup it goes inside, or nothing at all for the undecorated one. */
+  readonly mockup?: Composite;
+  /** How wide the image is written, as an Artifact of the same clip would be. */
+  readonly width: number;
+  readonly file: string;
+};
+
+/**
+ * One Frame put inside one Mockup, written as an image.
+ *
+ * The same filters a Run composites its Frames through, so a contact sheet is
+ * evidence about the pipeline rather than a second rendering that happens to
+ * agree with it.
+ */
+export async function compositeFrame(options: CompositeFrameOptions): Promise<Dimensions> {
+  const size = artifactDimensions(options.mockup ?? options.captured, options.width);
+  const shown =
+    options.mockup === undefined ? "[0:v]null[shown]" : compositeChain(options.mockup, 1);
+
+  await ffmpeg([
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-i",
+    options.frame,
+    ...(options.mockup === undefined ? [] : ["-i", options.mockup.image]),
+    "-filter_complex",
+    `${shown};[shown]scale=${size.width}:${size.height}:flags=lanczos[out]`,
+    "-map",
+    "[out]",
+    "-frames:v",
+    "1",
+    ...bitExactArguments,
+    options.file,
+  ]);
+
+  return size;
 }
 
 /** The ffmpeg this machine encodes with: `$RECORD_FFMPEG` names one, or the one on PATH. */

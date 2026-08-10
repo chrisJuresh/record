@@ -19,6 +19,7 @@ start_command = "npm run preview"
 working_directory = 'C:\\demo\\site'
 source_repository = 'C:\\demo\\site'
 video_width = 960
+mockup = "laptop"
 published = true
 
 [viewport]
@@ -49,6 +50,7 @@ test("`projects --json` reports every configured Project", async () => {
       sourceRepository: "C:\\demo\\site",
       viewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
       videoWidth: 960,
+      mockup: "laptop",
       published: true,
     },
   ]);
@@ -68,6 +70,8 @@ test("a Project that declares only what it must gets the defaults, and is not Pu
       sourceRepository: "C:\\demo\\other",
       viewport: { width: 1440, height: 900, deviceScaleFactor: 2 },
       videoWidth: 1280,
+      // Nothing said about a surround is the browser window the page asks for.
+      mockup: "auto",
       published: false,
     },
   ]);

@@ -33,6 +33,12 @@ export type CapturedFrames = {
   readonly hashes: readonly string[];
   /** The copy substituted into the page, and what each selector matched. */
   readonly substituted: readonly Substitution[];
+  /**
+   * How the page reads, which is what a Mockup left to choose itself is chosen
+   * by. Asked of the page once, so it cannot make two Runs of one Action
+   * differ.
+   */
+  readonly colourScheme: ColourScheme;
 };
 
 export type CaptureOptions = {
@@ -48,6 +54,40 @@ export type CaptureOptions = {
   /** The copy substituted into the page, where the Action declares any. */
   readonly substitution?: TextSubstitution;
 };
+
+/** How a page reads, which is one of the things a Run reports about the page it recorded. */
+export type ColourScheme = "light" | "dark";
+
+/**
+ * What a page reads as, as the page itself answers it: the colour it actually
+ * paints behind its content, taken from the body and then from the document. A
+ * page painting nothing is white, which is what a browser shows.
+ *
+ * Asked of the page rather than of its stylesheet, so that a page dark by its
+ * own design is read the same way as one dark by preference.
+ */
+const colourScheme = `
+  (() => {
+    const painted = (element) => {
+      if (element === null) {
+        return null;
+      }
+      const parts = getComputedStyle(element).backgroundColor.match(/[\\d.]+/g);
+      if (parts === null || parts.length < 3) {
+        return null;
+      }
+      const [red, green, blue, alpha] = parts.map(Number);
+      if (alpha === 0) {
+        return null;
+      }
+      return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+    };
+
+    const lightness = painted(document.body) ?? painted(document.documentElement) ?? 1;
+
+    return lightness < 0.5 ? "dark" : "light";
+  })()
+`;
 
 /** Smooth scrolling would fight a scroll position chosen per Frame. */
 const stopSmoothScrolling = `
@@ -107,6 +147,13 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
 
     await stepper.evaluate(findScroller);
 
+    // Asked of the page as it will be photographed, replacement copy included:
+    // what a Mockup left to choose itself is chosen by is the page the Frames
+    // are of rather than the page as it was served. Asked once, so it cannot
+    // make two Runs of one Action differ.
+    const reads: ColourScheme =
+      (await stepper.evaluate(colourScheme)) === "dark" ? "dark" : "light";
+
     for (let frame = 0; frame < settlingFrames; frame++) {
       await stepper.next();
     }
@@ -148,6 +195,7 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
       repeated: stepper.repeatedFrames - repeatedWhileSettling,
       hashes,
       substituted,
+      colourScheme: reads,
     };
   } finally {
     await stepper.close();
@@ -192,7 +240,7 @@ function clicking(state: PageState): CursorState {
 const frameDigits = 5;
 
 /** The name of one Frame's file. */
-function frameFile(index: number): string {
+export function frameFile(index: number): string {
   return `frame-${String(index).padStart(frameDigits, "0")}.png`;
 }
 

@@ -41,7 +41,7 @@ export type BegunRun = {
 };
 
 /** Where every retained Run of one Action is kept. */
-function historyDirectory(workspace: string, project: string, action: string): string {
+export function historyDirectory(workspace: string, project: string, action: string): string {
   return join(workspace, "runs", project, action);
 }
 

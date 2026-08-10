@@ -9,16 +9,19 @@ import { resolve } from "node:path";
 import {
   actionModule,
   defaultConcurrency,
+  mockups,
   readActions,
   readHistory,
   readParameters,
   readProjects,
   readStatus,
   RecordError,
+  renderContactSheet,
   resetOverrides,
   runAction,
   runActions,
   setOverrides,
+  type ContactSheetReport,
   type ParameterReport,
   type ProjectConfig,
   type RunReport,
@@ -38,17 +41,20 @@ const usage = `record -- repeatable clips of locally-running websites
   record run --all                       Record every Action of every Project, at once
   record status [project]                Say which Actions have gone Stale
   record history <project> <action>      List the Runs of an Action still kept
+  record mockups                         List every Mockup a clip can be shown in
+  record mockups <project> <action>      Render every Mockup around a Frame of an Action
 
   --set <name>=<value>         Override a Parameter for this Run, and keep it
   --all                        Record every Project rather than one named Project
   --concurrency <n>            How many Actions record at once (${defaultConcurrency})
+  --at <seconds>               How far into an Action the contact sheet photographs (0)
   --json                       Emit machine-readable output
   --help                       Show this message
 
 The workspace holding projects/ is $RECORD_WORKSPACE, or this checkout.`;
 
 /** Commands that import an Action module, and so need a Node that reads TypeScript. */
-const readsActions = ["run", "parameters", "set", "reset"];
+const readsActions = ["run", "parameters", "set", "reset", "mockups"];
 
 /** Set on the relaunched process, so a Node that still cannot strip types says so once. */
 const relaunched = "RECORD_TYPE_STRIPPING";
@@ -69,7 +75,7 @@ async function main(argv: string[]): Promise<number> {
     return fail(`${(failure as Error).message}\n\n${usage}`);
   }
 
-  const { command, operands, json, sets, all, concurrency } = parsed;
+  const { command, operands, json, sets, all, concurrency, at } = parsed;
 
   for (const [option, given] of [
     ["--set", sets.length > 0],
@@ -79,6 +85,10 @@ async function main(argv: string[]): Promise<number> {
     if (given && command !== "run") {
       return fail(`only run takes ${option}\n\n${usage}`);
     }
+  }
+
+  if (at !== undefined && command !== "mockups") {
+    return fail(`only mockups takes --at\n\n${usage}`);
   }
 
   if (readsActions.includes(command) && !process.features.typescript) {
@@ -161,6 +171,18 @@ async function main(argv: string[]): Promise<number> {
         }
         return await history(project, action, json);
       }
+      case "mockups": {
+        const [project, action] = operands;
+        if (operands.length === 0) {
+          return listMockups(json);
+        }
+        if (project === undefined || action === undefined || operands.length > 2) {
+          return fail(
+            `mockups takes nothing, or one Project and one of its Actions\n\n${usage}`,
+          );
+        }
+        return await contactSheet(project, action, at, json);
+      }
       default:
         return fail(`unknown command '${command}'\n\n${usage}`);
     }
@@ -180,6 +202,8 @@ type Arguments = {
   readonly all: boolean;
   /** How many Actions record at once, or nothing when the default stands. */
   readonly concurrency: number | undefined;
+  /** How far into an Action a contact sheet photographs, in seconds. */
+  readonly at: number | undefined;
 };
 
 /** The command, its operands, and the options it was given, or a message about one it was not. */
@@ -189,22 +213,25 @@ function parse(argv: string[]): Arguments {
   let json = false;
   let all = false;
   let concurrency: number | undefined;
+  let at: number | undefined;
 
-  for (let at = 0; at < argv.length; at++) {
-    const argument = argv[at] ?? "";
+  for (let position = 0; position < argv.length; position++) {
+    const argument = argv[position] ?? "";
 
     if (argument === "--json") {
       json = true;
     } else if (argument === "--all") {
       all = true;
     } else if (argument === "--set") {
-      const assignment = argv[++at];
+      const assignment = argv[++position];
       if (assignment === undefined) {
         throw new Error("--set takes name=value");
       }
       sets.push(assignment);
     } else if (argument === "--concurrency") {
-      concurrency = actionsAtOnce(argv[++at]);
+      concurrency = actionsAtOnce(argv[++position]);
+    } else if (argument === "--at") {
+      at = instantOf(argv[++position]);
     } else if (argument.startsWith("-")) {
       throw new Error(`unknown option '${argument}'`);
     } else {
@@ -214,7 +241,7 @@ function parse(argv: string[]): Arguments {
 
   const [command = "", ...operands] = words;
 
-  return { command, operands, json, sets, all, concurrency };
+  return { command, operands, json, sets, all, concurrency, at };
 }
 
 /** How many Actions record at once, which is a count of Actions rather than a number. */
@@ -226,6 +253,17 @@ function actionsAtOnce(given: string | undefined): number {
   }
 
   return count;
+}
+
+/** How far into a clip something happens, which is somewhere within it. */
+function instantOf(given: string | undefined): number {
+  const seconds = Number(given);
+
+  if (given === undefined || given.trim() === "" || !Number.isFinite(seconds) || seconds < 0) {
+    throw new Error(`--at takes how far into the Action to photograph, not '${given ?? ""}'`);
+  }
+
+  return seconds;
 }
 
 async function projects(json: boolean): Promise<number> {
@@ -312,6 +350,56 @@ async function history(project: string, action: string, json: boolean): Promise<
   const kept = await readHistory(workspace(), project, action);
 
   return emit(json, kept, () => asHistory(kept));
+}
+
+/**
+ * Every Mockup a clip can be shown in. Read without a Project, a browser or a
+ * Run: choosing a surround starts with knowing which ones there are.
+ */
+function listMockups(json: boolean): number {
+  const offered = Object.values(mockups).map((mockup) => ({
+    name: mockup.name,
+    describes: mockup.describes,
+    backdrop: mockup.backdrop,
+  }));
+
+  const name = widest(offered.map((mockup) => mockup.name));
+
+  return emit(json, offered, () =>
+    offered.map((mockup) => `${mockup.name.padEnd(name)}  ${mockup.describes}\n`).join(""),
+  );
+}
+
+/**
+ * Every Mockup around one Frame of an Action, so that a surround is chosen by
+ * looking at it rather than by reading about it.
+ */
+async function contactSheet(
+  project: string,
+  action: string,
+  at: number | undefined,
+  json: boolean,
+): Promise<number> {
+  const rendered = await renderContactSheet(workspace(), project, action, {
+    ...(at === undefined ? {} : { at }),
+  });
+
+  return emit(json, rendered, () => asContactSheet(rendered));
+}
+
+/** Where each rendering went, and the page that shows them together. */
+function asContactSheet(rendered: ContactSheetReport): string {
+  const name = widest(rendered.mockups.map((entry) => entry.mockup));
+
+  return [
+    `${rendered.project} ${rendered.action}  Frame ${rendered.frame} at ${rendered.at}s`,
+    ...rendered.mockups.map(
+      (entry) =>
+        `  ${entry.mockup.padEnd(name)}  ${`${entry.width}x${entry.height}`.padEnd(9)}  ${entry.image}`,
+    ),
+    `  sheet ${rendered.page}`,
+    "",
+  ].join("\n");
 }
 
 function report(reported: ParameterReport, json: boolean): number {
@@ -415,6 +503,7 @@ function asRun(report: RunReport): string {
       : `  recorded the Project already answering at ${readyUrl}`,
     `  ${captured} Frames at ${report.framerate}fps (${seconds}s), ${repeated} repeated`,
     ...asCursor(report),
+    ...asMockup(report),
     ...asText(report),
     ...(report.overridden.length === 0
       ? []
@@ -441,6 +530,24 @@ function asCursor(report: RunReport): string[] {
   ];
 
   return drawn.length === 0 ? [] : [`  drew ${drawn.join(" and ")}`];
+}
+
+/**
+ * The surround the Frames were composited into, and nothing at all where they
+ * were composited into none. A Mockup the page chose says so, because the
+ * choice was not written down anywhere the operator can read it.
+ */
+function asMockup(report: RunReport): string[] {
+  if (report.mockup.name === "none") {
+    return [];
+  }
+
+  const chosen =
+    report.mockup.asked === report.mockup.name
+      ? ""
+      : ` (${report.mockup.asked}, and the page reads ${report.mockup.colourScheme})`;
+
+  return [`  inside the ${report.mockup.name} Mockup${chosen}`];
 }
 
 /**

@@ -73,6 +73,7 @@ before(async () => {
       `base_url = "${site.url}"`,
       `source_repository = "."`,
       "video_width = 320",
+      'mockup = "none"',
       "",
       "[viewport]",
       "width = 400",
@@ -312,6 +313,7 @@ test("a Run reports the Parameter values it ran with, the Artifacts' included", 
     cursor: "auto",
     cursorStyle: "soft-dot",
     cursorCaptions: false,
+    mockup: "none",
     gifWidth: 640,
     gifFramerate: 20,
   });
@@ -319,6 +321,7 @@ test("a Run reports the Parameter values it ran with, the Artifacts' included", 
   // An Action that only travels draws no cursor, so this clip is the page and
   // nothing else.
   assert.deepEqual(first.cursor, { shown: false, style: "soft-dot", captions: false });
+  assert.deepEqual(first.mockup, { asked: "none", name: "none", colourScheme: "dark" });
   assert.deepEqual(first.overridden, []);
   assert.deepEqual(first.warnings, []);
 });

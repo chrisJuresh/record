@@ -250,9 +250,14 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
   }
 }
 
-type Launched = { readonly process: ChildProcess; readonly wsUrl: string };
+export type Launched = { readonly process: ChildProcess; readonly wsUrl: string };
 
-async function launch(executable: string, profile: string): Promise<Launched> {
+/**
+ * The browser this tool drives, launched and reachable. Exported so that
+ * rendering a Mockup is the same browser under the same switches rather than a
+ * second way of opening one.
+ */
+export async function launch(executable: string, profile: string): Promise<Launched> {
   const child = spawn(executable, [
     "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
@@ -311,7 +316,7 @@ async function launch(executable: string, profile: string): Promise<Launched> {
  * The profile directory can only be removed once the browser has let go of it,
  * so the process is waited on rather than merely signalled.
  */
-async function stop(child: ChildProcess, profile: string): Promise<void> {
+export async function stop(child: ChildProcess, profile: string): Promise<void> {
   if (child.exitCode === null && child.signalCode === null) {
     const exited = onceEvent(child, "exit");
     await Promise.race([exited, after(closeTimeoutMs)]);

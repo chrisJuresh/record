@@ -81,6 +81,7 @@ before(async () => {
       `base_url = "${site.url}"`,
       `source_repository = "."`,
       "video_width = 320",
+      'mockup = "none"',
       "",
       "[viewport]",
       "width = 400",

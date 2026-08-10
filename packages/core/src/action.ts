@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { artifactParameters } from "./artifacts.js";
 import { cursorParameters } from "./cursor.js";
 import { RecordError } from "./errors.js";
+import { automaticMockup, mockupParameters } from "./mockup.js";
 import type { ParameterSetting } from "./settings.js";
 import { assertTextOverrides, type TextOverrides } from "./text.js";
 import type { EasingName, Timeline } from "./timeline.js";
@@ -72,6 +73,12 @@ export type ParameterValues<P extends Parameters> = { readonly [K in keyof P]: P
 /** Values chosen by hand, as they were read from the sidecar. */
 export type Overrides = Readonly<Record<string, ParameterSetting>>;
 
+/**
+ * As much of a Project as its Actions' Parameters depend on: the Mockup it
+ * chose, which every one of them carries as a default it may override.
+ */
+export type MockupChoice = { readonly mockup: string };
+
 /** What an Action will actually run with, and how it came to be that. */
 export type EffectiveParameters<P extends Parameters = Parameters> = {
   readonly values: ParameterValues<P>;
@@ -105,17 +112,25 @@ const easingNames: readonly EasingName[] = [
 
 /**
  * Every Parameter an Action runs with: the ones it declares, and the ones every
- * Action carries whether it names them or not -- the cursor drawn over the page
- * and the Artifacts encoded from it (ADR 0006). The carried ones come last, so
- * that a listing reads as the Action first, then what is drawn over it, then
- * what is done with its Frames.
+ * Action carries whether it names them or not -- the cursor drawn over the
+ * page, the Mockup composited around it, and the Artifacts encoded from it
+ * (ADR 0006). The carried ones come last, so that a listing reads as the Action
+ * first, then what is drawn around it, then what is done with its Frames.
+ *
+ * The Mockup is carried like the rest but defaults to the Project's own choice
+ * rather than to a constant, because a Mockup is chosen for a Project and
+ * overridden for the one Action that wants a different one.
  *
  * An Action naming one of the carried Parameters is refused rather than allowed
  * to shadow it, because two declarations of one name leave no way to say which
  * an Override meant.
  */
-export function allParameters(action: Action): Parameters {
-  const carried: Parameters = { ...cursorParameters, ...artifactParameters };
+export function allParameters(action: Action, project?: MockupChoice): Parameters {
+  const carried: Parameters = {
+    ...cursorParameters,
+    ...mockupParameters(project?.mockup ?? automaticMockup),
+    ...artifactParameters,
+  };
 
   for (const name of Object.keys(carried)) {
     if (action.parameters[name] !== undefined) {

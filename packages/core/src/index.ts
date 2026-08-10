@@ -5,6 +5,7 @@ export type {
   EasingParameter,
   EffectiveParameters,
   FlagParameter,
+  MockupChoice,
   NumberParameter,
   Overrides,
   ParameterDeclaration,
@@ -17,6 +18,9 @@ export type { ProjectConfig, Viewport } from "./config.js";
 export { RecordError } from "./errors.js";
 export { readHistory } from "./history.js";
 export type { Key, KeyName, KeyStroke } from "./keys.js";
+export type { ColourScheme } from "./capture.js";
+export { mockups } from "./mockup.js";
+export type { Mockup } from "./mockup.js";
 export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
 export { readOverrides, readParameters, resetOverrides, setOverrides } from "./overrides.js";
@@ -24,6 +28,8 @@ export type { ParameterReport, ReportedParameter } from "./overrides.js";
 export { defaultConcurrency, runAction, runActions } from "./run.js";
 export type { RunFailure, RunManyOptions, RunReport, RunSummary } from "./run.js";
 export type { ParameterSetting } from "./settings.js";
+export { renderContactSheet } from "./sheet.js";
+export type { ContactSheetOptions, ContactSheetReport, SheetEntry } from "./sheet.js";
 export { readStatus } from "./status.js";
 export type { ActionStatus, LastRun, ProjectStatus, StatusReport } from "./status.js";
 export type { Substitution, TextOverrides } from "./text.js";
