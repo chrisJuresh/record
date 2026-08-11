@@ -15,6 +15,7 @@
 import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { serveApp } from "./app.js";
 import { serveArtifact } from "./artifacts.js";
 import { CommandFailed, invoke, type RecordChild, type RecordCommand } from "./command.js";
 import { runRegistry, type RunEvent } from "./runs.js";
@@ -33,6 +34,12 @@ export type ServerOptions = {
   readonly command: RecordCommand;
   /** The workspace whose Projects are served, and whose Runs are played back. */
   readonly workspace: string;
+  /**
+   * The directory the app is served out of, which the command that starts this
+   * server names -- the app is part of the tool rather than of the workspace.
+   * Given none, this server answers with its API and nothing else.
+   */
+  readonly app?: string;
   /** The loopback port to bind, or an ephemeral one where none is asked for. */
   readonly port?: number;
 };
@@ -122,8 +129,11 @@ async function handle(
 
   const [section, ...path] = segments;
 
-  if (section === undefined) {
-    return get(request, response, () => answer(response, 200, index(serving)));
+  // The app is what this server is opened at, and everything not addressed to
+  // the API or to an Artifact is part of it. Those two are the reserved names,
+  // so a file the app grows later needs nothing added here.
+  if (section === undefined || (section !== "api" && section !== "artifacts")) {
+    return serveApp(response, serving.options.app, segments, method);
   }
 
   if (section === "artifacts") {
@@ -137,13 +147,13 @@ async function handle(
     });
   }
 
-  if (section !== "api") {
-    return answer(response, 404, { error: "nothing is served at that path" });
-  }
-
   // Everything below is the command, invoked and read back. Which command each
   // path names is the whole of the mapping: nothing here decides an answer.
   const [asked, ...under] = path;
+
+  if (asked === undefined) {
+    return get(request, response, () => answer(response, 200, index(serving)));
+  }
 
   if (asked === "projects") {
     return projects(request, response, serving, under);
@@ -240,12 +250,13 @@ function runs(
   answer(response, 404, { error: "nothing is served at that path" });
 }
 
-/** What this server offers, for whoever opened it in a browser to read. */
+/** What this server offers, for whoever is reading the API rather than the app. */
 function index(serving: Serving): unknown {
   return {
     record: "serving this machine only",
     workspace: serving.options.workspace,
     endpoints: [
+      "GET  /  the app",
       "GET  /api/projects",
       "GET  /api/projects/<project>/actions",
       "GET  /api/projects/<project>/actions/<action>/parameters",

@@ -21,3 +21,18 @@ fiddly in a custom shell.
 
 There is no application window to close, no auto-update path, and the tool is
 only usable while its server is running.
+
+## Amended
+
+The frontend is plain TypeScript modules compiled by `tsc` and served as they
+are, rather than Svelte. Nothing else here changes: it is still an ordinary
+browser at a loopback address, launched from a `.cmd` shortcut.
+
+A framework means a bundler, and a bundler is a build step and a dependency tree
+inside a workspace whose only dependencies are TypeScript, a type declaration
+package and a TOML parser — and `pnpm build` is the typecheck, which plain
+modules already are. What the app does is a rail of Projects, one clip on a
+stage, and buttons that ask the server to record: one element tree redrawn from
+one state, which is what a framework saves writing rather than what it makes
+possible. The decision this record is about is the loopback web app against the
+desktop shell, and that stands.

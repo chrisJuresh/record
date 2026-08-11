@@ -3,7 +3,7 @@
  * The `record` command. The CLI is the real interface: the server and the UI
  * reach the tool through these commands rather than around them.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { startServer } from "@record/server";
@@ -51,7 +51,7 @@ const usage = `record -- repeatable clips of locally-running websites
   record history <project> <action> <condition>    ...of one Matrix Condition
   record mockups                         List every Mockup a clip can be shown in
   record mockups <project> <action>      Render every Mockup around a Frame of an Action
-  record serve                           Serve these operations over HTTP, on this machine only
+  record serve                           Serve the app and these operations, on this machine only
 
   --set <name>=<value>         Override a Parameter for this Run, and keep it
   --all                        Record every Project rather than one named Project
@@ -61,6 +61,7 @@ const usage = `record -- repeatable clips of locally-running websites
   --progress                   Say what a Run is doing, on stderr, as it does it
   --at <seconds>               How far into an Action the contact sheet photographs (0)
   --port <n>                   The loopback port to serve on (an ephemeral one)
+  --open                       Open the app in this machine's browser once it is serving
   --json                       Emit machine-readable output
   --help                       Show this message
 
@@ -69,6 +70,14 @@ apart -- '--scheme light,dark' writes <action>-light and <action>-dark. Given
 together they multiply, so '--scheme light,dark --width 480,1200' is four Runs.
 
 The workspace holding projects/ is $RECORD_WORKSPACE, or this checkout.`;
+
+/**
+ * Where the app the server serves lives: the package beside this one, since the
+ * app is part of the tool rather than of the workspace it is pointed at. The
+ * command says so rather than the server going looking, because the command is
+ * the thing that was installed.
+ */
+const appDirectory = resolve(import.meta.dirname, "../../../app");
 
 /** Commands that import an Action module, and so need a Node that reads TypeScript. */
 const readsActions = ["run", "parameters", "set", "reset", "mockups"];
@@ -92,7 +101,7 @@ async function main(argv: string[]): Promise<number> {
     return fail(`${(failure as Error).message}\n\n${usage}`);
   }
 
-  const { command, operands, json, sets, all, schemes, widths, concurrency, at, port, progress } =
+  const { command, operands, json, sets, all, schemes, widths, concurrency, at, port, open, progress } =
     parsed;
 
   for (const [option, given] of [
@@ -112,8 +121,13 @@ async function main(argv: string[]): Promise<number> {
     return fail(`only mockups takes --at\n\n${usage}`);
   }
 
-  if (port !== undefined && command !== "serve") {
-    return fail(`only serve takes --port\n\n${usage}`);
+  for (const [option, given] of [
+    ["--port", port !== undefined],
+    ["--open", open],
+  ] as const) {
+    if (given && command !== "serve") {
+      return fail(`only serve takes ${option}\n\n${usage}`);
+    }
   }
 
   if (readsActions.includes(command) && !process.features.typescript) {
@@ -236,7 +250,7 @@ async function main(argv: string[]): Promise<number> {
         if (operands.length > 0) {
           return fail(`serve takes no arguments\n\n${usage}`);
         }
-        return await serve(port, json);
+        return await serve(port, open, json);
       }
       default:
         return fail(`unknown command '${command}'\n\n${usage}`);
@@ -265,6 +279,8 @@ type Arguments = {
   readonly at: number | undefined;
   /** The loopback port to serve on, or nothing for an ephemeral one. */
   readonly port: number | undefined;
+  /** Whether the app is opened in this machine's browser once it is serving. */
+  readonly open: boolean;
   /** Whether a Run says what it is doing while it is doing it. */
   readonly progress: boolean;
 };
@@ -277,6 +293,7 @@ function parse(argv: string[]): Arguments {
   const widths: string[] = [];
   let json = false;
   let all = false;
+  let open = false;
   let progress = false;
   let concurrency: number | undefined;
   let at: number | undefined;
@@ -289,6 +306,8 @@ function parse(argv: string[]): Arguments {
       json = true;
     } else if (argument === "--all") {
       all = true;
+    } else if (argument === "--open") {
+      open = true;
     } else if (argument === "--progress") {
       progress = true;
     } else if (argument === "--set") {
@@ -316,7 +335,20 @@ function parse(argv: string[]): Arguments {
 
   const [command = "", ...operands] = words;
 
-  return { command, operands, json, sets, all, schemes, widths, concurrency, at, port, progress };
+  return {
+    command,
+    operands,
+    json,
+    sets,
+    all,
+    schemes,
+    widths,
+    concurrency,
+    at,
+    port,
+    open,
+    progress,
+  };
 }
 
 /**
@@ -504,19 +536,21 @@ async function contactSheet(
 }
 
 /**
- * Serves these same operations over HTTP, bound to loopback, until it is
- * stopped. The server invokes this command for everything it answers, which is
- * why there is no second implementation of any of it to keep in step.
+ * Serves the app and these same operations over HTTP, bound to loopback, until
+ * it is stopped. The server invokes this command for everything it answers,
+ * which is why there is no second implementation of any of it to keep in step.
  *
  * The URL is said as soon as it is bound, because whatever started the server
- * has to know where to open.
+ * has to know where to open -- and `--open` is that, for a shortcut which has
+ * nobody to tell.
  */
-async function serve(port: number | undefined, json: boolean): Promise<number> {
+async function serve(port: number | undefined, open: boolean, json: boolean): Promise<number> {
   const running = await startServer({
     workspace: workspace(),
     // The command that started it, so the server invokes exactly this build of
     // it rather than whichever `record` this machine would find.
     command: { executable: process.execPath, entry: [import.meta.filename] },
+    app: appDirectory,
     ...(port === undefined ? {} : { port }),
   });
 
@@ -525,6 +559,10 @@ async function serve(port: number | undefined, json: boolean): Promise<number> {
     { url: running.url, port: running.port },
     () => `record is serving at ${running.url}\n`,
   );
+
+  if (open) {
+    openBrowser(running.url);
+  }
 
   // Serving is the command: it holds the process open until it is interrupted,
   // and stops the Runs it started on the way out.
@@ -537,6 +575,31 @@ async function serve(port: number | undefined, json: boolean): Promise<number> {
   }
 
   return 0;
+}
+
+/**
+ * Opens the app in whatever browser this machine opens a link with, so that a
+ * shortcut is the whole of starting the tool.
+ *
+ * A browser that could not be opened is said and not failed: the server is
+ * serving, and the URL it is serving at has already been printed.
+ */
+function openBrowser(url: string): void {
+  const [executable, args] =
+    process.platform === "win32"
+      ? // `start` is the shell's, and its first argument is the window title --
+        // an empty one, or a URL in quotes would be taken for it.
+        ["cmd", ["/c", "start", "", url]]
+      : process.platform === "darwin"
+        ? ["open", [url]]
+        : ["xdg-open", [url]];
+
+  const opening = spawn(executable, args, { stdio: "ignore", detached: true });
+
+  opening.on("error", (failure: Error) => {
+    process.stderr.write(`could not open ${url}: ${failure.message}\n`);
+  });
+  opening.unref();
 }
 
 /** Where each rendering went, and the page that shows them together. */
