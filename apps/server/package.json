@@ -1,0 +1,14 @@
+{
+  "name": "@record/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The local HTTP server. It holds no recording logic of its own: it invokes the record command.",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "22.16.0",
+    "typescript": "5.9.3"
+  }
+}

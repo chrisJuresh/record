@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/fixture-site" },
+    { "path": "apps/server" },
     { "path": "apps/cli" }
   ]
 }

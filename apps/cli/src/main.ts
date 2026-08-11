@@ -6,6 +6,8 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
+import { startServer } from "@record/server";
+
 import {
   actionModule,
   conditionsFor,
@@ -28,6 +30,7 @@ import {
   type ContactSheetReport,
   type ParameterReport,
   type ProjectConfig,
+  type RunProgress,
   type RunReport,
   type RunSummary,
   type StatusReport,
@@ -48,13 +51,16 @@ const usage = `record -- repeatable clips of locally-running websites
   record history <project> <action> <condition>    ...of one Matrix Condition
   record mockups                         List every Mockup a clip can be shown in
   record mockups <project> <action>      Render every Mockup around a Frame of an Action
+  record serve                           Serve these operations over HTTP, on this machine only
 
   --set <name>=<value>         Override a Parameter for this Run, and keep it
   --all                        Record every Project rather than one named Project
   --scheme <light,dark>        Record across colour schemes, as a Matrix
   --width <n,n>                Record at several viewport widths, as a Matrix
   --concurrency <n>            How many Runs record at once (${defaultConcurrency})
+  --progress                   Say what a Run is doing, on stderr, as it does it
   --at <seconds>               How far into an Action the contact sheet photographs (0)
+  --port <n>                   The loopback port to serve on (an ephemeral one)
   --json                       Emit machine-readable output
   --help                       Show this message
 
@@ -86,7 +92,8 @@ async function main(argv: string[]): Promise<number> {
     return fail(`${(failure as Error).message}\n\n${usage}`);
   }
 
-  const { command, operands, json, sets, all, schemes, widths, concurrency, at } = parsed;
+  const { command, operands, json, sets, all, schemes, widths, concurrency, at, port, progress } =
+    parsed;
 
   for (const [option, given] of [
     ["--set", sets.length > 0],
@@ -94,6 +101,7 @@ async function main(argv: string[]): Promise<number> {
     ["--scheme", schemes.length > 0],
     ["--width", widths.length > 0],
     ["--concurrency", concurrency !== undefined],
+    ["--progress", progress],
   ] as const) {
     if (given && command !== "run") {
       return fail(`only run takes ${option}\n\n${usage}`);
@@ -102,6 +110,10 @@ async function main(argv: string[]): Promise<number> {
 
   if (at !== undefined && command !== "mockups") {
     return fail(`only mockups takes --at\n\n${usage}`);
+  }
+
+  if (port !== undefined && command !== "serve") {
+    return fail(`only serve takes --port\n\n${usage}`);
   }
 
   if (readsActions.includes(command) && !process.features.typescript) {
@@ -188,8 +200,8 @@ async function main(argv: string[]): Promise<number> {
         // A Matrix is several Runs however few Actions it names, so even one
         // Action reports as the summary of what a request produced.
         return project !== undefined && action !== undefined && matrix.length === 0
-          ? await run(project, action, json)
-          : await runEvery(project, action, matrix, concurrency, json);
+          ? await run(project, action, progress, json)
+          : await runEvery(project, action, matrix, concurrency, progress, json);
       }
       case "status": {
         const [project] = operands;
@@ -220,6 +232,12 @@ async function main(argv: string[]): Promise<number> {
         }
         return await contactSheet(project, action, at, json);
       }
+      case "serve": {
+        if (operands.length > 0) {
+          return fail(`serve takes no arguments\n\n${usage}`);
+        }
+        return await serve(port, json);
+      }
       default:
         return fail(`unknown command '${command}'\n\n${usage}`);
     }
@@ -245,6 +263,10 @@ type Arguments = {
   readonly concurrency: number | undefined;
   /** How far into an Action a contact sheet photographs, in seconds. */
   readonly at: number | undefined;
+  /** The loopback port to serve on, or nothing for an ephemeral one. */
+  readonly port: number | undefined;
+  /** Whether a Run says what it is doing while it is doing it. */
+  readonly progress: boolean;
 };
 
 /** The command, its operands, and the options it was given, or a message about one it was not. */
@@ -255,8 +277,10 @@ function parse(argv: string[]): Arguments {
   const widths: string[] = [];
   let json = false;
   let all = false;
+  let progress = false;
   let concurrency: number | undefined;
   let at: number | undefined;
+  let port: number | undefined;
 
   for (let position = 0; position < argv.length; position++) {
     const argument = argv[position] ?? "";
@@ -265,6 +289,8 @@ function parse(argv: string[]): Arguments {
       json = true;
     } else if (argument === "--all") {
       all = true;
+    } else if (argument === "--progress") {
+      progress = true;
     } else if (argument === "--set") {
       const assignment = argv[++position];
       if (assignment === undefined) {
@@ -279,6 +305,8 @@ function parse(argv: string[]): Arguments {
       concurrency = runsAtOnce(argv[++position]);
     } else if (argument === "--at") {
       at = instantOf(argv[++position]);
+    } else if (argument === "--port") {
+      port = portOf(argv[++position]);
     } else if (argument.startsWith("-")) {
       throw new Error(`unknown option '${argument}'`);
     } else {
@@ -288,7 +316,7 @@ function parse(argv: string[]): Arguments {
 
   const [command = "", ...operands] = words;
 
-  return { command, operands, json, sets, all, schemes, widths, concurrency, at };
+  return { command, operands, json, sets, all, schemes, widths, concurrency, at, port, progress };
 }
 
 /**
@@ -321,6 +349,17 @@ function runsAtOnce(given: string | undefined): number {
   return count;
 }
 
+/** The port to serve on, which is a port a machine has -- 0 asks for any free one. */
+function portOf(given: string | undefined): number {
+  const port = Number(given);
+
+  if (given === undefined || !Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`--port takes the port to serve on, not '${given ?? ""}'`);
+  }
+
+  return port;
+}
+
 /** How far into a clip something happens, which is somewhere within it. */
 function instantOf(given: string | undefined): number {
   const seconds = Number(given);
@@ -345,8 +384,13 @@ async function actions(project: string, json: boolean): Promise<number> {
 }
 
 /** One Action recorded on its own, which is what a request varying nothing asks for. */
-async function run(project: string, action: string, json: boolean): Promise<number> {
-  const recorded = await runAction(workspace(), project, action);
+async function run(
+  project: string,
+  action: string,
+  progress: boolean,
+  json: boolean,
+): Promise<number> {
+  const recorded = await runAction(workspace(), project, action, watching(progress));
   warnAbout(recorded.warnings);
 
   return emit(json, recorded, () => asRun(recorded));
@@ -366,6 +410,7 @@ async function runEvery(
   action: string | undefined,
   conditions: readonly Condition[],
   concurrency: number | undefined,
+  progress: boolean,
   json: boolean,
 ): Promise<number> {
   const recorded = await runActions(workspace(), {
@@ -373,6 +418,7 @@ async function runEvery(
     ...(action === undefined ? {} : { action }),
     ...(conditions.length === 0 ? {} : { conditions }),
     ...(concurrency === undefined ? {} : { concurrency }),
+    ...watching(progress),
   });
 
   warnAbout(recorded.runs.flatMap((run) => run.warnings));
@@ -457,6 +503,42 @@ async function contactSheet(
   return emit(json, rendered, () => asContactSheet(rendered));
 }
 
+/**
+ * Serves these same operations over HTTP, bound to loopback, until it is
+ * stopped. The server invokes this command for everything it answers, which is
+ * why there is no second implementation of any of it to keep in step.
+ *
+ * The URL is said as soon as it is bound, because whatever started the server
+ * has to know where to open.
+ */
+async function serve(port: number | undefined, json: boolean): Promise<number> {
+  const running = await startServer({
+    workspace: workspace(),
+    // The command that started it, so the server invokes exactly this build of
+    // it rather than whichever `record` this machine would find.
+    command: { executable: process.execPath, entry: [import.meta.filename] },
+    ...(port === undefined ? {} : { port }),
+  });
+
+  emit(
+    json,
+    { url: running.url, port: running.port },
+    () => `record is serving at ${running.url}\n`,
+  );
+
+  // Serving is the command: it holds the process open until it is interrupted,
+  // and stops the Runs it started on the way out.
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      void running.close().then(() => {
+        process.exit(0);
+      });
+    });
+  }
+
+  return 0;
+}
+
 /** Where each rendering went, and the page that shows them together. */
 function asContactSheet(rendered: ContactSheetReport): string {
   const name = widest(rendered.mockups.map((entry) => entry.mockup));
@@ -510,6 +592,24 @@ function relaunchStrippingTypes(argv: string[]): number {
 function emit(json: boolean, value: unknown, describe: () => string): number {
   process.stdout.write(json ? `${JSON.stringify(value, null, 2)}\n` : describe());
   return 0;
+}
+
+/**
+ * How a Run says what it is doing while it is doing it, or nothing at all where
+ * nobody asked -- one line of JSON per progress, on stderr, under a prefix of
+ * its own. Progress shares stderr with warnings and failures because stdout is
+ * the command's answer, and it is prefixed so that whatever is watching can
+ * tell the three apart. The server reads exactly these lines, so the prefix is
+ * a promise rather than a decoration.
+ */
+function watching(progress: boolean): { progress?: (event: RunProgress) => void } {
+  return progress
+    ? {
+        progress: (event) => {
+          process.stderr.write(`progress: ${JSON.stringify(event)}\n`);
+        },
+      }
+    : {};
 }
 
 /**

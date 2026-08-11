@@ -21,10 +21,22 @@ importers:
       '@record/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@record/server':
+        specifier: workspace:*
+        version: link:../server
     devDependencies:
       '@record/fixture-site':
         specifier: workspace:*
         version: link:../../packages/fixture-site
+      '@types/node':
+        specifier: 22.16.0
+        version: 22.16.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  apps/server:
+    devDependencies:
       '@types/node':
         specifier: 22.16.0
         version: 22.16.0

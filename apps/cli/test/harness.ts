@@ -3,7 +3,7 @@
  * `record` binary, and a workspace belonging to the test rather than to this
  * machine. No test may depend on a real Project being present.
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -30,6 +30,63 @@ export async function record(workspace: string, ...args: string[]): Promise<Comm
     const { stdout, stderr, code } = failure as CommandResult;
     return { stdout, stderr, code };
   }
+}
+
+/** The server the command starts, and where it answers. */
+export type ServedRecord = {
+  /** Where it is serving, with a trailing slash. */
+  readonly url: string;
+  close(): Promise<void>;
+};
+
+/**
+ * Starts `record serve` against a workspace of the test's own, on a port the
+ * machine chooses, and says where it answers.
+ *
+ * The server has no test seam of its own -- it invokes this command for
+ * everything it does -- so it is asserted here, by starting it exactly as
+ * anything else would and asking it over HTTP.
+ */
+export async function serving(workspace: string): Promise<ServedRecord> {
+  const child = spawn(process.execPath, [cli, "serve", "--json"], {
+    env: { ...process.env, RECORD_WORKSPACE: workspace },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let said = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    said += chunk;
+  });
+
+  // Read until the answer parses, rather than to the first newline: the command
+  // writes its machine-readable answers over several lines.
+  const url = await new Promise<string>((settle, stop) => {
+    let answered = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      answered += chunk;
+
+      try {
+        settle((JSON.parse(answered) as { url: string }).url);
+      } catch {
+        return;
+      }
+    });
+    child.once("error", stop);
+    child.once("exit", (code) => {
+      stop(new Error(`record serve exited with ${code ?? "a signal"}: ${said}`));
+    });
+  });
+
+  return {
+    url,
+    async close() {
+      child.kill();
+      await new Promise((settle) => child.once("exit", settle));
+    },
+  };
 }
 
 /**
