@@ -13,7 +13,7 @@ import { get, request as ask } from "node:http";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
-import type { RunProgress, RunReport, RunSummary } from "@record/core";
+import type { ParameterReport, RunProgress, RunReport, RunSummary } from "@record/core";
 import type { RunRequest } from "@record/server";
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
 
@@ -208,6 +208,64 @@ test("an Action's Parameters and the Mockups a clip can be shown in are served",
 
   assert.deepEqual(await read("api/projects/demo/actions/peek/parameters"), JSON.parse(stdout));
   assert.ok((await read<{ name: string }[]>("api/mockups")).some((one) => one.name === "laptop"));
+});
+
+/**
+ * Tuning over HTTP is `record set` and `record reset`, so an Override written
+ * from the app is the same line in the same sidecar as one written by hand --
+ * and what comes back is the report the command gives for itself, which is how
+ * whatever asked finds out what the Action will now run with.
+ */
+test("an Override is set over HTTP, into the sidecar the command writes", async () => {
+  const set = await written("api/projects/demo/actions/peek/parameters", {
+    set: ["framerate=15"],
+  });
+
+  assert.deepEqual(set, JSON.parse((await record(workspace, "parameters", "demo", "peek", "--json")).stdout));
+  assert.deepEqual(
+    set.parameters.filter((parameter) => parameter.overridden).map((parameter) => parameter.name),
+    ["framerate"],
+  );
+  assert.match(await readFile(set.sidecar, "utf8"), /framerate = 15/);
+});
+
+test("an Override is reset over HTTP, and the declared default is what is left", async () => {
+  await written("api/projects/demo/actions/peek/parameters", { set: ["framerate=15"] });
+
+  const reset = await written("api/projects/demo/actions/peek/parameters/reset", {
+    reset: ["framerate"],
+  });
+
+  const framerate = reset.parameters.find((parameter) => parameter.name === "framerate");
+
+  assert.equal(framerate?.overridden, false);
+  assert.equal(framerate?.value, framerate?.default);
+  assert.deepEqual(reset, JSON.parse((await record(workspace, "parameters", "demo", "peek", "--json")).stdout));
+});
+
+/**
+ * A value the Action will not take is refused in the command's own words, since
+ * "outside the declared range 1..120" is what tells whoever typed it what to
+ * type instead.
+ */
+test("a value the Action refuses is answered with what the command said about it", async () => {
+  const refused = await fetch(new URL("api/projects/demo/actions/peek/parameters", server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ set: ["framerate=1000"] }),
+  });
+
+  assert.equal(refused.status, 400);
+  assert.match(JSON.stringify(await refused.json()), /takes a number between 1 and 120/);
+
+  const nothing = await fetch(new URL("api/projects/demo/actions/peek/parameters/reset", server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reset: ["framerate"] }),
+  });
+
+  assert.equal(nothing.status, 400);
+  assert.match(JSON.stringify(await nothing.json()), /is not overridden, so there is nothing to reset/);
 });
 
 test("status over HTTP is exactly what the command says", async () => {
@@ -466,6 +524,20 @@ async function read<Answer = unknown>(path: string): Promise<Answer> {
   assert.equal(response.status, 200, `${path} answered ${response.status}: ${answered}`);
 
   return JSON.parse(answered) as Answer;
+}
+
+/** Asks the server to write something, and reads back what the command answered. */
+async function written(path: string, body: unknown): Promise<ParameterReport> {
+  const response = await fetch(new URL(path, server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const answered = await response.text();
+
+  assert.equal(response.status, 200, `${path} answered ${response.status}: ${answered}`);
+
+  return JSON.parse(answered) as ParameterReport;
 }
 
 /** Asks the server to record, which it answers before the Run is anywhere near done. */

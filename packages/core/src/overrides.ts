@@ -13,6 +13,7 @@ import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 
 import {
   allParameters,
+  choicesOf,
   effectiveParameters,
   loadAction,
   overrideFrom,
@@ -33,7 +34,10 @@ export type ReportedParameter = {
   /** The range a number is tuned within, and nothing for the other kinds. */
   readonly min?: number;
   readonly max?: number;
-  /** The values a choice takes, so that tuning it is picking one of them. */
+  /**
+   * The values a choice or an easing takes, so that tuning it is picking one of
+   * them rather than spelling it.
+   */
   readonly choices?: readonly string[];
   readonly value: ParameterSetting;
   readonly overridden: boolean;
@@ -209,7 +213,12 @@ function report(
       describes: declaration.describes,
       default: declaration.default,
       ...(declaration.kind === "number" ? { min: declaration.min, max: declaration.max } : {}),
-      ...(declaration.kind === "choice" ? { choices: declaration.choices } : {}),
+      // An easing takes one of a named set exactly as a choice does, so both
+      // report what that set is rather than leaving whatever offers it as a
+      // control to keep a copy of the four easing names.
+      ...(declaration.kind === "easing" || declaration.kind === "choice"
+        ? { choices: choicesOf(declaration) }
+        : {}),
       value: effective.values[name] as ParameterSetting,
       overridden: effective.overridden.includes(name),
     })),

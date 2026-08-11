@@ -46,6 +46,41 @@ export type Run = {
   readonly embed: string;
 };
 
+/** What a Parameter is worth once it has been resolved. */
+export type ParameterSetting = number | string | boolean;
+
+/** One declared Parameter, with what it is currently worth and why. */
+export type Parameter = {
+  readonly name: string;
+  readonly kind: "number" | "easing" | "choice" | "flag";
+  /** Written for whoever is tuning it, so it is shown to them. */
+  readonly describes: string;
+  readonly default: ParameterSetting;
+  /** The range a number is tuned within, and nothing for the other kinds. */
+  readonly min?: number;
+  readonly max?: number;
+  /** The values a choice or an easing takes, so that tuning it is picking one. */
+  readonly choices?: readonly string[];
+  readonly value: ParameterSetting;
+  readonly overridden: boolean;
+};
+
+/** Everything tunable about one Action, and anything wrong with its sidecar. */
+export type ParameterReport = {
+  readonly project: string;
+  readonly action: string;
+  /** Where the Overrides are kept, whether or not there are any yet. */
+  readonly sidecar: string;
+  readonly parameters: readonly Parameter[];
+  /**
+   * Overrides that could not be applied -- a value the Action would refuse, or a
+   * Parameter it no longer declares. Said rather than dropped, because an Action
+   * rewritten out from under its sidecar would otherwise run quietly differently
+   * from how it reads.
+   */
+  readonly warnings: readonly string[];
+};
+
 /**
  * What a Run says about itself while it is still running. It says more than this
  * -- the Condition it is recording under, and what stopped it on the stage that
@@ -110,18 +145,43 @@ export function history(project: string, action: string): Promise<readonly Run[]
   return read<readonly Run[]>(["api", "history", project, action]);
 }
 
+/** What an Action declares, what it is tuned to, and what it will run with. */
+export function parameters(project: string, action: string): Promise<ParameterReport> {
+  return read<ParameterReport>(parametersOf(project, action));
+}
+
+/**
+ * Records Overrides written as `name=value`, and answers with what the Action
+ * will now run with -- which is read from the answer rather than assumed, since
+ * a value the Action refuses was never written down.
+ */
+export function set(
+  project: string,
+  action: string,
+  assignments: readonly string[],
+): Promise<ParameterReport> {
+  return wrote<ParameterReport>(parametersOf(project, action), { set: assignments });
+}
+
+/** Removes Overrides by name, leaving what the Action declares. */
+export function reset(
+  project: string,
+  action: string,
+  names: readonly string[],
+): Promise<ParameterReport> {
+  return wrote<ParameterReport>([...parametersOf(project, action), "reset"], { reset: names });
+}
+
+function parametersOf(project: string, action: string): readonly string[] {
+  return ["api", "projects", project, "actions", action, "parameters"];
+}
+
 /**
  * Asks for a recording, which is answered as soon as it has been asked for
  * rather than when it is done -- what it does next is watched.
  */
-export async function record(ask: Ask): Promise<Request> {
-  return answered<Request>(
-    await fetch(url(["api", "runs"]), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(ask),
-    }),
-  );
+export function record(ask: Ask): Promise<Request> {
+  return wrote<Request>(["api", "runs"], ask);
 }
 
 /**
@@ -188,6 +248,17 @@ function url(segments: readonly string[]): string {
 
 async function read<Answer>(segments: readonly string[]): Promise<Answer> {
   return answered<Answer>(await fetch(url(segments), { headers: { accept: "application/json" } }));
+}
+
+/** Asks the server to write something, and reads back what the command answered. */
+async function wrote<Answer>(segments: readonly string[], body: unknown): Promise<Answer> {
+  return answered<Answer>(
+    await fetch(url(segments), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 /**

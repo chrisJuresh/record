@@ -184,14 +184,17 @@ async function handle(
   return answer(response, 404, { error: "nothing is served at that path" });
 }
 
-/** What is read about a Project: its Actions, and one Action's Parameters. */
+/**
+ * What is read about a Project -- its Actions, and one Action's Parameters --
+ * and what is written of one Action's tuning.
+ */
 function projects(
   request: IncomingMessage,
   response: ServerResponse,
   serving: Serving,
   under: readonly string[],
-): void {
-  const [project, actions, action, parameters] = under;
+): void | Promise<void> {
+  const [project, actions, action, parameters, reset] = under;
 
   if (under.length === 0) {
     return get(request, response, () => command(response, serving, ["projects"]));
@@ -202,18 +205,116 @@ function projects(
   }
 
   if (
-    under.length === 4 &&
-    project !== undefined &&
-    actions === "actions" &&
-    action !== undefined &&
-    parameters === "parameters"
+    project === undefined ||
+    actions !== "actions" ||
+    action === undefined ||
+    parameters !== "parameters"
   ) {
-    return get(request, response, () =>
-      command(response, serving, ["parameters", project, action]),
-    );
+    return answer(response, 404, { error: "nothing is served at that path" });
+  }
+
+  // Reading what an Action is tuned to, and writing it: the same Parameters, so
+  // the same path, and which command it comes to is the method.
+  if (under.length === 4) {
+    return request.method === "POST"
+      ? tune(request, response, serving, "set", project, action)
+      : get(request, response, () => command(response, serving, ["parameters", project, action]));
+  }
+
+  // Removing an Override is its own command rather than setting one to nothing,
+  // because what is left is what the Action declares.
+  if (under.length === 5 && reset === "reset") {
+    return request.method === "POST"
+      ? tune(request, response, serving, "reset", project, action)
+      : answer(response, 405, { error: "an Override is reset by POST, not read" });
   }
 
   answer(response, 404, { error: "nothing is served at that path" });
+}
+
+/**
+ * Writes one Action's tuning: the Overrides to set, or the ones to remove.
+ *
+ * Both answer with the report the command gives for itself, so whatever asked
+ * reads what the Action will now run with rather than assuming it got what it
+ * sent -- and a value the Action refuses is answered in the command's own words,
+ * since "outside the declared range 1..120" is what says what to send instead.
+ */
+async function tune(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+  asked: "set" | "reset",
+  project: string,
+  action: string,
+): Promise<void> {
+  const body = await jsonIn(request);
+
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
+  }
+
+  const named = namesFor(body.said, asked);
+
+  if ("error" in named) {
+    return answer(response, 400, { error: named.error });
+  }
+
+  return command(response, serving, [asked, project, action, ...named.names]);
+}
+
+/**
+ * What a request to tune names: `name=value` for each Override to set, or the
+ * name of each to remove. What the command will take of them is the command's
+ * own business; that a request said any at all is this one's.
+ */
+function namesFor(
+  body: unknown,
+  asked: "set" | "reset",
+): { readonly names: readonly string[] } | { readonly error: string } {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { error: `a request to ${asked} is an object saying what to ${asked}` };
+  }
+
+  const named = (body as Record<string, unknown>)[asked];
+
+  if (asked === "set") {
+    const written = overridesIn(named);
+
+    return "error" in written ? { error: written.error } : { names: written.set };
+  }
+
+  if (!Array.isArray(named) || named.length === 0 || named.some((entry) => !isName(entry))) {
+    return { error: "'reset' is the names of Overrides to remove" };
+  }
+
+  return { names: named as string[] };
+}
+
+/**
+ * The `name=value` Overrides a request names, wherever one names them -- the same
+ * check for a request to record with them as for a request to write them, since
+ * it is the same list on the way to the same command.
+ */
+function overridesIn(value: unknown): { readonly set: readonly string[] } | { readonly error: string } {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((entry) => !isName(entry) || !entry.includes("="))
+  ) {
+    return { error: "'set' is a list of 'name=value' Overrides" };
+  }
+
+  return { set: value as string[] };
+}
+
+/**
+ * Whether something a request said is a name the command can be handed. A name
+ * beginning with a dash would reach the command as an option rather than as what
+ * it names, which is the one thing a request must not be able to smuggle in.
+ */
+function isName(value: unknown): value is string {
+  return typeof value === "string" && value !== "" && !value.startsWith("-");
 }
 
 /** The Runs this server has been asked for: asking for one, reading one, watching one. */
@@ -260,6 +361,8 @@ function index(serving: Serving): unknown {
       "GET  /api/projects",
       "GET  /api/projects/<project>/actions",
       "GET  /api/projects/<project>/actions/<action>/parameters",
+      "POST /api/projects/<project>/actions/<action>/parameters",
+      "POST /api/projects/<project>/actions/<action>/parameters/reset",
       "GET  /api/mockups",
       "GET  /api/status[?project=<project>]",
       "GET  /api/history/<project>/<action>[/<condition>]",
@@ -284,16 +387,13 @@ async function record(
   response: ServerResponse,
   serving: Serving,
 ): Promise<void> {
-  let body: unknown;
+  const body = await jsonIn(request);
 
-  try {
-    const text = await bodyOf(request);
-    body = text.trim() === "" ? {} : JSON.parse(text);
-  } catch (failure) {
-    return answer(response, 400, { error: (failure as Error).message });
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
   }
 
-  const asked = wordsFor(body);
+  const asked = wordsFor(body.said);
 
   if ("error" in asked) {
     return answer(response, 400, { error: asked.error });
@@ -382,10 +482,12 @@ function wordsFor(body: unknown): { readonly words: readonly string[] } | { read
 
   const sets = asked["set"];
   if (sets !== undefined) {
-    if (!Array.isArray(sets) || sets.some((entry) => typeof entry !== "string" || !entry.includes("="))) {
-      return { error: "'set' is a list of name=value Overrides" };
+    const written = overridesIn(sets);
+
+    if ("error" in written) {
+      return { error: written.error };
     }
-    for (const assignment of sets as string[]) {
+    for (const assignment of written.set) {
       words.push("--set", assignment);
     }
   }
@@ -495,6 +597,23 @@ function addressedHere(host: string | undefined): boolean {
     : (host.split(":")[0] ?? "");
 
   return loopbackNames.has(named.toLowerCase());
+}
+
+/**
+ * What a request said, as the JSON it says it in -- or what is wrong with it.
+ * Both requests that carry a body carry one of these, and a body that will not
+ * parse is the same answer for either.
+ */
+async function jsonIn(
+  request: IncomingMessage,
+): Promise<{ readonly said: unknown } | { readonly error: string }> {
+  try {
+    const text = await bodyOf(request);
+
+    return { said: text.trim() === "" ? {} : (JSON.parse(text) as unknown) };
+  } catch (failure) {
+    return { error: (failure as Error).message };
+  }
 }
 
 /** What a request said, up to as much of it as this server will read. */

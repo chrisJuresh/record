@@ -87,10 +87,15 @@ body {
   letter-spacing: -0.01em;
 }
 
+/*
+ * Rail, stage, Parameters: the three columns of the direction chosen from the
+ * sheet, with the Parameters pinned right so tuning is beside the clip it tunes
+ * rather than somewhere to navigate to.
+ */
 .body {
   flex: 1;
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-columns: 252px minmax(0, 1fr) 276px;
   min-height: 0;
 }
 
@@ -349,6 +354,131 @@ button.act.quiet {
   color: var(--accent);
 }
 
+/* -------------------------------------------------------------- Parameters */
+
+.params {
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--panel);
+}
+
+.params h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.param {
+  margin-bottom: 14px;
+}
+
+.param .row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.param .name {
+  font-size: 13px;
+}
+
+.param .value {
+  font-size: 12px;
+}
+
+.param .describes {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 1px;
+}
+
+/* A value chosen by hand rather than declared, marked as one: what an Action
+   will run with is never left to be worked out from what it declares. */
+.param.overridden .name::after {
+  content: "•";
+  color: var(--accent);
+  margin-left: 5px;
+}
+
+.param.overridden .value {
+  color: var(--accent);
+}
+
+button.act.tiny {
+  font-size: 11px;
+  padding: 0 5px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent);
+}
+
+button.act.tiny:hover {
+  background: var(--sunken);
+}
+
+.sliding {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.param input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+/* The value typed rather than hunted for, which a wide range needs. */
+.param input.typed {
+  width: 68px;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+/* What the declaration will take, since a slider does not say where it ends. */
+.param .extent {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin-top: 1px;
+  padding-right: 76px;
+}
+
+.param select {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  padding: 3px;
+  margin-top: 4px;
+}
+
+.param .ticking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.param .ticking input {
+  accent-color: var(--accent);
+}
+
+.params .trouble {
+  margin: 0 0 12px;
+}
+
 /* ------------------------------------------------------- progress and ruin */
 
 /*
@@ -415,4 +545,15 @@ button.act.quiet {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--ink);
+}
+
+/*
+ * Three columns and the width beside the clip do not both fit on a laptop, so
+ * the narrower the window the more the stage becomes one column. The rail and
+ * the Parameters keep their widths: they are what the app is steered with.
+ */
+@media (max-width: 1500px) {
+  .stage-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

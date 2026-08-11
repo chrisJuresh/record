@@ -12,7 +12,14 @@
  * redrawing a stage sixty times a second would take the clip out from under
  * whoever is watching it.
  */
-import { artifactUrl, embedUrl, type Artifact, type Run } from "./api.js";
+import {
+  artifactUrl,
+  embedUrl,
+  type Artifact,
+  type Parameter,
+  type ParameterSetting,
+  type Run,
+} from "./api.js";
 import {
   actionsIn,
   chosenAction,
@@ -30,6 +37,10 @@ export type Handlers = {
   runProject(project: string): void;
   runEverything(): void;
   showRailClips(showing: boolean): void;
+  /** Overrides one Parameter of one Action, by the value it is to take. */
+  tune(project: string, action: string, name: string, value: ParameterSetting): void;
+  /** Removes that Override, leaving what the Action declares. */
+  reset(project: string, action: string, name: string): void;
 };
 
 /** The nodes a Run in flight writes into, kept from the last full paint. */
@@ -41,6 +52,10 @@ type Live = {
   readonly progress: HTMLElement;
   /** Disabled while the Action it records is already recording. */
   readonly runAction: HTMLButtonElement | null;
+  /** The Parameters of the Action on the stage, which tuning redraws on its own. */
+  readonly parameters: HTMLElement;
+  /** What the controls in there call, since they are drawn again without a paint. */
+  readonly handlers: Handlers;
 };
 
 let live: Live | undefined;
@@ -50,6 +65,7 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   const badges = new Map<string, HTMLElement>();
   const tally = el("span", { class: "faint" }, [tallyOf(app)]);
   const progress = el("div", { class: "progress" });
+  const parameters = el("aside", { class: "params" });
 
   const chosen = chosenAction(app);
   const runAction =
@@ -62,11 +78,28 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     el("div", { class: "body" }, [
       rail(app, handlers, badges),
       stage(app, handlers, progress, runAction),
+      parameters,
     ]),
   );
 
-  live = { tally, badges, progress, runAction };
+  live = { tally, badges, progress, runAction, parameters, handlers };
   paintProgress(app);
+  paintTuning(app);
+}
+
+/**
+ * Draws the Parameters of the Action on the stage, and nothing else.
+ *
+ * Tuning is its own paint because a clip is playing beside it: a slider let go
+ * of would otherwise take the video out of the page and put a new one back,
+ * which reads as the clip restarting every time a value is nudged.
+ */
+export function paintTuning(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  live.parameters.replaceChildren(...tuningIn(app, live.handlers));
 }
 
 /**
@@ -340,6 +373,248 @@ function secondsOf(run: Run): number | undefined {
 function artifactOf(run: Run, format: Artifact["format"]): Artifact | undefined {
   return run.artifacts.find((artifact) => artifact.format === format);
 }
+
+/**
+ * Everything tunable about the Action on the stage: a control per declared
+ * Parameter, marked where it has been overridden, and the Overrides the Action
+ * will not take said out loud.
+ */
+function tuningIn(app: App, handlers: Handlers): readonly Node[] {
+  const action = chosenAction(app);
+
+  if (action === undefined) {
+    return [];
+  }
+
+  const heading = el("h3", {}, ["Parameters"]);
+  const tuning = action.tuning;
+
+  if (tuning === null) {
+    return [heading, el("p", { class: "faint" }, ["reading what this Action declares…"])];
+  }
+
+  return [
+    heading,
+    // A Parameter the Action no longer declares, or a value it will not take:
+    // said here rather than left in a sidecar nobody opens, because the Action
+    // is running with its declared default and reads as though it were tuned.
+    ...(tuning.warnings.length === 0
+      ? []
+      : [
+          troublePanel(
+            "Overrides that were not applied",
+            [...tuning.warnings, `They are written in ${tuning.sidecar}`].join("\n"),
+          ),
+        ]),
+    ...(action.refused === null ? [] : [troublePanel("That value was refused", action.refused)]),
+    ...tuning.parameters.map((parameter) => control(action, parameter, handlers)),
+  ];
+}
+
+/**
+ * One Parameter as the control its declaration calls for: a slider and a box for
+ * a number within its range, a menu for one of a named set, a box to tick for a
+ * flag. An Override is marked as one and can be put back, so that trying a value
+ * is never one-way.
+ */
+function control(action: ActionState, parameter: Parameter, handlers: Handlers): HTMLElement {
+  const tune = (value: ParameterSetting): void =>
+    handlers.tune(action.project, action.action, parameter.name, value);
+
+  const value = el("span", { class: `value num ${parameter.overridden ? "" : "faint"}` }, [
+    String(parameter.value),
+  ]);
+
+  return el("div", { class: `param${parameter.overridden ? " overridden" : ""}` }, [
+    el("div", { class: "row" }, [
+      nameOf(parameter),
+      value,
+      ...(parameter.overridden
+        ? [
+            button("reset", "act tiny", () =>
+              handlers.reset(action.project, action.action, parameter.name),
+            ),
+          ]
+        : []),
+    ]),
+    el("div", { class: "describes" }, [
+      parameter.overridden
+        ? `${parameter.describes} · declared ${String(parameter.default)}`
+        : parameter.describes,
+    ]),
+    ...(parameter.kind === "number"
+      ? numberControl(parameter, extentOf(parameter), value, tune)
+      : parameter.kind === "flag"
+        ? [tickBox(parameter, tune)]
+        : [menu(parameter, tune)]),
+  ]);
+}
+
+/**
+ * What the Parameter is called, which is what its control is labelled by.
+ *
+ * Everything but a flag is labelled with a `<label>`, so that reading the name
+ * and reaching the control are one gesture. A flag is not: clicking the label of
+ * a box to tick ticks it, and ticking it writes an Override to disk -- reading
+ * the name of a Parameter must not tune it.
+ */
+function nameOf(parameter: Parameter): HTMLElement {
+  return parameter.kind === "flag"
+    ? el("span", { class: "name", id: labelOf(parameter) }, [parameter.name])
+    : el("label", { class: "name", id: labelOf(parameter), for: fieldOf(parameter) }, [
+        parameter.name,
+      ]);
+}
+
+/**
+ * The range a number is tuned within, as its declaration reported it -- and
+ * nothing at all where the report carried none.
+ *
+ * A declared number always names its range, so nothing here should ever be
+ * missing. Standing in a 0 for one that is would draw a slider that runs from
+ * nowhere to nowhere, which is a control that lies rather than one that is
+ * absent, so the number is offered as a box on its own instead.
+ */
+function extentOf(parameter: Parameter): { readonly min: number; readonly max: number } | undefined {
+  return parameter.min === undefined || parameter.max === undefined
+    ? undefined
+    : { min: parameter.min, max: parameter.max };
+}
+
+/**
+ * A number, as a slider and as a box: the slider is how a duration is felt out,
+ * and the box is how a value already known is typed rather than hunted for.
+ *
+ * The slider writes when it is let go of and not while it is moving, because
+ * every write is an Override written to disk -- but the readout follows it, so
+ * what is being chosen is legible before it is chosen.
+ */
+function numberControl(
+  parameter: Parameter,
+  extent: { readonly min: number; readonly max: number } | undefined,
+  readout: HTMLElement,
+  tune: (value: ParameterSetting) => void,
+): readonly Node[] {
+  const within = extent === undefined ? {} : { min: String(extent.min), max: String(extent.max) };
+  const step = extent === undefined ? {} : { step: String(stepOf(extent)) };
+
+  const box = el("input", {
+    type: "number",
+    class: "typed num",
+    ...within,
+    ...step,
+    value: String(parameter.value),
+    ...(extent === undefined ? { id: fieldOf(parameter) } : {}),
+  });
+
+  // A box cleared or filled with something that is not a number is not a value
+  // to write: `Number("")` is 0, which would either be recorded as an Override
+  // nobody typed or refused as a value nobody chose. What is really in the
+  // sidecar goes back in the box instead.
+  box.addEventListener("change", () => {
+    const typed = Number(box.value);
+
+    if (box.value.trim() === "" || !Number.isFinite(typed)) {
+      box.value = String(parameter.value);
+      return;
+    }
+
+    tune(typed);
+  });
+
+  if (extent === undefined) {
+    return [el("div", { class: "sliding" }, [box])];
+  }
+
+  const range = el("input", {
+    id: fieldOf(parameter),
+    type: "range",
+    ...within,
+    ...step,
+    value: String(parameter.value),
+  });
+
+  range.addEventListener("input", () => {
+    readout.textContent = range.value;
+    box.value = range.value;
+  });
+  range.addEventListener("change", () => tune(Number(range.value)));
+
+  return [
+    el("div", { class: "sliding" }, [range, box]),
+    // What the declaration will take, since a slider does not say where it ends.
+    el("div", { class: "extent faint num" }, [
+      String(extent.min),
+      el("span", {}, ["–"]),
+      String(extent.max),
+    ]),
+  ];
+}
+
+/**
+ * How finely a slider moves, and what the box beside it will take.
+ *
+ * Whole units wherever the range is wide enough to want them, which is every
+ * duration, distance and framerate an Action declares. A narrower range is
+ * tuned in tenths and then in hundredths -- and never in a step derived from the
+ * span itself, which for 1..4 would be 0.03: a slider that cannot reach 2, and a
+ * box that calls 2 invalid for a Parameter counted in whole units.
+ */
+function stepOf(extent: { readonly min: number; readonly max: number }): number {
+  const span = extent.max - extent.min;
+
+  if (span >= 20) {
+    return 1;
+  }
+  if (span >= 2) {
+    return 0.1;
+  }
+
+  // A range of nothing is one value, and a step of 0 is a control no browser
+  // will move.
+  return span <= 0 ? 1 : 0.01;
+}
+
+/** One of a named set, which is what an easing and a choice both are. */
+function menu(parameter: Parameter, tune: (value: ParameterSetting) => void): HTMLElement {
+  const select = el("select", { id: fieldOf(parameter) });
+
+  for (const choice of parameter.choices ?? []) {
+    const option = el("option", { value: choice }, [choice]);
+    option.selected = choice === parameter.value;
+    select.append(option);
+  }
+
+  select.addEventListener("change", () => tune(select.value));
+
+  return select;
+}
+
+function tickBox(parameter: Parameter, tune: (value: ParameterSetting) => void): HTMLElement {
+  // Named by the Parameter's own name rather than by the label it sits in, which
+  // says what it is worth: "cursorCaptions", not "false".
+  const box = el("input", {
+    id: fieldOf(parameter),
+    type: "checkbox",
+    "aria-labelledby": labelOf(parameter),
+  });
+
+  box.checked = parameter.value === true;
+  box.addEventListener("change", () => tune(box.checked));
+
+  return el("label", { class: "ticking" }, [box, String(parameter.value)]);
+}
+
+/** What a control is called, so its label is the label of that control. */
+function fieldOf(parameter: Parameter): string {
+  return `parameter-${parameter.name}`;
+}
+
+/** ...and what that name is called, for a control labelled by it rather than for it. */
+function labelOf(parameter: Parameter): string {
+  return `parameter-${parameter.name}-name`;
+}
+
 
 /**
  * What each stage of a Run reads as: on the stage, and as short as a rail is
