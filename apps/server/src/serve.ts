@@ -36,10 +36,10 @@ export type ServerOptions = {
   readonly workspace: string;
   /**
    * The directory the app is served out of, which the command that starts this
-   * server names -- the app is part of the tool rather than of the workspace.
-   * Given none, this server answers with its API and nothing else.
+   * server names -- the app is part of the tool rather than of the workspace, so
+   * where it is is known by the thing that was installed.
    */
-  readonly app?: string;
+  readonly app: string;
   /** The loopback port to bind, or an ephemeral one where none is asked for. */
   readonly port?: number;
 };

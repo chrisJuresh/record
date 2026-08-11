@@ -9,6 +9,7 @@
  */
 import * as api from "./api.js";
 import {
+  actionOf,
   actionsIn,
   asking,
   ended,
@@ -21,10 +22,19 @@ import {
 import { paint, paintProgress, type Handlers } from "./view.js";
 
 /** Where the rail's clips being on or off is remembered between openings. */
-const thumbnailsKept = "record.thumbnails";
+const railClipsKept = "record.rail-clips";
+
+/**
+ * How many of the command's answers are read at once while the app settles.
+ *
+ * Every answer is a `record` invocation, so reading a machine of five Projects
+ * with ten Actions each would otherwise be fifty processes started at the same
+ * moment -- which is the machine the Runs are about to want.
+ */
+const readsAtOnce = 4;
 
 const root = pageRoot();
-const app = nothingYet(remembered(thumbnailsKept) ?? true);
+const app = nothingYet(remembered(railClipsKept) ?? true);
 
 const handlers: Handlers = {
   choose(project, action) {
@@ -44,9 +54,9 @@ const handlers: Handlers = {
     void ask({ all: true });
   },
 
-  showThumbnails(showing) {
-    app.thumbnails = showing;
-    remember(thumbnailsKept, showing);
+  showRailClips(showing) {
+    app.railClips = showing;
+    remember(railClipsKept, showing);
     repaint();
   },
 };
@@ -54,7 +64,7 @@ const handlers: Handlers = {
 repaint();
 void settle();
 
-/** The page the app is drawn into, which the shell it is served with carries. */
+/** The page the app is drawn into, which it is served inside. */
 function pageRoot(): HTMLElement {
   const found = document.getElementById("app");
 
@@ -68,34 +78,106 @@ function pageRoot(): HTMLElement {
 /**
  * What the server says about this machine: every Project, every Action of each,
  * and the Latest of each Action -- which is the newest Run it still keeps.
+ *
+ * Read Project by Project and Action by Action rather than all or nothing. One
+ * Action whose Runs cannot be read must not cost the rail every other Project:
+ * an app claiming this machine has no Projects because one directory is unwell
+ * is worse than an app saying which one it could not read.
  */
 async function settle(): Promise<void> {
+  let configured: readonly api.Project[];
+
   try {
-    app.projects = await Promise.all((await api.projects()).map(read));
-    app.chosen = firstAction(app.projects);
-    app.trouble = null;
+    configured = await api.projects();
   } catch (failure) {
+    // Nothing else is worth trying: what could not be read is the list of
+    // Projects everything else would have been read against.
     app.trouble = messageOf(failure);
+    repaint();
+    return;
   }
+
+  const troubles: string[] = [];
+
+  app.projects = await eachAtOnce(configured, (project) => read(project, troubles));
+  app.chosen = stillThere(app.chosen) ?? firstAction(app.projects);
+  app.trouble = troubles.length === 0 ? null : troubles.join("\n");
 
   repaint();
 }
 
-async function read(project: api.Project): Promise<ProjectState> {
-  const named = await api.actions(project.name);
+/** One Project's Actions, and the Latest of each of them. */
+async function read(project: api.Project, troubles: string[]): Promise<ProjectState> {
+  let named: readonly string[] = [];
+
+  try {
+    named = await api.actions(project.name);
+  } catch (failure) {
+    // The Project is still listed, by the name it is configured under: it is
+    // there, and what could not be read is what it declares.
+    troubles.push(`'${project.name}': ${messageOf(failure)}`);
+  }
 
   return {
-    project,
-    actions: await Promise.all(named.map((action) => readAction(project.name, action))),
+    configured: project,
+    actions: await eachAtOnce(named, (action) => readAction(project.name, action, troubles)),
   };
 }
 
-async function readAction(project: string, action: string): Promise<ActionState> {
-  // Newest first, so the Latest is the first of them -- and an Action nobody has
-  // run keeps none at all, which is a state rather than a failure.
-  const kept = await api.history(project, action);
+async function readAction(
+  project: string,
+  action: string,
+  troubles: string[],
+): Promise<ActionState> {
+  const idle = { project, action, doing: null, failure: null };
 
-  return { project, action, latest: kept[0] ?? null, doing: null, failure: null };
+  try {
+    // Newest first, so the Latest is the first of them -- and an Action nobody
+    // has run keeps none at all, which is a state rather than a failure.
+    const kept = await api.history(project, action);
+
+    return { ...idle, latest: kept[0] ?? null };
+  } catch (failure) {
+    // Listed by name with nothing to play, which is what it is: whether it has
+    // ever recorded is exactly what could not be read.
+    troubles.push(`'${project} ${action}': ${messageOf(failure)}`);
+
+    return { ...idle, latest: null };
+  }
+}
+
+/**
+ * Reads them a few at a time, answering in the order they were asked about. The
+ * same shape the tool records Actions in, and for the same reason: the machine
+ * running this has Runs to do.
+ */
+async function eachAtOnce<Item, Answer>(
+  items: readonly Item[],
+  read: (item: Item) => Promise<Answer>,
+): Promise<Answer[]> {
+  const answers: Answer[] = [];
+  const queue = items.entries();
+
+  const worker = async (): Promise<void> => {
+    for (const [at, item] of queue) {
+      answers[at] = await read(item);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(readsAtOnce, items.length) }, worker));
+
+  return answers;
+}
+
+/**
+ * The Action on the stage, where it is still one of the Actions there are --
+ * reading the machine again must not move the stage out from under whoever was
+ * watching a clip on it.
+ */
+function stillThere(chosen: App["chosen"]): App["chosen"] {
+  return chosen !== null && actionOf(app, chosen.project, chosen.action) !== undefined
+    ? chosen
+    : null;
 }
 
 /** The Action the app opens on, which is the first one there is. */

@@ -64,7 +64,7 @@ body {
   color: var(--ink-faint);
 }
 
-/* ------------------------------------------------------------------- frame */
+/* ------------------------------------------------------------------ layout */
 
 .app {
   height: 100%;
@@ -210,7 +210,7 @@ button.act.quiet {
  * "which of these is the one I meant" rather than as a list of words. Off is a
  * real state: eight Actions playing at once is a busy sidebar.
  */
-.rail .thumb {
+.rail .gif {
   display: block;
   /* The clip's own ratio at the rail's width: the GIF is encoded wider than the
      rail is, and its height is the height that width comes to. */
@@ -238,6 +238,12 @@ button.act.quiet {
 .badge {
   font-size: 11px;
   color: var(--accent);
+}
+
+/* ...or that the last Run of it failed, which a rail nobody is looking at
+   otherwise leaves to be guessed at one Action at a time. */
+.badge.failed {
+  color: var(--trouble);
 }
 
 .badge:empty {

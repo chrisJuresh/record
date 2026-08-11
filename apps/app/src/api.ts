@@ -46,21 +46,23 @@ export type Run = {
   readonly embed: string;
 };
 
-/** What a Run says about itself while it is still running. */
+/**
+ * What a Run says about itself while it is still running. It says more than this
+ * -- the Condition it is recording under, and what stopped it on the stage that
+ * says one did -- and how a Run ended is read from the request ending rather
+ * than from the last thing it said on the way.
+ */
 export type Progress = {
   readonly project: string;
   readonly action: string;
-  readonly condition: string | null;
   readonly stage: "starting" | "capturing" | "encoding" | "recorded" | "failed";
   readonly frames?: { readonly captured: number; readonly of: number };
-  readonly message?: string;
 };
 
 /** One Run that failed, named beside the others that recorded regardless. */
 export type Failure = {
   readonly project: string;
   readonly action: string;
-  readonly condition: string | null;
   readonly message: string;
 };
 

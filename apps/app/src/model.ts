@@ -30,7 +30,8 @@ export type ActionState = {
 };
 
 export type ProjectState = {
-  readonly project: Project;
+  /** The Project as the command reports it configured. */
+  readonly configured: Project;
   readonly actions: readonly ActionState[];
 };
 
@@ -41,7 +42,7 @@ export type App = {
   projects: readonly ProjectState[];
   chosen: Chosen | null;
   /** Whether the rail shows a clip of each Action under its name. */
-  thumbnails: boolean;
+  railClips: boolean;
   /** The requests being watched, and what each of them named. */
   readonly asked: Map<string, Ask>;
   /** What the app itself could not do, which is never a Run failing. */
@@ -49,24 +50,23 @@ export type App = {
 };
 
 /** An app that has been told nothing yet. */
-export function nothingYet(thumbnails: boolean): App {
-  return { projects: [], chosen: null, thumbnails, asked: new Map(), trouble: null };
+export function nothingYet(railClips: boolean): App {
+  return { projects: [], chosen: null, railClips, asked: new Map(), trouble: null };
+}
+
+/** One Action of one Project, or nothing where neither is configured here. */
+export function actionOf(app: App, project: string, action: string): ActionState | undefined {
+  return actionsIn(app).find((state) => state.project === project && state.action === action);
 }
 
 /** The Action on the stage, or nothing where there is none to be on it. */
 export function chosenAction(app: App): ActionState | undefined {
-  const chosen = app.chosen;
-
-  return chosen === null
-    ? undefined
-    : actionsIn(app).find(
-        (action) => action.project === chosen.project && action.action === chosen.action,
-      );
+  return app.chosen === null ? undefined : actionOf(app, app.chosen.project, app.chosen.action);
 }
 
 /** The Project the Action on the stage belongs to. */
 export function chosenProject(app: App): ProjectState | undefined {
-  return app.projects.find((project) => project.project.name === app.chosen?.project);
+  return app.projects.find((project) => project.configured.name === app.chosen?.project);
 }
 
 /** Every Action of every Project, in the order the rail lists them. */
@@ -81,7 +81,7 @@ export function actionsIn(app: App): readonly ActionState[] {
  */
 export function askedOf(app: App, ask: Ask): readonly ActionState[] {
   return app.projects
-    .filter((project) => ask.project === undefined || project.project.name === ask.project)
+    .filter((project) => ask.project === undefined || project.configured.name === ask.project)
     .flatMap((project) =>
       project.actions.filter((action) => ask.action === undefined || action.action === ask.action),
     );
@@ -106,9 +106,7 @@ export function asking(app: App, ask: Ask): void {
 
 /** What a Run said about itself, on the Action it belongs to. */
 export function progressed(app: App, progress: Progress): void {
-  const action = actionsIn(app).find(
-    (state) => state.project === progress.project && state.action === progress.action,
-  );
+  const action = actionOf(app, progress.project, progress.action);
 
   if (action === undefined || progress.stage === "recorded" || progress.stage === "failed") {
     // How a Run ended is settled by the request ending, which carries the
@@ -160,9 +158,7 @@ export function ended(app: App, request: Request): void {
 
 /** One Run that recorded, as the Latest of the Action it recorded. */
 function recorded(app: App, run: Run): void {
-  const action = actionsIn(app).find(
-    (state) => state.project === run.project && state.action === run.action,
-  );
+  const action = actionOf(app, run.project, run.action);
 
   if (action === undefined) {
     return;
@@ -178,9 +174,7 @@ function recorded(app: App, run: Run): void {
 }
 
 function blame(app: App, project: string, action: string, message: string): void {
-  const state = actionsIn(app).find(
-    (one) => one.project === project && one.action === action,
-  );
+  const state = actionOf(app, project, action);
 
   if (state !== undefined) {
     state.failure = message;

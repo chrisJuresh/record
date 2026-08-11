@@ -29,7 +29,7 @@ export type Handlers = {
   runAction(project: string, action: string): void;
   runProject(project: string): void;
   runEverything(): void;
-  showThumbnails(showing: boolean): void;
+  showRailClips(showing: boolean): void;
 };
 
 /** The nodes a Run in flight writes into, kept from the last full paint. */
@@ -84,7 +84,10 @@ export function paintProgress(app: App): void {
     const badge = live.badges.get(keyOf(action.project, action.action));
 
     if (badge !== undefined) {
-      badge.textContent = badgeOf(action.doing);
+      const says = badgeOf(action);
+
+      badge.textContent = says.text;
+      badge.className = says.failed ? "badge failed" : "badge num";
     }
   }
 
@@ -98,17 +101,17 @@ export function paintProgress(app: App): void {
 }
 
 function topbar(app: App, handlers: Handlers, tally: HTMLElement): HTMLElement {
-  const thumbnails = button(
-    app.thumbnails ? "Hide clips in rail" : "Show clips in rail",
+  const railClips = button(
+    app.railClips ? "Hide clips in rail" : "Show clips in rail",
     "act quiet",
-    () => handlers.showThumbnails(!app.thumbnails),
+    () => handlers.showRailClips(!app.railClips),
   );
 
   return el("header", { class: "topbar" }, [
     el("span", { class: "wordmark" }, ["record"]),
     tally,
     el("span", { class: "spacer" }),
-    thumbnails,
+    railClips,
     button("Run everything", "act primary", () => handlers.runEverything()),
   ]);
 }
@@ -131,8 +134,10 @@ function rail(app: App, handlers: Handlers, badges: Map<string, HTMLElement>): H
     { class: "rail" },
     app.projects.flatMap((project) => [
       el("div", { class: "project" }, [
-        el("span", {}, [project.project.name]),
-        ...(project.project.published ? [el("span", { class: "pill published" }, ["published"])] : []),
+        el("span", {}, [project.configured.name]),
+        ...(project.configured.published
+          ? [el("span", { class: "pill published" }, ["published"])]
+          : []),
       ]),
       ...(project.actions.length === 0
         ? [el("div", { class: "absent none" }, ["no Actions"])]
@@ -159,7 +164,7 @@ function railAction(
     "",
     `action${chosen}`,
     () => handlers.choose(action.project, action.action),
-    [row, ...(app.thumbnails ? [thumbnail(action)] : [])],
+    [row, ...(app.railClips ? [railClip(action)] : [])],
   );
 }
 
@@ -167,7 +172,7 @@ function railAction(
  * A clip of the Action under its name, which is what makes the rail readable as
  * "the one I meant" -- the GIF, because it plays without being asked to.
  */
-function thumbnail(action: ActionState): HTMLElement {
+function railClip(action: ActionState): HTMLElement {
   const gif = action.latest === null ? undefined : artifactOf(action.latest, "gif");
 
   if (action.latest === null || gif === undefined) {
@@ -178,7 +183,7 @@ function thumbnail(action: ActionState): HTMLElement {
   // on this machine, and a rail whose clips arrive only once something has
   // scrolled is a rail that reads as empty.
   const image = el("img", {
-    class: "thumb",
+    class: "gif",
     src: artifactUrl(action.latest, gif),
     alt: `The Latest clip of ${action.action}`,
   });
@@ -226,9 +231,9 @@ function stage(
     ...trouble,
     el("div", { class: "stage-head" }, [
       el("h2", {}, [action.action]),
-      el("span", { class: "muted" }, [project.project.name]),
+      el("span", { class: "muted" }, [project.configured.name]),
       el("span", { class: "spacer" }),
-      button("Run Project", "act", () => handlers.runProject(project.project.name)),
+      button("Run Project", "act", () => handlers.runProject(project.configured.name)),
       ...(runAction === null ? [] : [runAction]),
     ]),
     el("p", { class: "stage-meta" }, [recordedOf(project, action)]),
@@ -243,11 +248,11 @@ function recordedOf(project: ProjectState, action: ActionState): string {
   const latest = action.latest;
 
   if (latest === null) {
-    return `${project.project.baseUrl} · never recorded`;
+    return `${project.configured.baseUrl} · never recorded`;
   }
 
   return [
-    project.project.baseUrl,
+    project.configured.baseUrl,
     `recorded ${ago(latest.recordedAt)}`,
     ...(latest.commit === null ? [] : [`commit ${latest.commit.slice(0, 7)}`]),
     `${latest.frames.captured} Frames at ${latest.framerate}fps`,
@@ -336,6 +341,18 @@ function artifactOf(run: Run, format: Artifact["format"]): Artifact | undefined 
   return run.artifacts.find((artifact) => artifact.format === format);
 }
 
+/**
+ * What each stage of a Run reads as: on the stage, and as short as a rail is
+ * wide. One table rather than two cascades, because a stage that read as one
+ * thing in the rail and another on the stage would be two Runs to the operator.
+ */
+const stages: Record<Doing["stage"], { readonly said: string; readonly short: string }> = {
+  queued: { said: "queued for the machine", short: "queued" },
+  starting: { said: "starting the Project", short: "starting" },
+  capturing: { said: "capturing Frames", short: "capturing" },
+  encoding: { said: "encoding the Artifacts", short: "encoding" },
+};
+
 /** What a Run in flight is doing, said as a line and drawn as a bar. */
 function inFlight(doing: Doing): readonly Node[] {
   const frames = doing.frames;
@@ -343,7 +360,7 @@ function inFlight(doing: Doing): readonly Node[] {
 
   return [
     el("div", { class: "line" }, [
-      el("span", {}, [stageOf(doing)]),
+      el("span", {}, [stages[doing.stage].said]),
       el("span", { class: "spacer" }),
       ...(frames === null
         ? []
@@ -355,30 +372,28 @@ function inFlight(doing: Doing): readonly Node[] {
   ];
 }
 
-/** What the stage of a Run reads as, in words rather than as its name. */
-function stageOf(doing: Doing): string {
-  switch (doing.stage) {
-    case "queued":
-      return "queued for the machine";
-    case "starting":
-      return "starting the Project";
-    case "capturing":
-      return "capturing Frames";
-    case "encoding":
-      return "encoding the Artifacts";
-  }
-}
+/**
+ * How an Action reads in the rail: how far through its Run is where that is
+ * known, and that its last Run failed where one did.
+ *
+ * A failure is said here as well as on the stage because a request can name
+ * every Action there is: a Run that failed on an Action nobody is looking at
+ * would otherwise have to be guessed at, one Action at a time.
+ */
+function badgeOf(action: ActionState): { readonly text: string; readonly failed: boolean } {
+  const doing = action.doing;
 
-/** The same, as short as a rail is wide: how far through, where that is known. */
-function badgeOf(doing: Doing | null): string {
   if (doing === null) {
-    return "";
+    return { text: action.failure === null ? "" : "failed", failed: action.failure !== null };
   }
   if (doing.stage === "capturing" && doing.frames !== null && doing.frames.of > 0) {
-    return `${Math.round((doing.frames.captured / doing.frames.of) * 100)}%`;
+    return {
+      text: `${Math.round((doing.frames.captured / doing.frames.of) * 100)}%`,
+      failed: false,
+    };
   }
 
-  return doing.stage === "queued" ? "queued" : doing.stage;
+  return { text: stages[doing.stage].short, failed: false };
 }
 
 /** Why something failed, in the words it failed with. */
