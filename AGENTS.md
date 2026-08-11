@@ -22,6 +22,12 @@ A pnpm workspace of TypeScript packages, built with project references.
   `record` command invoked and read back. It imports nothing from
   `@record/core`, and it has **no test seam of its own** — it is asserted at the
   CLI seam, by starting it with the command and asking it over HTTP.
+- `apps/app/` — the app the tool is used through: a page, a stylesheet and
+  browser modules `tsc` compiles beside them, served by `record serve` at the
+  root of it. Plain TypeScript rather than a framework, and no bundler
+  (ADR 0002). It holds no logic of its own either — every button is one request
+  to the server, which is one `record` command — and it has no test seam of its
+  own for that reason.
 - `projects/<name>/project.toml` — one configured Project. Actions live beside
   it under `actions/`, as TypeScript modules the engine imports directly
   (ADR 0004) and `tsc --project projects` type-checks. Hand-tuned Parameter
@@ -98,6 +104,13 @@ pnpm record mockups photos scroll-peek
 ```bash
 pnpm record serve
 ```
+
+```bash
+pnpm record serve --open
+```
+
+On this machine that last one is `record.cmd` in the repository root, which is
+double-clicked: it builds what has changed, starts the server, and opens the app.
 
 `record` reads its Projects from `$RECORD_WORKSPACE`, defaulting to this
 checkout. Tests set it to a workspace of their own — **no test may depend on a
@@ -211,10 +224,11 @@ repository. A Project under no repository at all cannot be told either way, and
 
 ### Serving
 
-`record serve` puts the same operations on HTTP, **bound to loopback and
-nothing else** (ADR 0002), on a port the machine chooses unless `--port <n>`
+`record serve` puts the app and the same operations on HTTP, **bound to loopback
+and nothing else** (ADR 0002), on a port the machine chooses unless `--port <n>`
 names one. It says where it is answering and then holds the process open until
-it is interrupted.
+it is interrupted. `--open` opens the app in this machine's browser once it is
+bound, which is what the shortcut does with it.
 
 The server holds no recording logic. Every answer it gives is `record` invoked
 with `--json` and read back, so there is no second place for a rule about
@@ -225,6 +239,8 @@ able to drive a tool that starts processes on this machine.
 
 | Path | What it is |
 |---|---|
+| `GET /` | The app, and every other path under it is a file it is made of |
+| `GET /api` | What this server offers, for whoever is reading the API |
 | `GET /api/projects` | `record projects` |
 | `GET /api/projects/<project>/actions` | `record actions` |
 | `GET /api/projects/<project>/actions/<action>/parameters` | `record parameters` |
@@ -252,6 +268,31 @@ about and what it has reached — `starting`, `capturing` (a Frame at a time),
 
 Artifacts are served from the workspace's `runs/`, with byte ranges answered,
 because playing a clip in a browser is what they are for.
+
+Everything not addressed to `/api` or to `/artifacts` is the app. Those two are
+the reserved names, so a file the app grows needs nothing added to the server,
+and only what the app is made of — its page, its stylesheet, its modules — is
+served out of its directory: the package also holds a manifest and the
+TypeScript those modules were compiled from, and none of that is the app.
+
+### The app
+
+A section per Project in a rail, its Actions listed by name, and one clip on the
+stage: the layout chosen from the prototype sheet. The rail can show a clip of
+each Action under its name — the GIF, because it plays without being asked to —
+and that is togglable, because eight of them playing at once is a busy sidebar.
+
+The Latest plays inline, and the width the clip leaves over is where it is read
+about rather than blank. Three buttons record: one Action, every Action of a
+Project, and everything. Each is one `POST /api/runs`, watched at `/events`, so
+what the app knows about a Run is what the command said about it.
+
+A Run in flight says so on the Action it belongs to and on the stage, and a Frame
+arriving rewrites those words rather than the page — redrawing a stage sixty
+times a second would take the clip out from under whoever is watching it. A
+failed Run shows **why, in the command's own words**, and leaves the previous
+Latest playing: a failed Run took its own directory away with it, so the last
+good clip is still there and still the one on the stage.
 
 ## Writing an Action
 
@@ -513,6 +554,11 @@ The server is asserted at the CLI seam too, in `apps/cli/test/server.test.ts`:
 it is started by running `record serve`, asked over HTTP, and what it says is
 held against what the command says for itself. It gets no seam of its own
 because it holds no logic of its own.
+
+So is the app, in `apps/cli/test/app.test.ts`, and as far as the same seam
+reaches: the page the tool is opened at, the modules it loads, and the fact that
+nothing else in that package is readable over loopback. What those modules draw
+is held to by `pnpm build` and by opening it.
 
 `packages/fixture-site/test/` is the one exception, and it tests the harness
 rather than the tool: a fixture site that quietly stopped serving would weaken

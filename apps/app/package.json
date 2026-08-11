@@ -1,0 +1,10 @@
+{
+  "name": "@record/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The app the tool is used through. Browser modules served by record serve; it reaches the tool over the server's API and holds no logic of its own.",
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

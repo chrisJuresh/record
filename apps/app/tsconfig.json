@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+
+    // The app runs in a browser rather than in Node: it has a document and no
+    // filesystem, and it must not be able to reach for one by accident.
+    "lib": ["es2023", "dom"],
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

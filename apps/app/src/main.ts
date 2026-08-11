@@ -1,0 +1,283 @@
+/**
+ * The app, wired up: what it reads when it opens, what a button asks the server
+ * for, and what an answer redraws.
+ *
+ * It is the CLI's operations and nothing else. Every button here is one request
+ * to the server, which is one `record` command invoked on the other side of
+ * loopback -- so there is no operation in the app that cannot be typed, and no
+ * rule about Projects, Runs or Artifacts kept here to fall out of step.
+ */
+import * as api from "./api.js";
+import {
+  actionOf,
+  actionsIn,
+  asking,
+  ended,
+  nothingYet,
+  progressed,
+  type ActionState,
+  type App,
+  type ProjectState,
+} from "./model.js";
+import { paint, paintProgress, type Handlers } from "./view.js";
+
+/** Where the rail's clips being on or off is remembered between openings. */
+const railClipsKept = "record.rail-clips";
+
+/**
+ * How many of the command's answers are read at once while the app settles.
+ *
+ * Every answer is a `record` invocation, so reading a machine of five Projects
+ * with ten Actions each would otherwise be fifty processes started at the same
+ * moment -- which is the machine the Runs are about to want.
+ */
+const readsAtOnce = 4;
+
+const root = pageRoot();
+const app = nothingYet(remembered(railClipsKept) ?? true);
+
+const handlers: Handlers = {
+  choose(project, action) {
+    app.chosen = { project, action };
+    repaint();
+  },
+
+  runAction(project, action) {
+    void ask({ project, action });
+  },
+
+  runProject(project) {
+    void ask({ project });
+  },
+
+  runEverything() {
+    void ask({ all: true });
+  },
+
+  showRailClips(showing) {
+    app.railClips = showing;
+    remember(railClipsKept, showing);
+    repaint();
+  },
+};
+
+repaint();
+void settle();
+
+/** The page the app is drawn into, which it is served inside. */
+function pageRoot(): HTMLElement {
+  const found = document.getElementById("app");
+
+  if (found === null) {
+    throw new Error("the app has no page to be drawn into");
+  }
+
+  return found;
+}
+
+/**
+ * What the server says about this machine: every Project, every Action of each,
+ * and the Latest of each Action -- which is the newest Run it still keeps.
+ *
+ * Read Project by Project and Action by Action rather than all or nothing. One
+ * Action whose Runs cannot be read must not cost the rail every other Project:
+ * an app claiming this machine has no Projects because one directory is unwell
+ * is worse than an app saying which one it could not read.
+ */
+async function settle(): Promise<void> {
+  let configured: readonly api.Project[];
+
+  try {
+    configured = await api.projects();
+  } catch (failure) {
+    // Nothing else is worth trying: what could not be read is the list of
+    // Projects everything else would have been read against.
+    app.trouble = messageOf(failure);
+    repaint();
+    return;
+  }
+
+  const troubles: string[] = [];
+
+  app.projects = await eachAtOnce(configured, (project) => read(project, troubles));
+  app.chosen = stillThere(app.chosen) ?? firstAction(app.projects);
+  app.trouble = troubles.length === 0 ? null : troubles.join("\n");
+
+  repaint();
+}
+
+/** One Project's Actions, and the Latest of each of them. */
+async function read(project: api.Project, troubles: string[]): Promise<ProjectState> {
+  let named: readonly string[] = [];
+
+  try {
+    named = await api.actions(project.name);
+  } catch (failure) {
+    // The Project is still listed, by the name it is configured under: it is
+    // there, and what could not be read is what it declares.
+    troubles.push(`'${project.name}': ${messageOf(failure)}`);
+  }
+
+  return {
+    configured: project,
+    actions: await eachAtOnce(named, (action) => readAction(project.name, action, troubles)),
+  };
+}
+
+async function readAction(
+  project: string,
+  action: string,
+  troubles: string[],
+): Promise<ActionState> {
+  const idle = { project, action, doing: null, failure: null };
+
+  try {
+    // Newest first, so the Latest is the first of them -- and an Action nobody
+    // has run keeps none at all, which is a state rather than a failure.
+    const kept = await api.history(project, action);
+
+    return { ...idle, latest: kept[0] ?? null };
+  } catch (failure) {
+    // Listed by name with nothing to play, which is what it is: whether it has
+    // ever recorded is exactly what could not be read.
+    troubles.push(`'${project} ${action}': ${messageOf(failure)}`);
+
+    return { ...idle, latest: null };
+  }
+}
+
+/**
+ * Reads them a few at a time, answering in the order they were asked about. The
+ * same shape the tool records Actions in, and for the same reason: the machine
+ * running this has Runs to do.
+ */
+async function eachAtOnce<Item, Answer>(
+  items: readonly Item[],
+  read: (item: Item) => Promise<Answer>,
+): Promise<Answer[]> {
+  const answers: Answer[] = [];
+  const queue = items.entries();
+
+  const worker = async (): Promise<void> => {
+    for (const [at, item] of queue) {
+      answers[at] = await read(item);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(readsAtOnce, items.length) }, worker));
+
+  return answers;
+}
+
+/**
+ * The Action on the stage, where it is still one of the Actions there are --
+ * reading the machine again must not move the stage out from under whoever was
+ * watching a clip on it.
+ */
+function stillThere(chosen: App["chosen"]): App["chosen"] {
+  return chosen !== null && actionOf(app, chosen.project, chosen.action) !== undefined
+    ? chosen
+    : null;
+}
+
+/** The Action the app opens on, which is the first one there is. */
+function firstAction(projects: readonly ProjectState[]): App["chosen"] {
+  for (const project of projects) {
+    const action = project.actions[0];
+
+    if (action !== undefined) {
+      return { project: action.project, action: action.action };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Asks the server to record, and watches what happens.
+ *
+ * The request is answered as soon as it has been asked for, because a Run takes
+ * long enough that waiting for it would be the hang this is meant to prevent.
+ * What each Run is doing arrives as it does it, and how the request ended
+ * carries the command's whole answer -- the Runs that recorded, which are the
+ * new Latest, and what stopped the ones that did not.
+ */
+async function ask(asked: api.Ask): Promise<void> {
+  let begun: api.Request;
+
+  try {
+    begun = await api.record(asked);
+  } catch (failure) {
+    app.trouble = messageOf(failure);
+    repaint();
+    return;
+  }
+
+  app.asked.set(begun.id, asked);
+  app.trouble = null;
+  asking(app, asked);
+  repaint();
+
+  api.watch(begun.id, {
+    progress(progress) {
+      progressed(app, progress);
+      // Only what a Run says about itself, and not the page it says it on: a
+      // Frame arrives sixty times a second, and the clip on the stage is being
+      // watched while they do.
+      paintProgress(app);
+    },
+
+    ended(request) {
+      ended(app, request);
+      app.asked.delete(request.id);
+      repaint();
+    },
+
+    lost() {
+      if (!app.asked.has(begun.id)) {
+        return;
+      }
+
+      // The Run itself is unaffected -- it is the command's, not the page's --
+      // so what is lost is only knowing about it. What it produced is read back
+      // by asking again.
+      app.asked.delete(begun.id);
+      app.trouble = "the server stopped saying what that Run was doing";
+
+      for (const action of actionsIn(app)) {
+        action.doing = null;
+      }
+
+      void settle();
+    },
+  });
+}
+
+function repaint(): void {
+  paint(root, app, handlers);
+}
+
+function messageOf(failure: unknown): string {
+  return failure instanceof Error ? failure.message : String(failure);
+}
+
+/** Whether the rail showed clips last time, or nothing where it has not run before. */
+function remembered(name: string): boolean | undefined {
+  try {
+    const kept = localStorage.getItem(name);
+
+    return kept === null ? undefined : kept === "true";
+  } catch {
+    // A browser refusing storage is a preference nobody remembers, which is not
+    // a reason for the app not to open.
+    return undefined;
+  }
+}
+
+function remember(name: string, value: boolean): void {
+  try {
+    localStorage.setItem(name, String(value));
+  } catch {
+    return;
+  }
+}

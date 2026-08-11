@@ -11,7 +11,9 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
-import { extname, join, resolve, sep } from "node:path";
+import { extname, join } from "node:path";
+
+import { fileUnder, plainly } from "./files.js";
 
 /** What each Artifact is, said so a browser plays it rather than downloads it. */
 const contentTypes: Record<string, string> = {
@@ -98,27 +100,6 @@ export async function serveArtifact(
 }
 
 /**
- * The file a request's path names, or nothing at all where it names anything
- * outside the Runs. A segment is one path segment and never a path: a client
- * cannot climb out of the directory the tool serves, whatever it encoded.
- */
-function fileUnder(runs: string, segments: readonly string[]): string | undefined {
-  if (segments.length === 0) {
-    return undefined;
-  }
-
-  for (const segment of segments) {
-    if (segment === "" || segment === "." || segment === ".." || /[\\/\0]/.test(segment)) {
-      return undefined;
-    }
-  }
-
-  const file = resolve(runs, ...segments);
-
-  return file.startsWith(resolve(runs) + sep) ? file : undefined;
-}
-
-/**
  * The bytes a client asked for, or nothing where it asked for the whole file.
  * One range only: several would be a multipart answer, which nothing playing a
  * clip has ever asked for.
@@ -142,12 +123,4 @@ function spanOf(header: string | undefined, size: number): Span | "unsatisfiable
   const to = first === "" || last === "" ? size - 1 : Math.min(Number(last), size - 1);
 
   return from > to || from >= size ? "unsatisfiable" : { from, to };
-}
-
-function plainly(response: ServerResponse, status: number, message: string): void {
-  response.writeHead(status, {
-    "content-type": "text/plain; charset=utf-8",
-    "cache-control": "no-store",
-  });
-  response.end(`${message}\n`);
 }
