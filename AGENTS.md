@@ -15,8 +15,13 @@ A pnpm workspace of TypeScript packages, built with project references.
   test's choosing, as its own process, so that a test can configure a Project
   the tool has to start for itself.
 - `apps/cli/` — the `record` command. **The CLI is the real interface**: the
-  server and the UI will reach the tool through these commands rather than
-  around them, so a new operation is a command first.
+  server and the UI reach the tool through these commands rather than around
+  them, so a new operation is a command first.
+- `apps/server/` — the local HTTP server `record serve` starts. It holds no
+  capture, encoding or configuration logic of its own: every answer is the
+  `record` command invoked and read back. It imports nothing from
+  `@record/core`, and it has **no test seam of its own** — it is asserted at the
+  CLI seam, by starting it with the command and asking it over HTTP.
 - `projects/<name>/project.toml` — one configured Project. Actions live beside
   it under `actions/`, as TypeScript modules the engine imports directly
   (ADR 0004) and `tsc --project projects` type-checks. Hand-tuned Parameter
@@ -88,6 +93,10 @@ pnpm record status
 
 ```bash
 pnpm record mockups photos scroll-peek
+```
+
+```bash
+pnpm record serve
 ```
 
 `record` reads its Projects from `$RECORD_WORKSPACE`, defaulting to this
@@ -199,6 +208,50 @@ commits read are those of the repository *containing* `source_repository`, so a
 Project that is one package of a larger repository is compared against that
 repository. A Project under no repository at all cannot be told either way, and
 `status` warns rather than reporting its Actions as current.
+
+### Serving
+
+`record serve` puts the same operations on HTTP, **bound to loopback and
+nothing else** (ADR 0002), on a port the machine chooses unless `--port <n>`
+names one. It says where it is answering and then holds the process open until
+it is interrupted.
+
+The server holds no recording logic. Every answer it gives is `record` invoked
+with `--json` and read back, so there is no second place for a rule about
+Projects, Runs or Artifacts to live, and **a failed Run is passed on in the
+command's own words** rather than rephrased into something generic. It answers
+requests addressed to a loopback name only: a page anywhere else must not be
+able to drive a tool that starts processes on this machine.
+
+| Path | What it is |
+|---|---|
+| `GET /api/projects` | `record projects` |
+| `GET /api/projects/<project>/actions` | `record actions` |
+| `GET /api/projects/<project>/actions/<action>/parameters` | `record parameters` |
+| `GET /api/mockups` | `record mockups` |
+| `GET /api/status[?project=<project>]` | `record status` |
+| `GET /api/history/<project>/<action>[/<condition>]` | `record history` |
+| `POST /api/runs` | `record run`, answered before the Run is done |
+| `GET /api/runs[/<id>]` | The Runs this server has been asked for |
+| `GET /api/runs/<id>/events` | One Run's progress, as it happens |
+| `GET /artifacts/<project>/<action>/<run>/<file>` | What a Run left behind |
+
+`POST /api/runs` takes `{ project, action, all, schemes, widths, concurrency,
+set }` — the same request `record run` takes — and answers `202` with the
+request's id at once, because a Run takes long enough that holding the
+connection open for it would be the hang this is meant to prevent. What it does
+next arrives at `/events` as server-sent events: one `progress` event per stage,
+then `recorded` or `failed` carrying the command's answer. A client that starts
+watching late is caught up first, so it reads the whole Run rather than what was
+left of it.
+
+Progress comes from the command as well: `record run --progress` writes one JSON
+object per line to stderr, under a `progress: ` prefix, saying which Run it is
+about and what it has reached — `starting`, `capturing` (a Frame at a time),
+`encoding`, and then `recorded` or `failed`.
+
+Artifacts are served from the workspace's `runs/`, with byte ranges answered,
+because playing a clip in a browser is what they are for.
 
 ## Writing an Action
 
@@ -455,6 +508,11 @@ There are exactly two seams, and tests live only at them:
 - **The Timeline evaluation seam** (`packages/core/test/`) — easings, Hold
   boundaries, duration rounding and Override application, with no browser
   involved.
+
+The server is asserted at the CLI seam too, in `apps/cli/test/server.test.ts`:
+it is started by running `record serve`, asked over HTTP, and what it says is
+held against what the command says for itself. It gets no seam of its own
+because it holds no logic of its own.
 
 `packages/fixture-site/test/` is the one exception, and it tests the harness
 rather than the tool: a fixture site that quietly stopped serving would weaken

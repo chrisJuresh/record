@@ -128,6 +128,21 @@ test("an argument the command has no use for fails rather than being dropped", a
   assert.match(stderr, /actions takes the name of one Project/);
 });
 
+test("an option belonging to another command fails rather than being ignored", async () => {
+  const workspace = await workspaceWith({ demo: fullyConfigured });
+
+  for (const [given, refused] of [
+    [["status", "--progress"], /only run takes --progress/],
+    [["run", "--all", "--port", "8080"], /only serve takes --port/],
+    [["serve", "demo"], /serve takes no arguments/],
+  ] as const) {
+    const { stderr, code } = await record(workspace, ...given);
+
+    assert.equal(code, 1, given.join(" "));
+    assert.match(stderr, refused);
+  }
+});
+
 test("`actions --json` reports a Project's Actions by name", async () => {
   const workspace = await workspaceWith({ demo: fullyConfigured });
   await mkdir(join(workspace, "projects", "demo", "actions"));

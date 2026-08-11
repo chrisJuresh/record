@@ -56,6 +56,13 @@ export type CaptureOptions = {
   readonly substitution?: TextSubstitution;
   /** How the page is put into a colour scheme, where a Condition asked for one. */
   readonly theme?: ThemeSwitch;
+  /**
+   * Told how many Frames have been written, as each one is. Capture is the long
+   * part of a Run by far, so this is what stops a ten-second render looking like
+   * a hang. It is watched rather than recorded: nothing a Run reports depends on
+   * whether anybody was listening.
+   */
+  readonly progress?: (captured: number) => void;
 };
 
 /** How a page reads, which is one of the things a Run reports about the page it recorded. */
@@ -201,6 +208,8 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
 
       await writeFile(join(options.directory, frameFile(index)), frame);
       hashes.push(createHash("sha256").update(frame).digest("hex").slice(0, hashLength));
+
+      options.progress?.(hashes.length);
     }
 
     return {

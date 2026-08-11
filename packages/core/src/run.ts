@@ -133,6 +133,40 @@ export type RunReport = {
   };
 };
 
+/**
+ * How far through itself a Run is. Capture is much the longest of these and the
+ * only one worth counting, which is why it is the one that carries a tally.
+ */
+export type RunStage = "starting" | "capturing" | "encoding" | "recorded" | "failed";
+
+/**
+ * What a Run is doing while it is still doing it, so that a ten-second render
+ * does not look like a hang.
+ *
+ * Progress is watched, never stored: a Run's own record says what it produced,
+ * and nothing it produces depends on whether anybody was listening. It names
+ * the Run it is about because many Runs report at once.
+ */
+export type RunProgress = {
+  readonly project: string;
+  readonly action: string;
+  /** The Condition it records under, and nothing where it varies none. */
+  readonly condition: string | null;
+  readonly stage: RunStage;
+  /** Frames written and Frames the Timeline declared, while it is capturing them. */
+  readonly frames?: { readonly captured: number; readonly of: number };
+  /** What stopped it, on the stage that says one did. */
+  readonly message?: string;
+};
+
+/** Told what a Run is up to as it happens, or nothing where nobody is watching. */
+export type RunWatcher = (progress: RunProgress) => void;
+
+export type RunOptions = {
+  /** Told what the Run is doing while it is doing it. */
+  readonly progress?: RunWatcher;
+};
+
 /** One Run that failed, named beside the others that recorded regardless. */
 export type RunFailure = {
   readonly project: string;
@@ -170,6 +204,11 @@ export type RunManyOptions = {
   readonly conditions?: readonly Condition[];
   /** How many Runs record at once, rather than `defaultConcurrency`. */
   readonly concurrency?: number;
+  /**
+   * Told what each Run is doing while it is doing it. Several of them report at
+   * once, so every progress names the Run it belongs to.
+   */
+  readonly progress?: RunWatcher;
 };
 
 /**
@@ -186,13 +225,14 @@ export async function runAction(
   workspace: string,
   projectName: string,
   actionName: string,
+  options: RunOptions = {},
 ): Promise<RunReport> {
   const project = await readProject(workspace, projectName);
-  const outcome = await recordOne(workspace, {
-    project,
-    action: actionName,
-    lease: { outstanding: 1 },
-  });
+  const outcome = await recordOne(
+    workspace,
+    { project, action: actionName, lease: { outstanding: 1 } },
+    options.progress,
+  );
 
   // Asked for one Action, so its failure is the command's failure rather than
   // an entry in a summary of what else recorded.
@@ -249,7 +289,12 @@ export async function runActions(
   const runs: RunReport[] = [];
   const failures: RunFailure[] = [];
 
-  for (const outcome of await recordEach(workspace, requested.flat(), concurrency)) {
+  for (const outcome of await recordEach(
+    workspace,
+    requested.flat(),
+    concurrency,
+    options.progress,
+  )) {
     if ("report" in outcome) {
       runs.push(outcome.report);
     } else {
@@ -323,6 +368,7 @@ async function recordEach(
   workspace: string,
   requested: readonly RunRequest[],
   concurrency: number,
+  watching: RunWatcher | undefined,
 ): Promise<Outcome[]> {
   const outcomes: Outcome[] = [];
 
@@ -332,7 +378,7 @@ async function recordEach(
 
   const worker = async () => {
     for (const [at, asked] of queue) {
-      outcomes[at] = await recordOne(workspace, asked);
+      outcomes[at] = await recordOne(workspace, asked, watching);
     }
   };
 
@@ -342,9 +388,13 @@ async function recordEach(
 }
 
 /** Records one Action, answering with what stopped it rather than throwing it. */
-async function recordOne(workspace: string, asked: RunRequest): Promise<Outcome> {
+async function recordOne(
+  workspace: string,
+  asked: RunRequest,
+  watching: RunWatcher | undefined,
+): Promise<Outcome> {
   try {
-    return { asked, report: await record(workspace, asked) };
+    return { asked, report: await record(workspace, asked, watching) };
   } catch (failure) {
     return { asked, failure };
   }
@@ -367,9 +417,29 @@ function concurrencyOf(asked: number | undefined): number {
 }
 
 /** Everything one Run does, from the Action's declaration to its Artifacts. */
-async function record(workspace: string, asked: RunRequest): Promise<RunReport> {
+async function record(
+  workspace: string,
+  asked: RunRequest,
+  watching: RunWatcher | undefined,
+): Promise<RunReport> {
   const { project, action: actionName, lease, condition } = asked;
   const projectName = project.name;
+
+  /** Says where this Run has got to, to whoever asked to be told. */
+  const reached = (
+    stage: RunStage,
+    detail: Omit<RunProgress, "project" | "action" | "condition" | "stage"> = {},
+  ): void => {
+    watching?.({
+      project: projectName,
+      action: actionName,
+      condition: condition?.name ?? null,
+      stage,
+      ...detail,
+    });
+  };
+
+  reached("starting");
 
   // A Condition varies the circumstances rather than the Action, so everything
   // it touches is settled here: where the Run is kept, how wide the page is,
@@ -435,6 +505,8 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       headCommit(repositoryOf(workspace, project)),
     ]);
 
+    reached("capturing", { frames: { captured: 0, of: states.length } });
+
     const captured = await captureFrames({
       url: project.baseUrl,
       executable,
@@ -442,6 +514,9 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       framerate: timeline.framerate,
       states,
       directory: frames,
+      progress: (written) => {
+        reached("capturing", { frames: { captured: written, of: states.length } });
+      },
       ...(overlay === undefined ? {} : { overlay }),
       ...(substitution === undefined ? {} : { substitution }),
       ...(theme === undefined ? {} : { theme }),
@@ -455,6 +530,8 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
       viewport,
       file: join(frames, "mockup.png"),
     });
+
+    reached("encoding");
 
     const encoded = await encodeArtifacts({
       frames,
@@ -515,8 +592,12 @@ async function record(workspace: string, asked: RunRequest): Promise<RunReport> 
     await writeRun(report);
     await pruneHistory(workspace, projectName, actionName, condition?.name);
 
+    reached("recorded");
+
     return report;
   } catch (failure) {
+    reached("failed", { message: messageOf(failure) });
+
     // A Run that failed leaves nothing behind: its directory holds only its own
     // half of a recording, so taking it away is what leaves every earlier Run,
     // the Latest included, exactly as it was.

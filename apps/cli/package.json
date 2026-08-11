@@ -8,7 +8,8 @@
     "record": "./dist/src/main.js"
   },
   "dependencies": {
-    "@record/core": "workspace:*"
+    "@record/core": "workspace:*",
+    "@record/server": "workspace:*"
   },
   "devDependencies": {
     "@record/fixture-site": "workspace:*",
