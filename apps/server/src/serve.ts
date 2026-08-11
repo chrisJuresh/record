@@ -184,14 +184,17 @@ async function handle(
   return answer(response, 404, { error: "nothing is served at that path" });
 }
 
-/** What is read about a Project: its Actions, and one Action's Parameters. */
+/**
+ * What is read about a Project -- its Actions, and one Action's Parameters --
+ * and what is written of one Action's tuning.
+ */
 function projects(
   request: IncomingMessage,
   response: ServerResponse,
   serving: Serving,
   under: readonly string[],
-): void {
-  const [project, actions, action, parameters] = under;
+): void | Promise<void> {
+  const [project, actions, action, parameters, reset] = under;
 
   if (under.length === 0) {
     return get(request, response, () => command(response, serving, ["projects"]));
@@ -202,18 +205,91 @@ function projects(
   }
 
   if (
-    under.length === 4 &&
-    project !== undefined &&
-    actions === "actions" &&
-    action !== undefined &&
-    parameters === "parameters"
+    project === undefined ||
+    actions !== "actions" ||
+    action === undefined ||
+    parameters !== "parameters"
   ) {
-    return get(request, response, () =>
-      command(response, serving, ["parameters", project, action]),
-    );
+    return answer(response, 404, { error: "nothing is served at that path" });
+  }
+
+  // Reading what an Action is tuned to, and writing it: the same Parameters, so
+  // the same path, and which command it comes to is the method.
+  if (under.length === 4) {
+    return request.method === "POST"
+      ? tune(request, response, serving, ["set", project, action], "set")
+      : get(request, response, () => command(response, serving, ["parameters", project, action]));
+  }
+
+  // Removing an Override is its own command rather than setting one to nothing,
+  // because what is left is what the Action declares.
+  if (under.length === 5 && reset === "reset") {
+    return request.method === "POST"
+      ? tune(request, response, serving, ["reset", project, action], "reset")
+      : answer(response, 405, { error: "an Override is reset by POST, not read" });
   }
 
   answer(response, 404, { error: "nothing is served at that path" });
+}
+
+/**
+ * Writes one Action's tuning: the Overrides to set, or the ones to remove.
+ *
+ * Both answer with the report the command gives for itself, so whatever asked
+ * reads what the Action will now run with rather than assuming it got what it
+ * sent -- and a value the Action refuses is answered in the command's own words,
+ * since "outside the declared range 1..120" is what says what to send instead.
+ */
+async function tune(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+  words: readonly string[],
+  asked: "set" | "reset",
+): Promise<void> {
+  let body: unknown;
+
+  try {
+    const text = await bodyOf(request);
+    body = text.trim() === "" ? {} : JSON.parse(text);
+  } catch (failure) {
+    return answer(response, 400, { error: (failure as Error).message });
+  }
+
+  const named = namesFor(body, asked);
+
+  if ("error" in named) {
+    return answer(response, 400, { error: named.error });
+  }
+
+  return command(response, serving, [...words, ...named.names]);
+}
+
+/**
+ * What a request to tune names: `name=value` for each Override to set, or the
+ * name of each to remove. What the command will take of them is the command's
+ * own business; that a request said any at all is this one's.
+ */
+function namesFor(
+  body: unknown,
+  asked: "set" | "reset",
+): { readonly names: readonly string[] } | { readonly error: string } {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { error: `a request to ${asked} is an object saying what to ${asked}` };
+  }
+
+  const named = (body as Record<string, unknown>)[asked];
+  const written = asked === "set" ? "'name=value' Overrides to set" : "the names of Overrides to remove";
+
+  if (
+    !Array.isArray(named) ||
+    named.length === 0 ||
+    named.some((entry) => typeof entry !== "string" || entry === "" || entry.startsWith("-"))
+  ) {
+    return { error: `'${asked}' is ${written}` };
+  }
+
+  return { names: named as string[] };
 }
 
 /** The Runs this server has been asked for: asking for one, reading one, watching one. */
@@ -260,6 +336,8 @@ function index(serving: Serving): unknown {
       "GET  /api/projects",
       "GET  /api/projects/<project>/actions",
       "GET  /api/projects/<project>/actions/<action>/parameters",
+      "POST /api/projects/<project>/actions/<action>/parameters",
+      "POST /api/projects/<project>/actions/<action>/parameters/reset",
       "GET  /api/mockups",
       "GET  /api/status[?project=<project>]",
       "GET  /api/history/<project>/<action>[/<condition>]",

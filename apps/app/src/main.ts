@@ -15,11 +15,13 @@ import {
   ended,
   nothingYet,
   progressed,
+  refused,
+  tuned,
   type ActionState,
   type App,
   type ProjectState,
 } from "./model.js";
-import { paint, paintProgress, type Handlers } from "./view.js";
+import { paint, paintProgress, paintTuning, type Handlers } from "./view.js";
 
 /** Where the rail's clips being on or off is remembered between openings. */
 const railClipsKept = "record.rail-clips";
@@ -40,6 +42,7 @@ const handlers: Handlers = {
   choose(project, action) {
     app.chosen = { project, action };
     repaint();
+    void readTuning(project, action);
   },
 
   runAction(project, action) {
@@ -58,6 +61,17 @@ const handlers: Handlers = {
     app.railClips = showing;
     remember(railClipsKept, showing);
     repaint();
+  },
+
+  tune(project, action, name, value) {
+    // The Override is written before anything is recorded, so tuning survives a
+    // Run that fails -- and it is what the next Run reads, whether it is asked
+    // for here or typed (ADR 0005).
+    void tuning(project, action, () => api.set(project, action, [`${name}=${String(value)}`]));
+  },
+
+  reset(project, action, name) {
+    void tuning(project, action, () => api.reset(project, action, [name]));
   },
 };
 
@@ -104,6 +118,12 @@ async function settle(): Promise<void> {
   app.trouble = troubles.length === 0 ? null : troubles.join("\n");
 
   repaint();
+
+  // ...and what the Action that landed on the stage is tuned to, which is read
+  // for the one being looked at rather than for every Action there is.
+  if (app.chosen !== null) {
+    await readTuning(app.chosen.project, app.chosen.action);
+  }
 }
 
 /** One Project's Actions, and the Latest of each of them. */
@@ -129,7 +149,7 @@ async function readAction(
   action: string,
   troubles: string[],
 ): Promise<ActionState> {
-  const idle = { project, action, doing: null, failure: null };
+  const idle = { project, action, doing: null, failure: null, tuning: null, refused: null };
 
   try {
     // Newest first, so the Latest is the first of them -- and an Action nobody
@@ -144,6 +164,47 @@ async function readAction(
 
     return { ...idle, latest: null };
   }
+}
+
+/**
+ * What the Action on the stage declares and is tuned to.
+ *
+ * Read when it reaches the stage rather than when the app opens: answering this
+ * imports the Action's module, and importing every Action of every Project to
+ * show one of them is work nobody asked for. Read once and kept, since the
+ * sidecar changes only through the app itself.
+ */
+async function readTuning(project: string, action: string): Promise<void> {
+  const state = actionOf(app, project, action);
+
+  if (state === undefined || state.tuning !== null) {
+    return;
+  }
+
+  await tuning(project, action, () => api.parameters(project, action));
+}
+
+/**
+ * Reads or writes one Action's tuning, and draws what the command answered.
+ *
+ * A refusal is kept against the Action in the command's own words, and what the
+ * Action is tuned to is left exactly as it was: a value it would not take was
+ * never written down, so the controls go back to what is really in the sidecar.
+ */
+async function tuning(
+  project: string,
+  action: string,
+  ask: () => Promise<api.ParameterReport>,
+): Promise<void> {
+  try {
+    tuned(app, await ask());
+  } catch (failure) {
+    refused(app, project, action, messageOf(failure));
+  }
+
+  // Only the Parameters: a clip is playing beside them, and a value nudged must
+  // not put a new video element in the page.
+  paintTuning(app);
 }
 
 /**

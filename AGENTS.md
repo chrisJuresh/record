@@ -244,6 +244,8 @@ able to drive a tool that starts processes on this machine.
 | `GET /api/projects` | `record projects` |
 | `GET /api/projects/<project>/actions` | `record actions` |
 | `GET /api/projects/<project>/actions/<action>/parameters` | `record parameters` |
+| `POST /api/projects/<project>/actions/<action>/parameters` | `record set` |
+| `POST /api/projects/<project>/actions/<action>/parameters/reset` | `record reset` |
 | `GET /api/mockups` | `record mockups` |
 | `GET /api/status[?project=<project>]` | `record status` |
 | `GET /api/history/<project>/<action>[/<condition>]` | `record history` |
@@ -251,6 +253,13 @@ able to drive a tool that starts processes on this machine.
 | `GET /api/runs[/<id>]` | The Runs this server has been asked for |
 | `GET /api/runs/<id>/events` | One Run's progress, as it happens |
 | `GET /artifacts/<project>/<action>/[conditions/<condition>/]<run>/<file>` | What a Run left behind |
+
+The two that write take `{ set: ["name=value"] }` and `{ reset: ["name"] }` —
+the words the commands take — and both answer with the report the command gives
+for itself, so a client reads what the Action will now run with rather than
+assuming it got what it sent. A value the Action refuses is answered `400` in
+the command's own words, because "outside the declared range 1..120" is what says
+what to send instead.
 
 `POST /api/runs` takes `{ project, action, all, schemes, widths, concurrency,
 set }` — the same request `record run` takes — and answers `202` with the
@@ -293,6 +302,24 @@ times a second would take the clip out from under whoever is watching it. A
 failed Run shows **why, in the command's own words**, and leaves the previous
 Latest playing: a failed Run took its own directory away with it, so the last
 good clip is still there and still the one on the stage.
+
+Every Parameter the Action on the stage declares is a control in the column
+pinned right: a slider and a box for a number within its declared range, a menu
+for an easing or a choice, a box to tick for a flag. Changing one writes an
+Override to the sidecar at once — which is what the next Run reads, asked for
+here or typed — and an Override is **marked as one** beside what the Action
+declares, with a reset that removes it. A value the Action refuses is said in the
+command's own words and the control goes back to what is really in the sidecar,
+since a refused value was never written down. Overrides that could not be
+applied — a Parameter the Action no longer declares, most of all — are surfaced
+with the sidecar they are written in rather than left to be found: an Action
+running on its declared default while its sidecar says otherwise reads as tuned.
+
+Tuning redraws only that column. A clip is playing beside it, and a slider let go
+of must not put a new video element in the page.
+
+They are read for the Action on the stage rather than for all of them, because
+reading them imports the Action's module.
 
 ## Writing an Action
 

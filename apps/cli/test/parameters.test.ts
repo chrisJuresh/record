@@ -96,6 +96,10 @@ test("`parameters --json` reports what an Action declares and what it will run w
       kind: "easing",
       describes: "how the travel settles",
       default: "ease-in-out-cubic",
+      // An easing takes one of a named set exactly as a choice does, and what
+      // that set is belongs in the report: whatever offers it as a control
+      // otherwise has to keep a second copy of the four names.
+      choices: ["linear", "ease-in-cubic", "ease-out-cubic", "ease-in-out-cubic"],
       value: "ease-in-out-cubic",
       overridden: false,
     },

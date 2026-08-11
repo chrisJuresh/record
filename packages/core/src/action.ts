@@ -287,6 +287,20 @@ function choicesOf(declaration: EasingParameter | ChoiceParameter): readonly str
 }
 
 /**
+ * The values a Parameter will take where it takes one of a named set, and
+ * nothing for the kinds that take a number or a flag.
+ *
+ * An easing is a named set the same way a choice is -- it just names its set
+ * here rather than in the Action -- so whatever offers one to be picked from
+ * asks this rather than keeping a copy of the four names.
+ */
+export function choicesFor(declaration: ParameterDeclaration): readonly string[] | undefined {
+  return declaration.kind === "easing" || declaration.kind === "choice"
+    ? choicesOf(declaration)
+    : undefined;
+}
+
+/**
  * A declaration whose own default it would refuse is a declaration nobody can
  * run, so it fails while the Parameters are being resolved rather than leaving
  * an Action that always warns about itself.

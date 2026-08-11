@@ -9,7 +9,16 @@
  * asked for -- a Run that recorded is the report the command gave for it, which
  * is also the new Latest, so nothing is fetched again to find out.
  */
-import type { Ask, Failure, Progress, Project, Request, Run, Summary } from "./api.js";
+import type {
+  Ask,
+  Failure,
+  ParameterReport,
+  Progress,
+  Project,
+  Request,
+  Run,
+  Summary,
+} from "./api.js";
 
 /** What an Action is doing, or nothing at all where it is not recording. */
 export type Doing = {
@@ -27,6 +36,13 @@ export type ActionState = {
   doing: Doing | null;
   /** Why the last request naming it failed, in the command's own words. */
   failure: string | null;
+  /**
+   * What it declares and what it is tuned to, once it has been read -- which is
+   * when it is put on the stage, because reading it imports the Action's module.
+   */
+  tuning: ParameterReport | null;
+  /** Why the last change to its tuning was refused, in the command's own words. */
+  refused: string | null;
 };
 
 export type ProjectState = {
@@ -101,6 +117,34 @@ export function asking(app: App, ask: Ask): void {
   for (const action of askedOf(app, ask)) {
     action.doing = { stage: "queued", frames: null };
     action.failure = null;
+  }
+}
+
+/**
+ * What an Action declares and is tuned to, as the command has just reported it.
+ *
+ * Every answer about tuning is a whole report -- reading it, setting an Override,
+ * removing one -- so this is the one way it ever changes, and the app never has
+ * to work out what a change came to.
+ */
+export function tuned(app: App, report: ParameterReport): void {
+  const action = actionOf(app, report.project, report.action);
+
+  if (action !== undefined) {
+    action.tuning = report;
+    action.refused = null;
+  }
+}
+
+/**
+ * Why a change to an Action's tuning was refused. What it is tuned to is left
+ * exactly as it was, because a value the Action refused was never written down.
+ */
+export function refused(app: App, project: string, action: string, message: string): void {
+  const state = actionOf(app, project, action);
+
+  if (state !== undefined) {
+    state.refused = message;
   }
 }
 

@@ -13,6 +13,7 @@ import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 
 import {
   allParameters,
+  choicesFor,
   effectiveParameters,
   loadAction,
   overrideFrom,
@@ -33,7 +34,10 @@ export type ReportedParameter = {
   /** The range a number is tuned within, and nothing for the other kinds. */
   readonly min?: number;
   readonly max?: number;
-  /** The values a choice takes, so that tuning it is picking one of them. */
+  /**
+   * The values a choice or an easing takes, so that tuning it is picking one of
+   * them rather than spelling it.
+   */
   readonly choices?: readonly string[];
   readonly value: ParameterSetting;
   readonly overridden: boolean;
@@ -203,16 +207,20 @@ function report(
     project,
     action,
     sidecar: overridesFile(workspace, project, action),
-    parameters: Object.entries(declared).map(([name, declaration]) => ({
-      name,
-      kind: declaration.kind,
-      describes: declaration.describes,
-      default: declaration.default,
-      ...(declaration.kind === "number" ? { min: declaration.min, max: declaration.max } : {}),
-      ...(declaration.kind === "choice" ? { choices: declaration.choices } : {}),
-      value: effective.values[name] as ParameterSetting,
-      overridden: effective.overridden.includes(name),
-    })),
+    parameters: Object.entries(declared).map(([name, declaration]) => {
+      const choices = choicesFor(declaration);
+
+      return {
+        name,
+        kind: declaration.kind,
+        describes: declaration.describes,
+        default: declaration.default,
+        ...(declaration.kind === "number" ? { min: declaration.min, max: declaration.max } : {}),
+        ...(choices === undefined ? {} : { choices }),
+        value: effective.values[name] as ParameterSetting,
+        overridden: effective.overridden.includes(name),
+      };
+    }),
     warnings: effective.warnings,
   };
 }
