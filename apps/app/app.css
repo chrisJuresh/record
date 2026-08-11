@@ -382,7 +382,7 @@ button.act.quiet {
   gap: 8px;
 }
 
-.param label {
+.param .name {
   font-size: 13px;
 }
 
@@ -398,8 +398,8 @@ button.act.quiet {
 
 /* A value chosen by hand rather than declared, marked as one: what an Action
    will run with is never left to be worked out from what it declares. */
-.param.overridden label::after {
-  content: "2";
+.param.overridden .name::after {
+  content: "•";
   color: var(--accent);
   margin-left: 5px;
 }

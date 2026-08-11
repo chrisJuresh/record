@@ -38,6 +38,9 @@ const readsAtOnce = 4;
 const root = pageRoot();
 const app = nothingYet(remembered(railClipsKept) ?? true);
 
+/** What tuning is waiting on, so that two changes settle in the order they were made. */
+let writing: Promise<void> = Promise.resolve();
+
 const handlers: Handlers = {
   choose(project, action) {
     app.chosen = { project, action };
@@ -191,20 +194,36 @@ async function readTuning(project: string, action: string): Promise<void> {
  * Action is tuned to is left exactly as it was: a value it would not take was
  * never written down, so the controls go back to what is really in the sidecar.
  */
-async function tuning(
+function tuning(
   project: string,
   action: string,
   ask: () => Promise<api.ParameterReport>,
 ): Promise<void> {
-  try {
-    tuned(app, await ask());
-  } catch (failure) {
-    refused(app, project, action, messageOf(failure));
-  }
+  return oneAtATime(async () => {
+    try {
+      tuned(app, await ask());
+    } catch (failure) {
+      refused(app, project, action, messageOf(failure));
+    }
 
-  // Only the Parameters: a clip is playing beside them, and a value nudged must
-  // not put a new video element in the page.
-  paintTuning(app);
+    // Only the Parameters: a clip is playing beside them, and a value nudged
+    // must not put a new video element in the page.
+    paintTuning(app);
+  });
+}
+
+/**
+ * Runs one piece of tuning at a time, in the order it was asked for.
+ *
+ * A slider let go of twice in quick succession is two Overrides written to one
+ * sidecar, and the answers are two reports of what the Action will run with.
+ * Unsequenced, the slower of them lands last and the controls end up drawn from
+ * the older answer -- reading as though the second change had not happened.
+ */
+function oneAtATime(work: () => Promise<void>): Promise<void> {
+  writing = writing.then(work, work);
+
+  return writing;
 }
 
 /**

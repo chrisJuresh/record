@@ -217,7 +217,7 @@ function projects(
   // the same path, and which command it comes to is the method.
   if (under.length === 4) {
     return request.method === "POST"
-      ? tune(request, response, serving, ["set", project, action], "set")
+      ? tune(request, response, serving, "set", project, action)
       : get(request, response, () => command(response, serving, ["parameters", project, action]));
   }
 
@@ -225,7 +225,7 @@ function projects(
   // because what is left is what the Action declares.
   if (under.length === 5 && reset === "reset") {
     return request.method === "POST"
-      ? tune(request, response, serving, ["reset", project, action], "reset")
+      ? tune(request, response, serving, "reset", project, action)
       : answer(response, 405, { error: "an Override is reset by POST, not read" });
   }
 
@@ -244,25 +244,23 @@ async function tune(
   request: IncomingMessage,
   response: ServerResponse,
   serving: Serving,
-  words: readonly string[],
   asked: "set" | "reset",
+  project: string,
+  action: string,
 ): Promise<void> {
-  let body: unknown;
+  const body = await jsonIn(request);
 
-  try {
-    const text = await bodyOf(request);
-    body = text.trim() === "" ? {} : JSON.parse(text);
-  } catch (failure) {
-    return answer(response, 400, { error: (failure as Error).message });
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
   }
 
-  const named = namesFor(body, asked);
+  const named = namesFor(body.said, asked);
 
   if ("error" in named) {
     return answer(response, 400, { error: named.error });
   }
 
-  return command(response, serving, [...words, ...named.names]);
+  return command(response, serving, [asked, project, action, ...named.names]);
 }
 
 /**
@@ -279,17 +277,44 @@ function namesFor(
   }
 
   const named = (body as Record<string, unknown>)[asked];
-  const written = asked === "set" ? "'name=value' Overrides to set" : "the names of Overrides to remove";
 
-  if (
-    !Array.isArray(named) ||
-    named.length === 0 ||
-    named.some((entry) => typeof entry !== "string" || entry === "" || entry.startsWith("-"))
-  ) {
-    return { error: `'${asked}' is ${written}` };
+  if (asked === "set") {
+    const written = overridesIn(named);
+
+    return "error" in written ? { error: written.error } : { names: written.set };
+  }
+
+  if (!Array.isArray(named) || named.length === 0 || named.some((entry) => !isName(entry))) {
+    return { error: "'reset' is the names of Overrides to remove" };
   }
 
   return { names: named as string[] };
+}
+
+/**
+ * The `name=value` Overrides a request names, wherever one names them -- the same
+ * check for a request to record with them as for a request to write them, since
+ * it is the same list on the way to the same command.
+ */
+function overridesIn(value: unknown): { readonly set: readonly string[] } | { readonly error: string } {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((entry) => !isName(entry) || !entry.includes("="))
+  ) {
+    return { error: "'set' is a list of 'name=value' Overrides" };
+  }
+
+  return { set: value as string[] };
+}
+
+/**
+ * Whether something a request said is a name the command can be handed. A name
+ * beginning with a dash would reach the command as an option rather than as what
+ * it names, which is the one thing a request must not be able to smuggle in.
+ */
+function isName(value: unknown): value is string {
+  return typeof value === "string" && value !== "" && !value.startsWith("-");
 }
 
 /** The Runs this server has been asked for: asking for one, reading one, watching one. */
@@ -362,16 +387,13 @@ async function record(
   response: ServerResponse,
   serving: Serving,
 ): Promise<void> {
-  let body: unknown;
+  const body = await jsonIn(request);
 
-  try {
-    const text = await bodyOf(request);
-    body = text.trim() === "" ? {} : JSON.parse(text);
-  } catch (failure) {
-    return answer(response, 400, { error: (failure as Error).message });
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
   }
 
-  const asked = wordsFor(body);
+  const asked = wordsFor(body.said);
 
   if ("error" in asked) {
     return answer(response, 400, { error: asked.error });
@@ -460,10 +482,12 @@ function wordsFor(body: unknown): { readonly words: readonly string[] } | { read
 
   const sets = asked["set"];
   if (sets !== undefined) {
-    if (!Array.isArray(sets) || sets.some((entry) => typeof entry !== "string" || !entry.includes("="))) {
-      return { error: "'set' is a list of name=value Overrides" };
+    const written = overridesIn(sets);
+
+    if ("error" in written) {
+      return { error: written.error };
     }
-    for (const assignment of sets as string[]) {
+    for (const assignment of written.set) {
       words.push("--set", assignment);
     }
   }
@@ -573,6 +597,23 @@ function addressedHere(host: string | undefined): boolean {
     : (host.split(":")[0] ?? "");
 
   return loopbackNames.has(named.toLowerCase());
+}
+
+/**
+ * What a request said, as the JSON it says it in -- or what is wrong with it.
+ * Both requests that carry a body carry one of these, and a body that will not
+ * parse is the same answer for either.
+ */
+async function jsonIn(
+  request: IncomingMessage,
+): Promise<{ readonly said: unknown } | { readonly error: string }> {
+  try {
+    const text = await bodyOf(request);
+
+    return { said: text.trim() === "" ? {} : (JSON.parse(text) as unknown) };
+  } catch (failure) {
+    return { error: (failure as Error).message };
+  }
 }
 
 /** What a request said, up to as much of it as this server will read. */

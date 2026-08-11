@@ -13,7 +13,7 @@ import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 
 import {
   allParameters,
-  choicesFor,
+  choicesOf,
   effectiveParameters,
   loadAction,
   overrideFrom,
@@ -207,20 +207,21 @@ function report(
     project,
     action,
     sidecar: overridesFile(workspace, project, action),
-    parameters: Object.entries(declared).map(([name, declaration]) => {
-      const choices = choicesFor(declaration);
-
-      return {
-        name,
-        kind: declaration.kind,
-        describes: declaration.describes,
-        default: declaration.default,
-        ...(declaration.kind === "number" ? { min: declaration.min, max: declaration.max } : {}),
-        ...(choices === undefined ? {} : { choices }),
-        value: effective.values[name] as ParameterSetting,
-        overridden: effective.overridden.includes(name),
-      };
-    }),
+    parameters: Object.entries(declared).map(([name, declaration]) => ({
+      name,
+      kind: declaration.kind,
+      describes: declaration.describes,
+      default: declaration.default,
+      ...(declaration.kind === "number" ? { min: declaration.min, max: declaration.max } : {}),
+      // An easing takes one of a named set exactly as a choice does, so both
+      // report what that set is rather than leaving whatever offers it as a
+      // control to keep a copy of the four easing names.
+      ...(declaration.kind === "easing" || declaration.kind === "choice"
+        ? { choices: choicesOf(declaration) }
+        : {}),
+      value: effective.values[name] as ParameterSetting,
+      overridden: effective.overridden.includes(name),
+    })),
     warnings: effective.warnings,
   };
 }

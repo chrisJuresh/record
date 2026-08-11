@@ -47,7 +47,7 @@ export type Run = {
 };
 
 /** What a Parameter is worth once it has been resolved. */
-export type Setting = number | string | boolean;
+export type ParameterSetting = number | string | boolean;
 
 /** One declared Parameter, with what it is currently worth and why. */
 export type Parameter = {
@@ -55,13 +55,13 @@ export type Parameter = {
   readonly kind: "number" | "easing" | "choice" | "flag";
   /** Written for whoever is tuning it, so it is shown to them. */
   readonly describes: string;
-  readonly default: Setting;
+  readonly default: ParameterSetting;
   /** The range a number is tuned within, and nothing for the other kinds. */
   readonly min?: number;
   readonly max?: number;
   /** The values a choice or an easing takes, so that tuning it is picking one. */
   readonly choices?: readonly string[];
-  readonly value: Setting;
+  readonly value: ParameterSetting;
   readonly overridden: boolean;
 };
 

@@ -281,23 +281,15 @@ function refuses(declaration: ParameterDeclaration, value: ParameterSetting): st
     : `is ${value}, outside the declared range ${declaration.min}..${declaration.max}`;
 }
 
-/** The values a declaration of a named set will take, whichever set it is. */
-function choicesOf(declaration: EasingParameter | ChoiceParameter): readonly string[] {
-  return declaration.kind === "easing" ? easingNames : declaration.choices;
-}
-
 /**
- * The values a Parameter will take where it takes one of a named set, and
- * nothing for the kinds that take a number or a flag.
+ * The values a declaration of a named set will take, whichever set it is.
  *
  * An easing is a named set the same way a choice is -- it just names its set
  * here rather than in the Action -- so whatever offers one to be picked from
  * asks this rather than keeping a copy of the four names.
  */
-export function choicesFor(declaration: ParameterDeclaration): readonly string[] | undefined {
-  return declaration.kind === "easing" || declaration.kind === "choice"
-    ? choicesOf(declaration)
-    : undefined;
+export function choicesOf(declaration: EasingParameter | ChoiceParameter): readonly string[] {
+  return declaration.kind === "easing" ? easingNames : declaration.choices;
 }
 
 /**
