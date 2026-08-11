@@ -129,6 +129,13 @@ than the reader's system setting. Used in preference to emulating the media
 query, never alongside it.
 _Avoid_: theme switcher, toggle, adapter, driver
 
+**Progress**:
+What a Run says about itself while it is still running — the stage it has
+reached, and how many of its Frames it has captured. Watched as it happens and
+never stored: a Run's record says what it produced, not what it was up to, and
+nothing it produces depends on whether anybody was watching.
+_Avoid_: status, state, update, event, tick
+
 **Stale**:
 The state of an Action whose most recent Run predates commits made to its
 Project since. Staleness is reported, never acted on automatically.

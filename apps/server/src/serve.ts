@@ -88,6 +88,14 @@ type Serving = {
   readonly children: Set<RecordChild>;
 };
 
+/** Keeps hold of a command while it runs, so closing the server does not orphan it. */
+function holding(serving: Serving): (child: RecordChild) => void {
+  return (child) => {
+    serving.children.add(child);
+    child.once("close", () => serving.children.delete(child));
+  };
+}
+
 async function handle(
   request: IncomingMessage,
   response: ServerResponse,
@@ -112,48 +120,44 @@ async function handle(
     return answer(response, 400, { error: "that path is not readable" });
   }
 
-  const [first, second, third, fourth, fifth, sixth] = segments;
+  const [section, ...path] = segments;
 
-  if (segments.length === 0) {
+  if (section === undefined) {
     return get(request, response, () => answer(response, 200, index(serving)));
   }
 
-  if (first === "artifacts") {
+  if (section === "artifacts") {
     if (method !== "GET" && method !== "HEAD") {
       return answer(response, 405, { error: `an Artifact is fetched, not ${method}` });
     }
 
-    return serveArtifact(response, serving.options.workspace, segments.slice(1), {
+    return serveArtifact(response, serving.options.workspace, path, {
       range: request.headers.range,
       method,
     });
   }
 
-  if (first !== "api") {
+  if (section !== "api") {
     return answer(response, 404, { error: "nothing is served at that path" });
   }
 
   // Everything below is the command, invoked and read back. Which command each
   // path names is the whole of the mapping: nothing here decides an answer.
-  if (second === "projects" && segments.length === 2) {
-    return get(request, response, () => command(response, serving, ["projects"]));
+  const [asked, ...under] = path;
+
+  if (asked === "projects") {
+    return projects(request, response, serving, under);
   }
 
-  if (second === "projects" && fourth === "actions" && segments.length === 4) {
-    return get(request, response, () => command(response, serving, ["actions", third ?? ""]));
+  if (asked === "runs") {
+    return runs(request, response, serving, under);
   }
 
-  if (second === "projects" && sixth === "parameters" && segments.length === 6) {
-    return get(request, response, () =>
-      command(response, serving, ["parameters", third ?? "", fifth ?? ""]),
-    );
-  }
-
-  if (second === "mockups" && segments.length === 2) {
+  if (asked === "mockups" && under.length === 0) {
     return get(request, response, () => command(response, serving, ["mockups"]));
   }
 
-  if (second === "status" && segments.length === 2) {
+  if (asked === "status" && under.length === 0) {
     const project = url.searchParams.get("project");
 
     return get(request, response, () =>
@@ -161,27 +165,66 @@ async function handle(
     );
   }
 
-  if (second === "history" && (segments.length === 4 || segments.length === 5)) {
+  // A Project, one of its Actions, and at most one Condition -- which is what
+  // the command takes, so it is handed on rather than picked apart here.
+  if (asked === "history" && (under.length === 2 || under.length === 3)) {
+    return get(request, response, () => command(response, serving, ["history", ...under]));
+  }
+
+  return answer(response, 404, { error: "nothing is served at that path" });
+}
+
+/** What is read about a Project: its Actions, and one Action's Parameters. */
+function projects(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+  under: readonly string[],
+): void {
+  const [project, actions, action, parameters] = under;
+
+  if (under.length === 0) {
+    return get(request, response, () => command(response, serving, ["projects"]));
+  }
+
+  if (under.length === 2 && project !== undefined && actions === "actions") {
+    return get(request, response, () => command(response, serving, ["actions", project]));
+  }
+
+  if (
+    under.length === 4 &&
+    project !== undefined &&
+    actions === "actions" &&
+    action !== undefined &&
+    parameters === "parameters"
+  ) {
     return get(request, response, () =>
-      command(response, serving, [
-        "history",
-        third ?? "",
-        fourth ?? "",
-        ...(fifth === undefined ? [] : [fifth]),
-      ]),
+      command(response, serving, ["parameters", project, action]),
     );
   }
 
-  if (second === "runs" && segments.length === 2) {
-    if (method === "POST") {
+  answer(response, 404, { error: "nothing is served at that path" });
+}
+
+/** The Runs this server has been asked for: asking for one, reading one, watching one. */
+function runs(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+  under: readonly string[],
+): void | Promise<void> {
+  const [id, events] = under;
+
+  if (under.length === 0) {
+    if (request.method === "POST") {
       return record(request, response, serving);
     }
 
     return get(request, response, () => answer(response, 200, serving.runs.all()));
   }
 
-  if (second === "runs" && segments.length === 3) {
-    const asked = serving.runs.read(third ?? "");
+  if (under.length === 1 && id !== undefined) {
+    const asked = serving.runs.read(id);
 
     return get(request, response, () =>
       asked === undefined
@@ -190,11 +233,11 @@ async function handle(
     );
   }
 
-  if (second === "runs" && fourth === "events" && segments.length === 4) {
-    return get(request, response, () => stream(request, response, serving, third ?? ""));
+  if (under.length === 2 && id !== undefined && events === "events") {
+    return get(request, response, () => stream(request, response, serving, id));
   }
 
-  return answer(response, 404, { error: "nothing is served at that path" });
+  answer(response, 404, { error: "nothing is served at that path" });
 }
 
 /** What this server offers, for whoever opened it in a browser to read. */
@@ -214,6 +257,7 @@ function index(serving: Serving): unknown {
       "GET  /api/runs/<id>",
       "GET  /api/runs/<id>/events",
       "GET  /artifacts/<project>/<action>/<run>/<file>",
+      "GET  /artifacts/<project>/<action>/conditions/<condition>/<run>/<file>",
     ],
   };
 }
@@ -246,7 +290,7 @@ async function record(
 
   const begun = serving.runs.begin(asked.words);
 
-  // Not awaited: the answer goes back now and the recording goes on without it.
+  // Not awaited: the answer goes back now and the Runs go on without it.
   void invoke({
     command: serving.options.command,
     workspace: serving.options.workspace,
@@ -254,10 +298,7 @@ async function record(
     progress: (event) => {
       serving.runs.progress(begun.id, event);
     },
-    started: (child) => {
-      serving.children.add(child);
-      child.once("close", () => serving.children.delete(child));
-    },
+    started: holding(serving),
   }).then(
     (report) => {
       serving.runs.end(begun.id, { state: "recorded", report, message: null });
@@ -366,6 +407,12 @@ function stream(
     connection: "keep-alive",
   });
 
+  // A HEAD asks how this would be answered, not to be held open until the Run
+  // is over -- so it is told, and let go.
+  if (request.method === "HEAD") {
+    return void response.end();
+  }
+
   const send = (event: RunEvent): void => {
     if (event.kind === "progress") {
       response.write(`event: progress\ndata: ${JSON.stringify(event.progress)}\n\n`);
@@ -394,15 +441,13 @@ async function command(
         command: serving.options.command,
         workspace: serving.options.workspace,
         words: [...words, "--json"],
-        started: (child) => {
-          serving.children.add(child);
-          child.once("close", () => serving.children.delete(child));
-        },
+        started: holding(serving),
       }),
     );
   } catch (failure) {
-    // The command refused what the request named, so the request is what was
-    // wrong -- and what it said is more use than any status code.
+    // The command refused what the request named. Whether that was the name's
+    // fault or this machine's is not something a status code can tell apart, so
+    // what the command said is the answer and the code is only its shape.
     answer(response, failure instanceof CommandFailed ? 400 : 500, {
       error: failure instanceof Error ? failure.message : String(failure),
     });

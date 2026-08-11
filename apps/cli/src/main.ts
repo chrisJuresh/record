@@ -520,10 +520,10 @@ async function serve(port: number | undefined, json: boolean): Promise<number> {
     ...(port === undefined ? {} : { port }),
   });
 
-  process.stdout.write(
-    json
-      ? `${JSON.stringify({ url: running.url, port: running.port })}\n`
-      : `record is serving at ${running.url}\n`,
+  emit(
+    json,
+    { url: running.url, port: running.port },
+    () => `record is serving at ${running.url}\n`,
   );
 
   // Serving is the command: it holds the process open until it is interrupted,
@@ -599,7 +599,8 @@ function emit(json: boolean, value: unknown, describe: () => string): number {
  * nobody asked -- one line of JSON per progress, on stderr, under a prefix of
  * its own. Progress shares stderr with warnings and failures because stdout is
  * the command's answer, and it is prefixed so that whatever is watching can
- * tell the three apart.
+ * tell the three apart. The server reads exactly these lines, so the prefix is
+ * a promise rather than a decoration.
  */
 function watching(progress: boolean): { progress?: (event: RunProgress) => void } {
   return progress

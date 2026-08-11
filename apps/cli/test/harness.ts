@@ -59,6 +59,8 @@ export async function serving(workspace: string): Promise<ServedRecord> {
     said += chunk;
   });
 
+  // Read until the answer parses, rather than to the first newline: the command
+  // writes its machine-readable answers over several lines.
   const url = await new Promise<string>((settle, stop) => {
     let answered = "";
 
@@ -66,9 +68,10 @@ export async function serving(workspace: string): Promise<ServedRecord> {
     child.stdout.on("data", (chunk: string) => {
       answered += chunk;
 
-      const line = answered.split("\n")[0] ?? "";
-      if (answered.includes("\n")) {
-        settle((JSON.parse(line) as { url: string }).url);
+      try {
+        settle((JSON.parse(answered) as { url: string }).url);
+      } catch {
+        return;
       }
     });
     child.once("error", stop);

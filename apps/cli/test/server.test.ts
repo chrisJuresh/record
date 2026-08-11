@@ -70,22 +70,50 @@ const broken: Action<typeof parameters> = {
 export default broken;
 `;
 
+/**
+ * An Action that describes no clip at all, so it fails before a browser is ever
+ * asked for -- which is what makes the request it belongs to cheap enough to
+ * assert against beside two real Runs.
+ */
+const nothing = `
+import { motion, type Action } from "@record/core";
+
+const parameters = {
+  framerate: { kind: "number", describes: "Frames per second", default: 20, min: 1, max: 120 },
+} as const;
+
+const nothing: Action<typeof parameters> = {
+  parameters,
+  timeline({ framerate }) {
+    return motion({ framerate });
+  },
+};
+
+export default nothing;
+`;
+
 // 100ms + 400ms + 100ms at 20fps.
 const expectedFrames = 12;
+
+/** A Project nothing is ever recorded against, since its Action describes no clip. */
+const hollow = ['base_url = "http://127.0.0.1:1/"', 'source_repository = "."', ""].join("\n");
 
 let site: FixtureSite;
 let workspace: string;
 let server: ServedRecord;
 
 /**
- * One Run asked for over HTTP and watched to the end, and one that could not
- * record. Recording is slow enough that every test reads these rather than
- * asking for Runs of its own.
+ * One Run asked for over HTTP and watched to the end, one that could not
+ * record, and one request that describes no clip at all. Every test here reads
+ * these rather than asking for Runs of its own: each Run is a browser and an
+ * encoder, and the rest of the suite is recording at the same time.
  */
 let recorded: RunRequest;
 let watched: Watched;
+let alsoWatched: Watched;
 let failed: RunRequest;
 let failing: Watched;
+let refused: RunRequest;
 
 before(async () => {
   site = await startFixtureSite();
@@ -102,19 +130,33 @@ before(async () => {
       "device_scale_factor = 1",
       "",
     ].join("\n"),
+    hollow,
   });
   await actionIn(workspace, "demo", "peek", peek);
   await actionIn(workspace, "demo", "broken", broken);
+  await actionIn(workspace, "hollow", "nothing", nothing);
 
   server = await serving(workspace);
 
+  // Watched twice at once, because progress goes to whoever is connected: a
+  // second browser tab is not a client the first one has taken the Run from.
   const begun = await askFor({ project: "demo", action: "peek" });
-  watched = await watch(`api/runs/${begun.id}/events`);
+  [watched, alsoWatched] = await Promise.all([
+    watch(`api/runs/${begun.id}/events`),
+    watch(`api/runs/${begun.id}/events`),
+  ]);
   recorded = await read<RunRequest>(`api/runs/${begun.id}`);
 
-  const asked = await askFor({ project: "demo", action: "broken" });
-  failing = await watch(`api/runs/${asked.id}/events`);
-  failed = await read<RunRequest>(`api/runs/${asked.id}`);
+  // ...one that gets as far as the browser and then cannot record...
+  const failingRun = await askFor({ project: "demo", action: "broken" });
+  failing = await watch(`api/runs/${failingRun.id}/events`);
+  failed = await read<RunRequest>(`api/runs/${failingRun.id}`);
+
+  // ...and a whole Project whose Action describes no clip, which the command
+  // refuses while still answering with a summary of what it refused.
+  const refusedRun = await askFor({ project: "hollow", concurrency: 1 });
+  await watch(`api/runs/${refusedRun.id}/events`);
+  refused = await read<RunRequest>(`api/runs/${refusedRun.id}`);
 });
 
 after(async () => {
@@ -129,11 +171,21 @@ after(async () => {
  * other name -- which is how a page elsewhere would reach a local server that
  * merely bound the right interface.
  */
-test("the server binds loopback and answers only requests addressed to this machine", async () => {
+test("the server serves a loopback address and answers only requests addressed to it", async () => {
   assert.match(server.url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
 
   assert.equal((await raw("/api/projects", { host: "records.example.com" })).status, 403);
   assert.equal((await raw("/api/projects", { host: "localhost" })).status, 200);
+});
+
+test("a HEAD says how a Run would be watched rather than holding the connection open", async () => {
+  const asked = await read<RunRequest[]>("api/runs");
+  const id = asked.at(0)?.id ?? "";
+
+  const answered = await raw(`/api/runs/${id}/events`, {}, "HEAD");
+
+  assert.equal(answered.status, 200);
+  assert.equal(answered.body, "");
 });
 
 test("listing Projects over HTTP is exactly what the command says", async () => {
@@ -170,7 +222,15 @@ test("the Runs an Action still keeps are served, newest first", async () => {
   const { stdout } = await record(workspace, "history", "demo", "peek", "--json");
 
   assert.deepEqual(kept, JSON.parse(stdout));
-  assert.equal(kept.at(0)?.id, (recorded.report as RunReport).id);
+  assert.ok(
+    kept.some((run) => run.id === (recorded.report as RunReport).id),
+    "the Run asked for over HTTP is among them",
+  );
+  assert.deepEqual(
+    [...kept].sort((one, other) => (one.recordedAt < other.recordedAt ? 1 : -1)),
+    kept,
+    "newest first",
+  );
 });
 
 /**
@@ -205,6 +265,9 @@ test("a Run's progress is streamed to a client while the Run is in flight", asyn
     watched.closed - watched.opened > 200,
     `the whole stream arrived within ${watched.closed - watched.opened}ms`,
   );
+
+  // ...and every client connected to it was told, not just the first.
+  assert.deepEqual(alsoWatched.events, watched.events);
 });
 
 test("a Run watched to the end reports what it produced", async () => {
@@ -256,26 +319,20 @@ test("an Action nobody declared is refused in the command's own words", async ()
 
 /**
  * One Action failing does not abandon the others, so a request recording a
- * whole Project fails and still reports every Run that recorded. The server
- * passes both on rather than throwing the summary away with the failure.
+ * whole Project can fail and still have a summary to report. The server hands
+ * on both rather than throwing the answer away with the failure.
  */
-test("a request that recorded some of what it asked for reports both", async () => {
-  const asked = await askFor({ project: "demo" });
-  await watch(`api/runs/${asked.id}/events`);
-  const ended = await read<RunRequest>(`api/runs/${asked.id}`);
+test("a request the command refused still carries the answer it gave", () => {
+  const summary = refused.report as RunSummary;
 
-  const summary = ended.report as RunSummary;
-
-  assert.equal(ended.state, "failed");
-  assert.deepEqual(
-    summary.runs.map((run) => run.action),
-    ["peek"],
-  );
+  assert.equal(refused.state, "failed");
+  assert.deepEqual(summary.runs, []);
   assert.deepEqual(
     summary.failures.map((failure) => failure.action),
-    ["broken"],
+    ["nothing"],
   );
-  assert.match(ended.message ?? "", /failed: demo broken/);
+  assert.equal(summary.concurrency, 1, "the request's own concurrency reached the command");
+  assert.match(refused.message ?? "", /failed: hollow nothing.*produces no Frames/);
 });
 
 test("the requests to record this server has been asked for are readable", async () => {
@@ -378,10 +435,11 @@ test("a request to record that names nothing recordable is refused rather than r
 function raw(
   path: string,
   headers: Record<string, string> = {},
+  method = "GET",
 ): Promise<{ status: number; body: string }> {
   return new Promise((settle, stop) => {
     const asked = ask(
-      { host: "127.0.0.1", port: new URL(server.url).port, path, headers },
+      { host: "127.0.0.1", port: new URL(server.url).port, path, headers, method },
       (response) => {
         let body = "";
 

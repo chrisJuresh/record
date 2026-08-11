@@ -332,7 +332,7 @@ async function declaredActions(
 }
 
 /** One Run asked for, and the lease its Project is shared through. */
-type RunRequest = {
+type AskedRun = {
   readonly project: ProjectConfig;
   readonly action: string;
   readonly lease: Lease;
@@ -357,8 +357,8 @@ type Lease = {
 
 /** What one Run recorded, or what stopped it. */
 type Outcome =
-  | { readonly asked: RunRequest; readonly report: RunReport }
-  | { readonly asked: RunRequest; readonly failure: unknown };
+  | { readonly asked: AskedRun; readonly report: RunReport }
+  | { readonly asked: AskedRun; readonly failure: unknown };
 
 /**
  * Records each of them, at most `concurrency` at once, and answers in the order
@@ -366,7 +366,7 @@ type Outcome =
  */
 async function recordEach(
   workspace: string,
-  requested: readonly RunRequest[],
+  requested: readonly AskedRun[],
   concurrency: number,
   watching: RunWatcher | undefined,
 ): Promise<Outcome[]> {
@@ -390,7 +390,7 @@ async function recordEach(
 /** Records one Action, answering with what stopped it rather than throwing it. */
 async function recordOne(
   workspace: string,
-  asked: RunRequest,
+  asked: AskedRun,
   watching: RunWatcher | undefined,
 ): Promise<Outcome> {
   try {
@@ -419,7 +419,7 @@ function concurrencyOf(asked: number | undefined): number {
 /** Everything one Run does, from the Action's declaration to its Artifacts. */
 async function record(
   workspace: string,
-  asked: RunRequest,
+  asked: AskedRun,
   watching: RunWatcher | undefined,
 ): Promise<RunReport> {
   const { project, action: actionName, lease, condition } = asked;

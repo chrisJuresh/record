@@ -28,11 +28,19 @@ export type RecordCommand = {
 };
 
 /**
- * The prefix a Run's progress is written under, which is how a line saying what
- * a Run is doing is told from a warning or a failure. The command's other
- * lines are prefixed the same way.
+ * The prefix `record run --progress` writes each progress under, which is how a
+ * line saying what a Run is doing is told from a warning or a failure. The
+ * command's other lines are prefixed the same way.
  */
 const progressPrefix = "progress: ";
+
+/**
+ * ...and the prefix its warnings are written under. A warning is not what
+ * stopped a Run, so it is kept out of the failure -- and nothing is lost by
+ * that, because everything the command warns about is in the answer it writes
+ * on stdout as well.
+ */
+const warningPrefix = "warning: ";
 
 /** What the command said when it failed, so that is what a client is shown. */
 export class CommandFailed extends Error {
@@ -84,8 +92,8 @@ export async function invoke(asked: Invocation): Promise<unknown> {
     answer += chunk;
   });
 
-  // Progress and prose share stderr, so the prefix is what separates them --
-  // and everything that is not progress is what the failure will be said in.
+  // Progress, warnings and failures share stderr, so the prefixes are what
+  // separate them -- and what is left over is what the failure will be said in.
   const said: string[] = [];
   eachLine(child.stderr, (line) => {
     if (line.startsWith(progressPrefix)) {
@@ -97,7 +105,9 @@ export async function invoke(asked: Invocation): Promise<unknown> {
       }
     }
 
-    said.push(line);
+    if (!line.startsWith(warningPrefix)) {
+      said.push(line);
+    }
   });
 
   const code = await ended(child);

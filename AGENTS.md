@@ -234,7 +234,7 @@ able to drive a tool that starts processes on this machine.
 | `POST /api/runs` | `record run`, answered before the Run is done |
 | `GET /api/runs[/<id>]` | The Runs this server has been asked for |
 | `GET /api/runs/<id>/events` | One Run's progress, as it happens |
-| `GET /artifacts/<project>/<action>/<run>/<file>` | What a Run left behind |
+| `GET /artifacts/<project>/<action>/[conditions/<condition>/]<run>/<file>` | What a Run left behind |
 
 `POST /api/runs` takes `{ project, action, all, schemes, widths, concurrency,
 set }` — the same request `record run` takes — and answers `202` with the

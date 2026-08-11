@@ -2,9 +2,9 @@
  * The Runs this server has been asked for, and what each of them has said about
  * itself so far.
  *
- * A request to record answers immediately and the recording goes on without it,
+ * A request to record answers immediately and its Runs go on without it,
  * because a Run takes long enough that holding a connection open for it would
- * be indistinguishable from a hang. What it says on the way through is kept
+ * be indistinguishable from a hang. What they say on the way through is kept
  * here and handed to whoever is watching -- and kept for whoever starts
  * watching late, so a client that connected a moment after asking is not shown
  * a Run that appears to have done nothing.
