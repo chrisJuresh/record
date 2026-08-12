@@ -97,12 +97,24 @@ export type OpenPage = {
   close(): Promise<void>;
 };
 
-export async function openPage(executable: string): Promise<OpenPage> {
+/**
+ * Opens a browser rendering at a device scale factor, which is how many pixels
+ * of image each CSS pixel of page is captured as.
+ *
+ * It is an argument here rather than something set on the target because the
+ * switch that decides it is browser-wide, and this is where a browser is
+ * launched. `spikes/device-scale/` is the measurement: the per-target
+ * `deviceScaleFactor` moves what the page believes `devicePixelRatio` is and
+ * never the size of the image, so a page photographed at scale 2 needs both --
+ * the switch, or the raster is the CSS size, and the override, or the page
+ * lays itself out as a low-density one and is merely upsampled.
+ */
+export async function openPage(executable: string, deviceScaleFactor: number): Promise<OpenPage> {
   const profile = await mkdtemp(join(tmpdir(), "record-chrome-"));
 
   let browser: Launched;
   try {
-    browser = await launch(executable, profile);
+    browser = await launch(executable, profile, deviceScaleFactor);
   } catch (failure) {
     await rm(profile, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined);
     throw failure;
@@ -145,7 +157,7 @@ export async function openPage(executable: string): Promise<OpenPage> {
 
 export async function openFrameStepper(url: string, options: StepperOptions): Promise<FrameStepper> {
   const interval = 1000 / options.framerate;
-  const page = await openPage(options.executable);
+  const page = await openPage(options.executable, options.viewport.deviceScaleFactor);
 
   /**
    * Cursor moves the browser has been sent but not yet answered. It coalesces
@@ -169,6 +181,11 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
 
     await send("Page.enable");
     await send("Runtime.enable");
+    // The viewport in CSS pixels, which is what the Timeline scrolls and clicks
+    // in. The scale here is what the page believes its own `devicePixelRatio`
+    // is, so a page with a `srcset` or a canvas draws itself at the density it
+    // is about to be photographed at; the browser was launched at the same
+    // scale, which is what makes the image really that large.
     await send("Emulation.setDeviceMetricsOverride", {
       width: options.viewport.width,
       height: options.viewport.height,
@@ -301,7 +318,11 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
 
 type Launched = { readonly process: ChildProcess; readonly wsUrl: string };
 
-async function launch(executable: string, profile: string): Promise<Launched> {
+async function launch(
+  executable: string,
+  profile: string,
+  deviceScaleFactor: number,
+): Promise<Launched> {
   const child = spawn(executable, [
     "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
@@ -315,9 +336,10 @@ async function launch(executable: string, profile: string): Promise<Launched> {
     "--disable-checker-imaging",
     "--disable-image-animation-resync",
     "--hide-scrollbars",
-    // The device pixel ratio is set per target instead, so that one browser
-    // could serve viewports that differ in it.
-    "--force-device-scale-factor=1",
+    // What decides how large a captured Frame really is. It is browser-wide, so
+    // one browser cannot serve two viewports that differ in it -- which costs
+    // nothing, because a page is a browser here.
+    `--force-device-scale-factor=${deviceScaleFactor}`,
     "--no-first-run",
     "--disable-gpu",
   ]);

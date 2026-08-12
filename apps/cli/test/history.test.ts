@@ -165,6 +165,28 @@ test("`status --json` reports an Action whose Project has not been committed to 
 });
 
 /**
+ * What the standing clip was really captured at, which staleness cannot tell:
+ * `viewport.device_scale_factor` lives in this workspace rather than in the
+ * Project's own repository, so raising it leaves every clip current and soft
+ * until each is recorded again. Reported so that the difference is readable
+ * without opening a Run's record.
+ */
+test("`status` says what the last Run of an Action was captured at", async () => {
+  const { action } = statusOfAction(await statusOf(), "peek");
+
+  assert.deepEqual(action.lastRun?.captured, {
+    width: first.frames.width,
+    height: first.frames.height,
+    scale: 1,
+  });
+
+  const { stdout, code } = await record(workspace, "status");
+
+  assert.equal(code, 0);
+  assert.match(stdout, /400x300/, "and says so in its own words, not only in JSON");
+});
+
+/**
  * Deliberately not considered: a working tree is edited all day, and an Action
  * that went Stale every time a file was saved would be a flag nobody reads.
  */

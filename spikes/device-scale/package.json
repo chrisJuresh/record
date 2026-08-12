@@ -1,0 +1,9 @@
+{
+  "name": "spike-device-scale",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway spike behind issue #39: does anything make HeadlessExperimental.beginFrame return a screenshot larger than the CSS viewport?",
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}

@@ -49,6 +49,9 @@ export default peek;
 const expectedFrames = 12;
 const expectedFramerate = 20;
 
+/** The viewport both Projects are photographed at, in CSS pixels. */
+const viewport = { width: 400, height: 300 };
+
 /** The three ADR 0006 requires, in the order a Run reports them. */
 const expectedFormats: ArtifactFormat[] = ["mp4", "webm", "gif"];
 
@@ -65,33 +68,45 @@ let workspace: string;
 let first: RunReport;
 let second: RunReport;
 let tuned: RunReport;
+let sharp: RunReport;
 
 before(async () => {
   site = await startFixtureSite();
   workspace = await workspaceWith({
-    demo: [
-      `base_url = "${site.url}"`,
-      `source_repository = "."`,
-      "video_width = 320",
-      'mockup = "none"',
-      "",
-      "[viewport]",
-      "width = 400",
-      "height = 300",
-      "device_scale_factor = 1",
-      "",
-    ].join("\n"),
+    demo: project(site.url, 1, 320),
+    // The same page photographed at twice the density, and encoded wider than
+    // it is in CSS pixels -- which is the only arrangement that has anything to
+    // gain from a scale factor.
+    sharp: project(site.url, 2, 640),
   });
   await actionIn(workspace, "demo", "peek", peek);
   // The same Action under a second name. A Run writes over the Artifacts of the
   // last Run of that Action, so the tuned Run needs somewhere of its own for
   // both its Artifacts and the untuned ones to still be there to measure.
   await actionIn(workspace, "demo", "tight", peek);
+  await actionIn(workspace, "sharp", "peek", peek);
 
   first = await recordRun("peek");
   second = await recordRun("peek");
   tuned = await recordRun("tight", "--set", "distance=40", "--set", "gifWidth=160", "--set", "gifFramerate=10");
+  sharp = await recordIn("sharp", "peek");
 });
+
+/** A Project on the fixture site, photographed at a density and encoded at a width. */
+function project(baseUrl: string, scale: number, videoWidth: number): string {
+  return [
+    `base_url = "${baseUrl}"`,
+    `source_repository = "."`,
+    `video_width = ${videoWidth}`,
+    'mockup = "none"',
+    "",
+    "[viewport]",
+    `width = ${viewport.width}`,
+    `height = ${viewport.height}`,
+    `device_scale_factor = ${scale}`,
+    "",
+  ].join("\n");
+}
 
 after(async () => {
   await site.close();
@@ -99,7 +114,11 @@ after(async () => {
 });
 
 async function recordRun(action: string, ...args: string[]): Promise<RunReport> {
-  const { stdout, stderr, code } = await record(workspace, "run", "demo", action, ...args, "--json");
+  return recordIn("demo", action, ...args);
+}
+
+async function recordIn(project: string, action: string, ...args: string[]): Promise<RunReport> {
+  const { stdout, stderr, code } = await record(workspace, "run", project, action, ...args, "--json");
   assert.equal(code, 0, stderr);
   return JSON.parse(stdout) as RunReport;
 }
@@ -348,6 +367,76 @@ test("`run --set` records with the Override and keeps it in the sidecar", async 
 
   const sidecar = join(workspace, "projects", "demo", "actions", "tight.overrides.toml");
   assert.match(await readFile(sidecar, "utf8"), /distance = 40/);
+});
+
+/**
+ * `viewport.device_scale_factor` used to be a Setting the engine ignored: it
+ * reached `Emulation.setDeviceMetricsOverride`, which moves what the page
+ * believes its own `devicePixelRatio` is and never the size of the image
+ * `beginFrame` hands back, so a Project at scale 2 was photographed at CSS
+ * pixels exactly like one at scale 1 (`spikes/device-scale/`).
+ *
+ * Held at both scales rather than at 2 alone, because "the Frames are 800x600"
+ * proves nothing about the Setting unless the Frames of the same page at scale
+ * 1 are not.
+ */
+test("a Project photographed at scale 2 captures Frames at twice its CSS viewport", () => {
+  assert.deepEqual(
+    { width: first.frames.width, height: first.frames.height, scale: first.frames.scale },
+    { ...viewport, scale: 1 },
+    "at scale 1 a Frame is the viewport",
+  );
+
+  assert.deepEqual(
+    { width: sharp.frames.width, height: sharp.frames.height, scale: sharp.frames.scale },
+    { width: viewport.width * 2, height: viewport.height * 2, scale: 2 },
+    "at scale 2 it is twice the viewport in each direction",
+  );
+});
+
+/**
+ * The scale a Run reports is measured off its own Frames rather than copied
+ * from what the Project asked for. The distinction is the whole of this issue:
+ * the Setting said 2 for as long as the engine captured at 1, and a record
+ * repeating the Setting back would have said 2 that whole time.
+ *
+ * So it is held against the Frames, and said in the command's own words at both
+ * scales -- a Run at 1 says its size plainly, and one at 2 says what it is.
+ */
+test("the scale a Run reports is measured off its Frames, and said in its own words", async () => {
+  assert.equal(sharp.frames.scale, sharp.frames.width / viewport.width);
+  assert.equal(first.frames.scale, first.frames.width / viewport.width);
+
+  const { stdout, code } = await record(workspace, "status");
+  assert.equal(code, 0);
+
+  assert.match(stdout, /800x600 at scale 2/, "the Project photographed at twice the density");
+  assert.match(stdout, /400x300(?! at scale)/, "and the one at 1, which says no scale at all");
+});
+
+/**
+ * What the scale factor is *for*. A clip embedded on a page and shown on a
+ * high-density display needs more pixels than it has CSS pixels, so the width
+ * that matters is one above the viewport's own -- and at scale 1 that width
+ * could only ever be reached by upsampling Frames that never held the detail.
+ *
+ * Asserted against the encoded file rather than the report: the Artifact is the
+ * thing that has to carry the pixels.
+ */
+test("a Run encodes above its CSS viewport width from Frames that really are that wide", async () => {
+  const encoded = await probe(artifactOf(sharp, "mp4").path);
+
+  assert.equal(encoded.width, 640, "encoded at the Project's video width");
+  assert.equal(encoded.height, 480);
+
+  assert.ok(
+    sharp.frames.width >= encoded.width,
+    `640 pixels of Artifact came from ${sharp.frames.width} pixels of Frame, so nothing was invented`,
+  );
+  assert.ok(
+    encoded.width > viewport.width,
+    "the width worth having is one the CSS viewport could not supply on its own",
+  );
 });
 
 test("naming an Action the Project does not declare fails with a message saying so", async () => {

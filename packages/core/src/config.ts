@@ -52,7 +52,14 @@ export type ProjectConfig = {
 const defaultReadyPath = "/";
 /** Long enough for a bundler to build a site it has not built before. */
 const defaultReadyTimeoutMs = 60_000;
-const defaultViewport: Viewport = { width: 1440, height: 900, deviceScaleFactor: 2 };
+/**
+ * One pixel of Frame per CSS pixel, because a scale factor is now a real cost:
+ * scale 2 is four times the pixels through capture, every PNG written and every
+ * encode, and it buys nothing until `video_width` is raised above the viewport's
+ * own width. It stood at 2 while nothing honoured it, which quietly made a
+ * default of quadrupling the slowest part of a Run for no sharpness at all.
+ */
+const defaultViewport: Viewport = { width: 1440, height: 900, deviceScaleFactor: 1 };
 const defaultVideoWidth = 1280;
 
 /**

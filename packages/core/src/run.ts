@@ -124,6 +124,18 @@ export type RunReport = {
     /** How big each Frame came out, which is what a Mockup was composited around. */
     readonly width: number;
     readonly height: number;
+    /**
+     * How many pixels of Frame each CSS pixel of page was captured as.
+     *
+     * **Measured**, as the width above against the CSS viewport, rather than
+     * copied from the Project's `viewport.device_scale_factor` -- the Setting
+     * says what was asked for, and this whole issue is what came of believing
+     * that it was also what happened. Reported because it is what makes the
+     * size above vary: a Frame twice the viewport is a page photographed at
+     * scale 2, and one that is not is a clip that will be soft on a
+     * high-density display however wide it was encoded.
+     */
+    readonly scale: number;
     /** Frames driven before the first Frame was kept, which must not vary between Runs. */
     readonly priming: { readonly compositor: number; readonly settle: number };
     /** Frames the compositor reported undamaged, kept as repeats rather than dropped. */
@@ -607,6 +619,7 @@ async function record(
         captured: states.length,
         width: captured.size.width,
         height: captured.size.height,
+        scale: captured.size.width / viewport.width,
         priming: captured.priming,
         repeated: captured.repeated,
         hashes: captured.hashes,

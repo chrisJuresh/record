@@ -69,9 +69,9 @@ export type RenderOptions = {
   readonly executable: string;
   /**
    * The Frames the surround is laid out around. Its CSS size is what the
-   * template is given; its scale is what the browser is asked to render at,
-   * which the browser is free to ignore -- what the image came out at is
-   * measured rather than assumed.
+   * template is given, and its scale is what the browser is launched to render
+   * at -- but what the image came out at is still measured rather than
+   * multiplied out, because the size of a surround is the browser's answer.
    */
   readonly viewport: Viewport;
 };
@@ -95,8 +95,11 @@ export async function renderMockup(
 
   // The same browser under the same switches as capture (ADR 0008), which also
   // means the surround is photographed the way a Frame is: by stepping the
-  // compositor, because this browser has been told not to draw on its own.
-  const page = await openPage(options.executable);
+  // compositor, because this browser has been told not to draw on its own. At
+  // the same scale, too, so that a surround is as dense as the Frames it is
+  // laid around -- what that comes to is still measured off the image rather
+  // than assumed from it.
+  const page = await openPage(options.executable, scale);
 
   try {
     const send = page.send;

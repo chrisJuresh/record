@@ -68,7 +68,9 @@ test("a Project that declares only what it must gets the defaults, and is not Pu
       readyPath: "/",
       readyTimeoutMs: 60000,
       sourceRepository: "C:\\demo\\other",
-      viewport: { width: 1440, height: 900, deviceScaleFactor: 2 },
+      // One pixel of Frame per CSS pixel: a scale factor is four times the
+      // pixels through the slowest part of a Run, so it is asked for.
+      viewport: { width: 1440, height: 900, deviceScaleFactor: 1 },
       videoWidth: 1280,
       // Nothing said about a surround is the browser window the page asks for.
       mockup: "auto",

@@ -9,6 +9,7 @@
 import { readActions, readProject, readProjects } from "./config.js";
 import { readHistory } from "./history.js";
 import { headCommit, repositoryOf } from "./repository.js";
+import type { RunReport } from "./run.js";
 
 /** What the most recent retained Run of an Action was, in as much as staleness needs. */
 export type LastRun = {
@@ -16,6 +17,21 @@ export type LastRun = {
   readonly recordedAt: string;
   /** The Project's commit when it was recorded, or nothing if it had none to read. */
   readonly commit: string | null;
+  /**
+   * How big its Frames came out and at what scale, which is the one thing about
+   * a standing clip that a Project can change underneath it without the clip
+   * going Stale: `viewport.device_scale_factor` is not the Project's own
+   * repository, so a clip captured before it was raised is current and soft.
+   *
+   * The scale is nothing where the Run's own record does not say -- every Run
+   * recorded before one did is on disk without it, and reading 1 into it would
+   * be answering from this reader rather than from the Run.
+   */
+  readonly captured: {
+    readonly width: number;
+    readonly height: number;
+    readonly scale: number | null;
+  };
 };
 
 export type ActionStatus = {
@@ -112,7 +128,18 @@ async function statusOf(
   const lastRun =
     last === undefined
       ? null
-      : { id: last.id, recordedAt: last.recordedAt, commit: last.commit };
+      : {
+          id: last.id,
+          recordedAt: last.recordedAt,
+          commit: last.commit,
+          captured: {
+            width: last.frames.width,
+            height: last.frames.height,
+            // A Run's record is read back as what it was written as, and one
+            // written before Runs said this says nothing rather than 1.
+            scale: (last.frames as Partial<RunReport["frames"]>).scale ?? null,
+          },
+        };
 
   return {
     action,
