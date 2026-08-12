@@ -16,6 +16,7 @@ import {
   defaultConcurrency,
   mockups,
   noMockup,
+  publishClips,
   readActions,
   readConditions,
   readConfiguration,
@@ -34,6 +35,7 @@ import {
   type ParameterReport,
   type ProjectConfig,
   type ProjectReport,
+  type PublishReport,
   type RunProgress,
   type RunReport,
   type RunSummary,
@@ -58,6 +60,8 @@ const usage = `record -- repeatable clips of locally-running websites
   record history <project> <action> <condition>    ...of one Matrix Condition
   record mockups                         List every Mockup a clip can be shown in
   record mockups <project> <action>      Render every Mockup around a Frame of an Action
+  record publish                         Show what publishing would make public, and do none of it
+  record publish --confirm               ...and carry it out: commit and push this repository
   record serve                           Serve the app and these operations, on this machine only
 
   --set <name>=<value>         Override a Parameter for this Run, and keep it
@@ -67,6 +71,8 @@ const usage = `record -- repeatable clips of locally-running websites
   --concurrency <n>            How many Runs record at once (${defaultConcurrency})
   --progress                   Say what a Run is doing, on stderr, as it does it
   --at <seconds>               How far into an Action the contact sheet photographs (0)
+  --dry-run                    Show what publishing would do, and do none of it
+  --confirm                    Carry a publish out, which is the one irreversible thing here
   --port <n>                   The loopback port to serve on (an ephemeral one)
   --open                       Open the app in this machine's browser once it is serving
   --json                       Emit machine-readable output
@@ -108,8 +114,22 @@ async function main(argv: string[]): Promise<number> {
     return fail(`${(failure as Error).message}\n\n${usage}`);
   }
 
-  const { command, operands, json, sets, all, schemes, widths, concurrency, at, port, open, progress } =
-    parsed;
+  const {
+    command,
+    operands,
+    json,
+    sets,
+    all,
+    schemes,
+    widths,
+    concurrency,
+    at,
+    dryRun,
+    confirm,
+    port,
+    open,
+    progress,
+  } = parsed;
 
   for (const [option, given] of [
     ["--set", sets.length > 0],
@@ -126,6 +146,15 @@ async function main(argv: string[]): Promise<number> {
 
   if (at !== undefined && command !== "mockups") {
     return fail(`only mockups takes --at\n\n${usage}`);
+  }
+
+  for (const [option, given] of [
+    ["--dry-run", dryRun],
+    ["--confirm", confirm],
+  ] as const) {
+    if (given && command !== "publish") {
+      return fail(`only publish takes ${option}\n\n${usage}`);
+    }
   }
 
   for (const [option, given] of [
@@ -279,6 +308,23 @@ async function main(argv: string[]): Promise<number> {
         }
         return await contactSheet(project, action, at, json);
       }
+      case "publish": {
+        if (operands.length > 0) {
+          return fail(
+            `publish makes public every Published Project, so it takes no Project\n\n${usage}`,
+          );
+        }
+        // Asking to be shown the plan and asking for it to be carried out are
+        // opposite requests, and there is no reading of both at once that is
+        // safe to guess at.
+        if (dryRun && confirm) {
+          return fail(
+            "--dry-run shows what publishing would do and --confirm carries it out, so a " +
+              `request is one or the other\n\n${usage}`,
+          );
+        }
+        return await publish(confirm, json);
+      }
       case "serve": {
         if (operands.length > 0) {
           return fail(`serve takes no arguments\n\n${usage}`);
@@ -310,6 +356,10 @@ type Arguments = {
   readonly concurrency: number | undefined;
   /** How far into an Action a contact sheet photographs, in seconds. */
   readonly at: number | undefined;
+  /** Whether a publish was asked to say what it would do rather than do it. */
+  readonly dryRun: boolean;
+  /** Whether a publish was confirmed, which is the whole of what carries it out. */
+  readonly confirm: boolean;
   /** The loopback port to serve on, or nothing for an ephemeral one. */
   readonly port: number | undefined;
   /** Whether the app is opened in this machine's browser once it is serving. */
@@ -328,6 +378,8 @@ function parse(argv: string[]): Arguments {
   let all = false;
   let open = false;
   let progress = false;
+  let dryRun = false;
+  let confirm = false;
   let concurrency: number | undefined;
   let at: number | undefined;
   let port: number | undefined;
@@ -343,6 +395,10 @@ function parse(argv: string[]): Arguments {
       open = true;
     } else if (argument === "--progress") {
       progress = true;
+    } else if (argument === "--dry-run") {
+      dryRun = true;
+    } else if (argument === "--confirm") {
+      confirm = true;
     } else if (argument === "--set") {
       const assignment = argv[++position];
       if (assignment === undefined) {
@@ -378,6 +434,8 @@ function parse(argv: string[]): Arguments {
     widths,
     concurrency,
     at,
+    dryRun,
+    confirm,
     port,
     open,
     progress,
@@ -569,6 +627,22 @@ async function contactSheet(
 }
 
 /**
+ * Makes the Latest clips of every Published Project public, or says what doing
+ * so would make public and does none of it.
+ *
+ * This is the one irreversible, outward-facing thing the tool does, so it is
+ * two requests rather than one: what would go public is the answer to the first,
+ * and `--confirm` is the second. Nothing is copied, committed or pushed without
+ * it, and a Project that is not Published is in neither answer.
+ */
+async function publish(confirm: boolean, json: boolean): Promise<number> {
+  const published = await publishClips(workspace(), { confirm });
+  warnAbout(published.plan.warnings);
+
+  return emit(json, published, () => asPublish(published));
+}
+
+/**
  * Serves the app and these same operations over HTTP, bound to loopback, until
  * it is stopped. The server invokes this command for everything it answers,
  * which is why there is no second implementation of any of it to keep in step.
@@ -633,6 +707,72 @@ function openBrowser(url: string): void {
     process.stderr.write(`could not open ${url}: ${failure.message}\n`);
   });
   opening.unref();
+}
+
+/**
+ * Exactly what is about to be public: every file, how big it is, and which
+ * Project and Action it is the Latest of -- and then what became of it.
+ *
+ * Said the same way whether or not it was carried out, because the plan is what
+ * is being confirmed and reading a different answer afterwards would be reading
+ * a different plan.
+ */
+function asPublish(published: PublishReport): string {
+  const { plan } = published;
+
+  const path = widest(
+    plan.projects.flatMap((project) =>
+      project.actions.flatMap((action) => action.files.map((file) => file.path)),
+    ),
+  );
+
+  const named = plan.projects
+    .filter((project) => project.actions.length > 0)
+    .map((project) => project.project);
+
+  return [
+    ...plan.projects.flatMap((project) =>
+      project.actions.flatMap((action) => [
+        `${project.project} ${action.action}` +
+          `${action.condition === null ? "" : ` (${action.condition})`}  ${action.recordedAt}`,
+        ...action.files.map((file) => `  ${file.path.padEnd(path)}  ${asBytes(file.bytes)}`),
+      ]),
+    ),
+    ...plan.removing.map((removed) => `taking out ${removed}`),
+    `${many(plan.files.length, "file")} from ${named.length === 0 ? "no Published Project" : named.join(", ")}` +
+      `, ${asBytes(plan.bytes)} into ${plan.directory}/`,
+    saidOf(published),
+    "",
+  ].join("\n");
+}
+
+/** What came of the plan, which is a refusal to act until it has been confirmed. */
+function saidOf(published: PublishReport): string {
+  if (!published.published) {
+    return "nothing has been published. Run it again with --confirm to commit and push this repository";
+  }
+  if (published.commit === null) {
+    return "everything Published is already public, so nothing was committed";
+  }
+
+  // The branch as well as the commit: this repository is pushed as it stands,
+  // and a publish from a branch nobody reads is not a clip anybody can link to.
+  return (
+    `published as ${shortCommit(published.commit)} on ${published.branch ?? "this branch"}` +
+    `${published.pushed ? ", and pushed" : ""}`
+  );
+}
+
+/** How big a file is, as somebody deciding whether to make it public reads it. */
+function asBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes}B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)}KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 /** Where each rendering went, and the page that shows them together. */

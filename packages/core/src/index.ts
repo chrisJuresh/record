@@ -29,6 +29,15 @@ export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
 export { readOverrides, readParameters, resetOverrides, setOverrides } from "./overrides.js";
 export type { ParameterReport, ReportedParameter } from "./overrides.js";
+export { planPublish, publishClips, publishedDirectory } from "./publish.js";
+export type {
+  PublishedAction,
+  PublishedFile,
+  PublishedProject,
+  PublishOptions,
+  PublishPlan,
+  PublishReport,
+} from "./publish.js";
 export { defaultConcurrency, runAction, runActions } from "./run.js";
 export type {
   RunFailure,

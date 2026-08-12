@@ -16,6 +16,7 @@ import type {
   Progress,
   Project,
   ProjectReport,
+  PublishReport,
   Request,
   Run,
   StatusReport,
@@ -85,16 +86,20 @@ export type Chosen = { readonly project: string; readonly action: string };
 
 /**
  * What the stage is showing: the Action's clips, what one Project is configured
- * with, or a Project being configured for the first time.
+ * with, a Project being configured for the first time, or what publishing would
+ * make public.
  *
  * Configuration takes the stage rather than a column of its own, because it is
  * read and changed a few times in a Project's life and the clips are what the
- * app is open for the rest of the time.
+ * app is open for the rest of the time. So does a publish, for a stronger
+ * reason: what is about to go public is read before it is confirmed, and it is
+ * a page of files and sizes rather than a line in a corner.
  */
 export type Stage =
   | { readonly kind: "action" }
   | { readonly kind: "configuration"; readonly project: string }
-  | { readonly kind: "new" };
+  | { readonly kind: "new" }
+  | { readonly kind: "publish" };
 
 export type App = {
   projects: readonly ProjectState[];
@@ -109,6 +114,19 @@ export type App = {
   notConfigured: string | null;
   /** Whether the rail shows a clip of each Action under its name. */
   railClips: boolean;
+  /**
+   * What publishing would make public, once the command has said -- and what
+   * became of it once it was confirmed, which is the same report either way.
+   *
+   * Read again every time it is asked for rather than kept: what is about to go
+   * public has to be what this machine holds now, and a plan drawn from an older
+   * answer is a plan somebody would be confirming blind.
+   */
+  publish: PublishReport | null;
+  /** Whether the command is answering about publishing right now. */
+  publishing: boolean;
+  /** Why publishing could not be read or carried out, in the command's own words. */
+  notPublished: string | null;
   /** The requests being watched, and what each of them named. */
   readonly asked: Map<string, Ask>;
   /**
@@ -136,6 +154,9 @@ export function nothingYet(railClips: boolean): App {
     stage: { kind: "action" },
     notConfigured: null,
     railClips,
+    publish: null,
+    publishing: false,
+    notPublished: null,
     asked: new Map(),
     cannotTell: [],
     unread: null,

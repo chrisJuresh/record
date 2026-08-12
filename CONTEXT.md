@@ -155,3 +155,11 @@ The state of a Project whose Latest Artifacts are committed into this repository
 public folder, and are therefore linkable from anywhere. The opposite state
 leaves Artifacts on this machine only.
 _Avoid_: exported, deployed, shared, released
+
+**Publish plan**:
+Exactly what publishing would make public, worked out and not carried out: every
+file, its size, which Project and Action it is the Latest of, and whatever would
+be taken back out. What is confirmed, rather than a step towards a confirmation
+— nothing goes public that is not on it. `record publish --dry-run` is the
+option that asks for one, and the thing it answers with is a plan.
+_Avoid_: preview, diff, manifest, changeset

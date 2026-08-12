@@ -22,6 +22,10 @@ import {
   type Artifact,
   type Parameter,
   type ParameterSetting,
+  type PublishedAction,
+  type PublishedProject,
+  type PublishPlan,
+  type PublishReport,
   type Run,
   type Setting,
 } from "./api.js";
@@ -64,6 +68,10 @@ export type Handlers = {
   configure(project: string, name: string, value: string): void;
   /** Configures a Project this machine does not have yet, which is never Published. */
   add(project: string, settings: readonly string[]): void;
+  /** Puts what publishing would make public on the stage, which is where it is confirmed. */
+  showPublish(): void;
+  /** Carries that plan out: this repository committed and pushed, and nothing else. */
+  publish(): void;
 };
 
 /** Which of the two Runs on the stage a clip is, which is what it is headed by. */
@@ -98,6 +106,8 @@ type Live = {
   readonly where: HTMLElement;
   /** Why a Project the app was asked to add was not configured. */
   readonly notConfigured: HTMLElement;
+  /** What publishing would make public, which reading and confirming both redraw. */
+  readonly publish: HTMLElement;
   /** What the controls in there call, since they are drawn again without a paint. */
   readonly handlers: Handlers;
 };
@@ -115,6 +125,7 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   const configuration = el("div", { class: "settings" });
   const where = el("span", { class: "muted" });
   const notConfigured = el("div", { class: "not-configured" });
+  const publish = el("div", { class: "publish" });
 
   const chosen = playing(app);
   const runAction =
@@ -126,9 +137,12 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     topbar(app, handlers, tally),
     el("div", { class: "body" }, [
       rail(app, handlers, marks, published),
-      stage(app, handlers, { standing, progress, runAction, configuration, where }),
+      stage(app, handlers, { standing, progress, runAction, configuration, where, publish }),
       parameters,
     ]),
+    // The one way out of this machine, at the bottom of the page: everything
+    // above it happens here, and this is the button that does not.
+    footbar(app, handlers),
   );
 
   live = {
@@ -142,14 +156,31 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     configuration,
     where,
     notConfigured,
+    publish,
     handlers,
   };
   paintProgress(app);
   paintStanding(app);
   paintTuning(app);
-  // Drawn rather than left empty: it is the one of these that puts a whole
-  // panel on the stage rather than writing into one already there.
+  // Drawn rather than left empty: these are the two that put a whole panel on
+  // the stage rather than writing into one already there.
   paintConfiguration(app);
+  paintPublish(app);
+}
+
+/**
+ * Draws what publishing would make public, and nothing else.
+ *
+ * Its own paint because it is read and then confirmed: pressing the button
+ * redraws the plan into the outcome without taking the page it is on apart, and
+ * a plan being read must not restart the clips in the rail beside it.
+ */
+export function paintPublish(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  live.publish.replaceChildren(...publishIn(app, live.handlers));
 }
 
 /**
@@ -272,6 +303,28 @@ function topbar(app: App, handlers: Handlers, tally: HTMLElement): HTMLElement {
     el("span", { class: "spacer" }),
     railClips,
     button("Run everything", "act primary", () => handlers.runEverything()),
+  ]);
+}
+
+/**
+ * The bottom of the page: the one button that reaches off this machine.
+ *
+ * It is one button rather than a per-Project one, because publishing is one
+ * operation over everything Published -- and it opens the plan rather than
+ * publishing, since what goes public is read before it is agreed to.
+ */
+function footbar(app: App, handlers: Handlers): HTMLElement {
+  return el("footer", { class: "footbar" }, [
+    el("span", { class: "faint" }, [
+      "Publishing copies the Latest clips of every Published Project into this repository, " +
+        "commits them and pushes it.",
+    ]),
+    el("span", { class: "spacer" }),
+    button(
+      "Publish",
+      `act primary${app.stage.kind === "publish" ? " selected" : ""}`,
+      () => handlers.showPublish(),
+    ),
   ]);
 }
 
@@ -402,12 +455,28 @@ type Written = {
   readonly runAction: HTMLButtonElement | null;
   readonly configuration: HTMLElement;
   readonly where: HTMLElement;
+  readonly publish: HTMLElement;
 };
 
 /** The Action on the stage: what it last produced, and what it can be asked for. */
 function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
-  const { standing, progress, runAction, configuration, where } = written;
+  const { standing, progress, runAction, configuration, where, publish } = written;
   const trouble = app.trouble === null ? [] : [troublePanel("The app", app.trouble)];
+
+  // What is about to go public takes the stage too, and for a stronger reason
+  // than configuration does: it is read in full before it is confirmed.
+  if (app.stage.kind === "publish") {
+    return el("section", { class: "stage" }, [
+      ...trouble,
+      el("div", { class: "stage-head" }, [
+        el("h2", {}, ["Publish"]),
+        el("span", { class: "muted" }, ["this repository, and nothing else"]),
+        el("span", { class: "spacer" }),
+        button("Back to the clips", "act", () => handlers.showClips()),
+      ]),
+      publish,
+    ]);
+  }
 
   // What a Project is configured with takes the stage in place of the clips,
   // because it is read and changed a few times in a Project's life while the
@@ -1177,6 +1246,212 @@ function labelled(name: string, box: HTMLInputElement): HTMLElement {
     el("label", { class: "name num", for: `new-${name}` }, [name]),
     el("div", { class: "typing" }, [box]),
   ]);
+}
+
+/**
+ * Exactly what publishing would make public: every file, how big it is, and
+ * which Project and Action it is the Latest of.
+ *
+ * The confirmation is a button under a list somebody has read, rather than a
+ * box to tick or a second click on the same button. This is the only
+ * irreversible, outward-facing thing the tool does and the only route by which
+ * something private could become public (ADR 0007), so what is about to happen
+ * is spelled out first and nothing happens until it has been agreed to.
+ */
+function publishIn(app: App, handlers: Handlers): readonly Node[] {
+  if (app.stage.kind !== "publish") {
+    return [];
+  }
+
+  // In the command's own words: "not a git repository" and "the clips were
+  // committed and the push failed" are different problems with different next
+  // steps, and only the command knows which of them happened.
+  const trouble =
+    app.notPublished === null ? [] : [troublePanel("Publishing did not happen", app.notPublished)];
+
+  const report = app.publish;
+
+  if (report === null) {
+    return [
+      ...trouble,
+      ...(app.publishing
+        ? [el("p", { class: "faint" }, ["reading what publishing would make public…"])]
+        : [el("div", { class: "row" }, [readAgain(handlers)])]),
+    ];
+  }
+
+  const { plan } = report;
+  const nothing = plan.files.length === 0 && plan.removing.length === 0;
+
+  return [
+    ...trouble,
+    ...(report.published ? [el("div", { class: "published-as" }, [outcomeOf(report)])] : []),
+    el("p", { class: "faint" }, [
+      `Everything below is copied into ${plan.directory}/ in this repository, committed and ` +
+        "pushed. No Project's own repository is written to at all.",
+    ]),
+    // A Project that is Published and has nothing to publish, or an Artifact
+    // its Run's record names and this machine no longer has: said here, because
+    // a plan of fewer files than expected is otherwise a plan nobody questions.
+    ...(plan.warnings.length === 0
+      ? []
+      : [troublePanel("What the plan could not account for", plan.warnings.join("\n"))]),
+    ...(nothing
+      ? [
+          el("div", { class: "empty" }, [
+            "No Published Project has a clip to make public. Publishing is turned on one " +
+              "Project at a time, in its settings.",
+          ]),
+        ]
+      : plan.projects.flatMap(publishedProject)),
+    // What would stop being public, which is the other half of what a plan has
+    // to say: a Project no longer Published is a clip that has to come down.
+    ...(plan.removing.length === 0
+      ? []
+      : [
+          el("div", { class: "publish-removing" }, [
+            el("h3", {}, ["Taken back out"]),
+            el(
+              "ul",
+              {},
+              plan.removing.map((path) => el("li", {}, [el("span", { class: "path" }, [path])])),
+            ),
+          ]),
+        ]),
+    el("p", { class: "publish-total" }, [totalOf(plan)]),
+    el("div", { class: "row" }, [
+      ...(report.published
+        ? [readAgain(handlers)]
+        : nothing
+          ? []
+          : [confirming(app, plan, handlers)]),
+    ]),
+  ];
+}
+
+/**
+ * What became of the plan, said as what a person would want to be told -- the
+ * branch included, since this repository is pushed as it stands and a publish
+ * from a branch nobody reads is not a clip anybody can link to.
+ */
+function outcomeOf(report: PublishReport): string {
+  const on = `${shortCommit(report.commit ?? "")} on ${report.branch ?? "this branch"}`;
+
+  if (report.commit === null) {
+    return "Everything Published was already public, so nothing was committed.";
+  }
+  if (!report.pushed) {
+    return `Committed as ${on}, and this repository was not pushed.`;
+  }
+
+  return `Published as ${on}, and pushed. These clips are public now.`;
+}
+
+/**
+ * What the plan comes to: how much would be public, and how much would stop
+ * being. A plan that only takes clips down is still a plan worth reading, so it
+ * is counted rather than reading as nothing happening.
+ */
+function totalOf(plan: PublishPlan): string {
+  const counted = [
+    ...(plan.files.length === 0
+      ? []
+      : [`${many(plan.files.length, "file")} · ${asBytes(plan.bytes)} into ${plan.directory}/`]),
+    ...(plan.removing.length === 0
+      ? []
+      : [`${many(plan.removing.length, "file")} taken back out`]),
+  ];
+
+  return counted.length === 0 ? `nothing to put into ${plan.directory}/` : counted.join(" · ");
+}
+
+/**
+ * The button that makes it happen, named for what it will do rather than for
+ * itself: "Publish" is what was pressed to get here, and pressing the same word
+ * twice is how something goes public without being read.
+ */
+function confirming(app: App, plan: PublishPlan, handlers: Handlers): HTMLButtonElement {
+  const pressing = button(
+    app.publishing ? "publishing…" : askingFor(plan),
+    "act primary",
+    () => handlers.publish(),
+  );
+
+  pressing.disabled = app.publishing;
+
+  return pressing;
+}
+
+/** What pressing it would do, in the words of what it would do. */
+function askingFor(plan: PublishPlan): string {
+  if (plan.files.length === 0) {
+    return `Take ${many(plan.removing.length, "file")} back out of GitHub`;
+  }
+  if (plan.removing.length === 0) {
+    return `Publish ${many(plan.files.length, "file")} to GitHub`;
+  }
+
+  return (
+    `Publish ${many(plan.files.length, "file")} and take ` +
+    `${many(plan.removing.length, "file")} back out`
+  );
+}
+
+/**
+ * Reading the plan again rather than keeping the one already read: a machine
+ * that has recorded since is a machine with something else to publish.
+ */
+function readAgain(handlers: Handlers): HTMLButtonElement {
+  return button("Read the plan again", "act", () => handlers.showPublish());
+}
+
+/** One Project's contribution: its Actions, each with the files of its Latest. */
+function publishedProject(project: PublishedProject): readonly Node[] {
+  return [
+    el("h3", { class: "publish-project" }, [project.project]),
+    ...(project.actions.length === 0
+      ? [el("p", { class: "faint" }, ["nothing recorded yet, so this Project makes nothing public"])]
+      : project.actions.map(publishedAction)),
+  ];
+}
+
+/**
+ * One Action's Latest, and each file it would land as. A Condition is named
+ * beside the Action, because the clip of the dark theme and the clip of the
+ * light one are two clips and a README naming one must not be handed the other.
+ */
+function publishedAction(action: PublishedAction): HTMLElement {
+  return el("div", { class: "published-action" }, [
+    el("div", { class: "row" }, [
+      el("span", { class: "name" }, [action.action]),
+      ...(action.condition === null ? [] : [el("span", { class: "pill" }, [action.condition])]),
+      el("span", { class: "spacer" }),
+      el("span", { class: "faint" }, [ago(action.recordedAt)]),
+    ]),
+    el(
+      "ul",
+      {},
+      action.files.map((file) =>
+        el("li", {}, [
+          el("span", { class: "path" }, [file.path]),
+          el("span", { class: "spacer" }),
+          el("span", { class: "faint num" }, [asBytes(file.bytes)]),
+        ]),
+      ),
+    ),
+  ]);
+}
+
+/** How big a file is, as somebody deciding whether to make it public reads it. */
+function asBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes}B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)}KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 /** What a setting's control is called, so its label is the label of that control. */
