@@ -152,6 +152,53 @@ export type StatusReport = {
   readonly warnings: readonly string[];
 };
 
+/** One file a publish would make public, and how big it would be once it was. */
+export type PublishedFile = {
+  /** Where it lands in this repository, which is also the URL it is linked by. */
+  readonly path: string;
+  readonly bytes: number;
+  /** The Artifact on this machine it is copied from. */
+  readonly from: string;
+};
+
+/** What one Action contributes: the Artifacts of its Latest, and when that ran. */
+export type PublishedAction = {
+  readonly action: string;
+  /** The Condition that Latest was recorded under, and nothing for the Action's own. */
+  readonly condition: string | null;
+  readonly recordedAt: string;
+  readonly files: readonly PublishedFile[];
+};
+
+export type PublishedProject = {
+  readonly project: string;
+  readonly actions: readonly PublishedAction[];
+};
+
+/**
+ * Exactly what publishing would make public: which Projects, which files, how
+ * big each of them is, and what would be taken back out. Nothing is confirmed
+ * by anyone who has not been shown this, which is the whole of why it is a
+ * report rather than a yes-or-no.
+ */
+export type PublishPlan = {
+  readonly directory: string;
+  readonly projects: readonly PublishedProject[];
+  readonly files: readonly PublishedFile[];
+  readonly removing: readonly string[];
+  readonly bytes: number;
+  /** What the plan could not account for, in the command's own words. */
+  readonly warnings: readonly string[];
+};
+
+/** The plan, and what became of it -- the same answer whether or not it ran. */
+export type PublishReport = {
+  readonly plan: PublishPlan;
+  readonly published: boolean;
+  readonly commit: string | null;
+  readonly pushed: boolean;
+};
+
 /**
  * What a Run says about itself while it is still running. It says more than this
  * -- the Condition it is recording under, and what stopped it on the stage that
@@ -245,6 +292,22 @@ export function history(project: string, action: string): Promise<readonly Run[]
  */
 export function status(): Promise<StatusReport> {
   return read<StatusReport>(["api", "status"]);
+}
+
+/**
+ * What publishing would make public. Reading it makes nothing public: it is the
+ * plan, and confirming it is a separate request that says so outright.
+ */
+export function publishPlan(): Promise<PublishReport> {
+  return read<PublishReport>(["api", "publish"]);
+}
+
+/**
+ * ...and carrying that plan out, which commits and pushes this repository and
+ * nothing else. The one irreversible, outward-facing thing the app does.
+ */
+export function publish(): Promise<PublishReport> {
+  return wrote<PublishReport>(["api", "publish"], { confirm: true });
 }
 
 /** What an Action declares, what it is tuned to, and what it will run with. */

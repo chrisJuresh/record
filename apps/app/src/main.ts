@@ -30,6 +30,7 @@ import {
   paint,
   paintConfiguration,
   paintProgress,
+  paintPublish,
   paintStanding,
   paintTuning,
   type Handlers,
@@ -123,6 +124,23 @@ const handlers: Handlers = {
 
   reset(project, action, name) {
     void tuning(project, action, () => api.reset(project, action, [name]));
+  },
+
+  showPublish() {
+    app.stage = { kind: "publish" };
+    // Read again rather than kept: what is about to go public has to be what
+    // this machine holds now, and a plan drawn from an older answer is a plan
+    // somebody would be confirming blind.
+    app.publish = null;
+    app.notPublished = null;
+    repaint();
+    void publishing(() => api.publishPlan());
+  },
+
+  publish() {
+    // The plan is what was read and this is the yes to it. Nothing else in the
+    // app reaches off this machine (ADR 0007).
+    void publishing(() => api.publish());
   },
 };
 
@@ -334,6 +352,33 @@ function changing(project: string, ask: () => Promise<api.ProjectReport>): Promi
 
     paintConfiguration(app);
   });
+}
+
+/**
+ * Reads what publishing would make public, or carries that plan out.
+ *
+ * Both answer with the same report, so the panel is drawn the same way whether
+ * it is showing what would happen or what did -- and a refusal is kept in the
+ * command's own words, since "not a git repository" and "the clips were
+ * committed and the push failed" are different problems with different next
+ * steps.
+ *
+ * Only this panel is redrawn: the rail beside it is full of clips, and reading
+ * what is about to go public must not restart them.
+ */
+async function publishing(ask: () => Promise<api.PublishReport>): Promise<void> {
+  app.publishing = true;
+  app.notPublished = null;
+  paintPublish(app);
+
+  try {
+    app.publish = await ask();
+  } catch (failure) {
+    app.notPublished = messageOf(failure);
+  }
+
+  app.publishing = false;
+  paintPublish(app);
 }
 
 /**

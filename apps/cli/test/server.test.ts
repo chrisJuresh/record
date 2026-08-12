@@ -343,6 +343,63 @@ test("status over HTTP is exactly what the command says", async () => {
   assert.deepEqual(await read("api/status?project=demo"), JSON.parse(stdout));
 });
 
+/**
+ * What publishing would make public is read like anything else. Carrying it out
+ * is not: it is the one irreversible, outward-facing thing this tool does, so a
+ * request that does not say it means it is refused rather than read as an empty
+ * request to publish.
+ */
+test("what publishing would make public is served, exactly as the command says it", async () => {
+  const { stdout, code } = await record(workspace, "publish", "--json");
+  assert.equal(code, 0);
+
+  const plan = await read<{ published: boolean }>("api/publish");
+
+  assert.deepEqual(plan, JSON.parse(stdout));
+  assert.equal(plan.published, false, "reading the plan publishes nothing");
+});
+
+test("a request to publish that does not confirm is refused rather than carried out", async () => {
+  for (const body of [{}, { confirm: false }, { confirm: "yes" }]) {
+    const response = await fetch(new URL("api/publish", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.match(((await response.json()) as { error: string }).error, /confirm/);
+  }
+
+  assert.deepEqual(
+    await read<{ published: boolean }>("api/publish"),
+    JSON.parse((await record(workspace, "publish", "--json")).stdout),
+    "nothing was published by any of them",
+  );
+});
+
+/**
+ * ...and one that does confirm is the command, answered in the command's own
+ * words. This workspace is not a repository, so what comes back is the command
+ * refusing to publish out of one -- which is the point: the answer is the
+ * command's, not a second opinion held here.
+ */
+test("a confirmed publish is the command, and its refusal is the command's own", async () => {
+  const response = await fetch(new URL("api/publish", server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirm: true }),
+  });
+
+  assert.equal(response.status, 400);
+
+  const { stderr, code } = await record(workspace, "publish", "--confirm");
+
+  assert.equal(code, 1);
+  assert.equal(((await response.json()) as { error: string }).error, stderr.trim());
+  assert.match(stderr, /not a git repository/);
+});
+
 test("the Runs an Action still keeps are served, newest first", async () => {
   const kept = await read<RunReport[]>("api/history/demo/peek");
   const { stdout } = await record(workspace, "history", "demo", "peek", "--json");

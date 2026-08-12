@@ -42,6 +42,12 @@ A pnpm workspace of TypeScript packages, built with project references.
   sheet of the Mockups lands beside them, under `mockups/`, where pruning does
   not reach it, and the Runs of a Matrix under `conditions/<condition>/`, each
   Condition keeping a Latest and a history of its own.
+- `published/<project>/<action>/` — the tracked public directory `record
+  publish` copies the Latest Artifacts of every Published Project into, and the
+  only part of the workspace that is committed by the tool itself (ADR 0007).
+  One public location serves every Project, so a clip of a private one is still
+  linkable by URL. Nothing else is ever copied into it — no run history, and
+  nothing of a Project that is not Published.
 - `spikes/` — throwaway evidence behind a decision: what an ADR was settled by,
   and the prototype sheets a design choice was made from. Not the engine;
   nothing imports it.
@@ -113,6 +119,14 @@ pnpm record status
 
 ```bash
 pnpm record mockups photos scroll-peek
+```
+
+```bash
+pnpm record publish
+```
+
+```bash
+pnpm record publish --confirm
 ```
 
 ```bash
@@ -269,6 +283,33 @@ Project that is one package of a larger repository is compared against that
 repository. A Project under no repository at all cannot be told either way, and
 `status` warns rather than reporting its Actions as current.
 
+### Publishing
+
+`record publish` copies the Latest Artifacts of every **Published** Project into
+`published/` in this repository, commits them and pushes it. It is the one
+irreversible, outward-facing operation the tool has and the only route by which
+something private could become public, so it is **two requests rather than
+one**: asked on its own it says exactly what would go public — every file, its
+size, and the Project and Action it is the Latest of — and does none of it.
+`--confirm` carries out that same plan, and `--dry-run` asks for the plan
+outright. Confirmation is not a prompt on stdin: the server and the app read the
+plan and then ask again, so nothing can hang waiting to be answered.
+
+A Project that is not Published is in neither the plan nor the directory, and
+that holds in both directions — a Project that **stops** being Published has its
+clips taken back out and the removal committed, because a clip left behind is a
+clip still public. **Run history is never published**: what is copied is the
+Latest of each history and nothing behind it, and each Condition of a Matrix
+publishes its own Latest under the name it recorded apart as. Nothing else in a
+Run's directory goes — the record it left of itself says where every Frame of it
+came from on this machine.
+
+Per ADR 0007 the only repository it writes to is this one. The commit names
+`published/` as its pathspec, so work sitting staged or edited elsewhere in this
+repository is not swept up by a button pressed without thinking, and no
+Project's own repository is read from, written to, committed to or pushed.
+Publishing what is already public commits nothing rather than failing.
+
 ### Serving
 
 `record serve` puts the app and the same operations on HTTP, **bound to loopback
@@ -297,12 +338,18 @@ able to drive a tool that starts processes on this machine.
 | `POST /api/projects/<project>/actions/<action>/parameters` | `record set` |
 | `POST /api/projects/<project>/actions/<action>/parameters/reset` | `record reset` |
 | `GET /api/mockups` | `record mockups` |
+| `GET /api/publish` | `record publish` — what publishing would make public |
+| `POST /api/publish` | `record publish --confirm`, and only for `{ confirm: true }` |
 | `GET /api/status[?project=<project>]` | `record status` |
 | `GET /api/history/<project>/<action>[/<condition>]` | `record history` |
 | `POST /api/runs` | `record run`, answered before the Run is done |
 | `GET /api/runs[/<id>]` | The Runs this server has been asked for |
 | `GET /api/runs/<id>/events` | One Run's progress, as it happens |
 | `GET /artifacts/<project>/<action>/[conditions/<condition>/]<run>/<file>` | What a Run left behind |
+
+`POST /api/publish` takes `{ confirm: true }` and nothing else will do: a body
+that does not confirm is answered `400` rather than read as an empty request to
+publish, and what would go public is read at the same path without one.
 
 The ones that write take `{ set: ["name=value"] }` and `{ reset: ["name"] }` —
 the words the commands take — and each answers with the report the command gives
@@ -395,9 +442,19 @@ written. The rail configures a Project this machine does not have yet as well:
 a name, where it answers and where its code is, which is `record add` and so is
 never Published.
 
+One button at the bottom of the page gets the clips onto GitHub, and it is the
+only thing in the app that reaches off this machine. Pressing it puts the
+**plan** on the stage rather than publishing: every file, its size, and the
+Project and Action it is the Latest of, along with whatever would be taken back
+out. The plan is read again every time it is asked for rather than kept, since a
+plan drawn from an older answer is one somebody would be confirming blind, and
+publishing is a second press under a list that has been read. It is
+`record publish` and `record publish --confirm` and nothing else: the app
+compares no Projects and copies no files of its own.
+
 Tuning redraws only that column, configuration only its own panel and the
-Published pill beside the Project it belongs to, and staleness only the flags it
-is written into. Clips are playing beside all three, and neither a slider let go
+Published pill beside the Project it belongs to, publishing only its own panel,
+and staleness only the flags it is written into. Clips are playing beside all three, and neither a slider let go
 of nor a Stale flag arriving may put a new video element in the page.
 
 They are read for the Action on the stage rather than for all of them, because

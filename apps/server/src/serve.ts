@@ -167,6 +167,15 @@ async function handle(
     return get(request, response, () => command(response, serving, ["mockups"]));
   }
 
+  // Reading what publishing would make public, and confirming it. The two are
+  // the same path because they are the same question asked twice, and which of
+  // them a request is is the method: nothing goes public on a GET.
+  if (asked === "publish" && under.length === 0) {
+    return request.method === "POST"
+      ? publish(request, response, serving)
+      : get(request, response, () => command(response, serving, ["publish"]));
+  }
+
   if (asked === "status" && under.length === 0) {
     const project = url.searchParams.get("project");
 
@@ -308,6 +317,36 @@ async function add(
   }
 
   return command(response, serving, ["add", project, ...settings.given]);
+}
+
+/**
+ * Carries out a publish, which is the one irreversible, outward-facing thing
+ * this tool does -- and so the one request that says outright that it means it.
+ *
+ * A body that does not confirm is refused rather than read as an empty request
+ * to publish: what would go public is read at this same path without one, and
+ * whatever asks for this has had that answer to look at.
+ */
+async function publish(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+): Promise<void> {
+  const body = await jsonIn(request);
+
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
+  }
+
+  if (!isObject(body.said) || body.said["confirm"] !== true) {
+    return answer(response, 400, {
+      error:
+        "publishing is confirmed rather than asked for, so a request to publish says " +
+        "{ confirm: true }",
+    });
+  }
+
+  return command(response, serving, ["publish", "--confirm"]);
 }
 
 /**
@@ -453,6 +492,8 @@ function index(serving: Serving): unknown {
       "POST /api/projects/<project>/actions/<action>/parameters",
       "POST /api/projects/<project>/actions/<action>/parameters/reset",
       "GET  /api/mockups",
+      "GET  /api/publish",
+      "POST /api/publish",
       "GET  /api/status[?project=<project>]",
       "GET  /api/history/<project>/<action>[/<condition>]",
       "GET  /api/runs",
