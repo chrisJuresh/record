@@ -88,8 +88,6 @@ export type ParameterReport = {
 /** How one Action stands against its Project, as the command reports it. */
 export type ActionStatus = {
   readonly action: string;
-  /** How many Runs of it are still kept on this machine. */
-  readonly runs: number;
   /**
    * Whether the Project has been committed to since that Action last ran. Read
    * from the command rather than worked out here: what counts as Stale is one

@@ -47,13 +47,22 @@ export type Handlers = {
   reset(project: string, action: string, name: string): void;
 };
 
+/** Which of the two Runs on the stage a clip is, which is what it is headed by. */
+type Which = "Latest" | "Previous";
+
+/** What the rail says about one Action without being drawn again. */
+type Marks = {
+  /** How far through its Run is, or that its last one failed. */
+  readonly badge: HTMLElement;
+  /** That its Project has been committed to since it last ran. */
+  readonly flag: HTMLElement;
+};
+
 /** The nodes a Run in flight writes into, kept from the last full paint. */
 type Live = {
   readonly tally: HTMLElement;
-  /** One badge per Action, by the Action it belongs to. */
-  readonly badges: Map<string, HTMLElement>;
-  /** One Stale flag per Action, by the Action it belongs to. */
-  readonly flags: Map<string, HTMLElement>;
+  /** The rail's marks, by the Action they belong to. */
+  readonly marks: Map<string, Marks>;
   /** Where the stage says the Action on it has gone Stale. */
   readonly standing: HTMLElement;
   /** Where the Run of the Action on the stage says what it is doing. */
@@ -70,8 +79,7 @@ let live: Live | undefined;
 
 /** Draws the whole app. */
 export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
-  const badges = new Map<string, HTMLElement>();
-  const flags = new Map<string, HTMLElement>();
+  const marks = new Map<string, Marks>();
   const tally = el("span", { class: "faint" }, [tallyOf(app)]);
   const standing = el("div", { class: "standing" });
   const progress = el("div", { class: "progress" });
@@ -86,13 +94,13 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   root.replaceChildren(
     topbar(app, handlers, tally),
     el("div", { class: "body" }, [
-      rail(app, handlers, badges, flags),
+      rail(app, handlers, marks),
       stage(app, handlers, standing, progress, runAction),
       parameters,
     ]),
   );
 
-  live = { tally, badges, flags, standing, progress, runAction, parameters, handlers };
+  live = { tally, marks, standing, progress, runAction, parameters, handlers };
   paintProgress(app);
   paintStanding(app);
   paintTuning(app);
@@ -113,10 +121,10 @@ export function paintStanding(app: App): void {
   }
 
   for (const action of actionsIn(app)) {
-    const flag = live.flags.get(keyOf(action.project, action.action));
+    const marks = live.marks.get(keyOf(action.project, action.action));
 
-    if (flag !== undefined) {
-      flag.textContent = action.stale ? "stale" : "";
+    if (marks !== undefined) {
+      marks.flag.textContent = action.stale ? "stale" : "";
     }
   }
 
@@ -150,13 +158,13 @@ export function paintProgress(app: App): void {
   live.tally.textContent = tallyOf(app);
 
   for (const action of actionsIn(app)) {
-    const badge = live.badges.get(keyOf(action.project, action.action));
+    const marks = live.marks.get(keyOf(action.project, action.action));
 
-    if (badge !== undefined) {
+    if (marks !== undefined) {
       const says = badgeOf(action);
 
-      badge.textContent = says.text;
-      badge.className = says.failed ? "badge failed" : "badge num";
+      marks.badge.textContent = says.text;
+      marks.badge.className = says.failed ? "badge failed" : "badge num";
     }
   }
 
@@ -197,12 +205,7 @@ function tallyOf(app: App): string {
 }
 
 /** A section per Project, its Actions listed by name under it. */
-function rail(
-  app: App,
-  handlers: Handlers,
-  badges: Map<string, HTMLElement>,
-  flags: Map<string, HTMLElement>,
-): HTMLElement {
+function rail(app: App, handlers: Handlers, marks: Map<string, Marks>): HTMLElement {
   return el(
     "nav",
     { class: "rail" },
@@ -215,7 +218,7 @@ function rail(
       ]),
       ...(project.actions.length === 0
         ? [el("div", { class: "absent none" }, ["no Actions"])]
-        : project.actions.map((action) => railAction(app, handlers, action, badges, flags))),
+        : project.actions.map((action) => railAction(app, handlers, action, marks))),
     ]),
   );
 }
@@ -224,17 +227,15 @@ function railAction(
   app: App,
   handlers: Handlers,
   action: ActionState,
-  badges: Map<string, HTMLElement>,
-  flags: Map<string, HTMLElement>,
+  marks: Map<string, Marks>,
 ): HTMLElement {
   const badge = el("span", { class: "badge num" });
-  badges.set(keyOf(action.project, action.action), badge);
-
   // Flagged in the rail rather than only on the stage: an Action gone Stale is
   // one to go and look at, and one that has to be opened to find that out is one
   // nobody finds out about.
   const flag = el("span", { class: "pill stale" });
-  flags.set(keyOf(action.project, action.action), flag);
+
+  marks.set(keyOf(action.project, action.action), { badge, flag });
 
   const chosen =
     app.chosen?.project === action.project && app.chosen.action === action.action ? " selected" : "";
@@ -331,13 +332,15 @@ function stage(
   ]);
 }
 
-/** Where the Project answers, and how much of this Action is still kept. */
+/**
+ * Where the Project answers, and that this Action has never been recorded where
+ * it has not. What each Run was recorded under is said beside that Run rather
+ * than here, now that there are two of them on the stage.
+ */
 function recordedOf(project: ProjectState, action: ActionState): string {
-  const kept = action.history.length;
-
   return [
     project.configured.baseUrl,
-    kept === 0 ? "never recorded" : `${many(kept, "Run")} kept`,
+    ...(latestOf(action) === null ? ["never recorded"] : []),
   ].join(" · ");
 }
 
@@ -371,6 +374,9 @@ function standingOf(app: App): readonly Node[] {
     // Said in the command's own words: "not Stale" and "cannot be told" are
     // different answers, and only one of them means the clip still stands.
     ...app.cannotTell.map((said) => el("p", { class: "faint" }, [said])),
+    // ...and an answer that never arrived is a third: the flags say what the
+    // last one said, which is not what this machine says now.
+    ...(app.unread === null ? [] : [troublePanel("Staleness could not be read", app.unread)]),
   ];
 }
 
@@ -381,6 +387,11 @@ function standingOf(app: App): readonly Node[] {
  * of re-recording that makes it worth pressing. An Action with nothing to
  * compare says so plainly rather than standing an empty player next to the
  * clip it has.
+ *
+ * The Latest is the one drawn against the other, so a difference reads as
+ * something this Run has and the one before it did not. Marked on both, it would
+ * say only that the two are not the same, which is what having two of them on
+ * the stage already says.
  */
 function comparison(action: ActionState): HTMLElement {
   const latest = latestOf(action);
@@ -393,16 +404,16 @@ function comparison(action: ActionState): HTMLElement {
   }
 
   return el("div", { class: "compare" }, [
-    take("Latest", latest, previous),
+    runPanel("Latest", latest, previous),
     previous === null
-      ? el("div", { class: "take" }, [
-          takeHead("Previous", null),
+      ? el("div", { class: "run" }, [
+          runHead("Previous", null),
           el("div", { class: "empty" }, [
             "This is the only Run of this Action kept on this machine. Run it again and the one " +
               "before it plays here, to judge the change against.",
           ]),
         ])
-      : take("Previous", previous, latest),
+      : runPanel("Previous", previous, null),
   ]);
 }
 
@@ -411,18 +422,18 @@ function comparison(action: ActionState): HTMLElement {
  * can place is a clip nobody can judge, so the commit it was recorded against
  * and the Parameters it ran with are beside it rather than in a file somewhere.
  */
-function take(which: string, run: Run, against: Run | null): HTMLElement {
-  return el("div", { class: "take" }, [
-    takeHead(which, run),
+function runPanel(which: Which, run: Run, against: Run | null): HTMLElement {
+  return el("div", { class: "run" }, [
+    runHead(which, run),
     clip(run),
     facts(run, against),
-    settings(run, against),
+    recordedWith(run, against),
   ]);
 }
 
 /** Which of the two a clip is, and when it was recorded. */
-function takeHead(which: string, run: Run | null): HTMLElement {
-  return el("div", { class: "take-head" }, [
+function runHead(which: Which, run: Run | null): HTMLElement {
+  return el("div", { class: "run-head" }, [
     el("h3", {}, [which]),
     el("span", { class: "spacer" }),
     ...(run === null ? [] : [el("span", { class: "faint" }, [ago(run.recordedAt)])]),
@@ -431,8 +442,9 @@ function takeHead(which: string, run: Run | null): HTMLElement {
 
 /**
  * What a Run was recorded against: the Project's commit, and how much was
- * captured. A commit that differs from the Run this one is judged against is
- * marked, because that difference is the reason to be looking at both.
+ * captured. A commit that differs from the Run being judged against is marked,
+ * because a Project committed to between the two is the reason to be looking at
+ * both of them.
  */
 function facts(run: Run, against: Run | null): HTMLElement {
   const differs = against !== null && run.commit !== against.commit;
@@ -453,7 +465,7 @@ function facts(run: Run, against: Run | null): HTMLElement {
  * changed because a slider moved and one that changed because the site did are
  * not the same news.
  */
-function settings(run: Run, against: Run | null): HTMLElement {
+function recordedWith(run: Run, against: Run | null): HTMLElement {
   const values = Object.entries(run.parameters);
 
   return el("div", { class: "recorded-with" }, [
@@ -464,13 +476,13 @@ function settings(run: Run, against: Run | null): HTMLElement {
           el(
             "ul",
             {},
-            values.map(([name, value]) => setting(run, against, name, value)),
+            values.map(([name, value]) => recordedValue(run, against, name, value)),
           ),
         ]),
   ]);
 }
 
-function setting(
+function recordedValue(
   run: Run,
   against: Run | null,
   name: string,

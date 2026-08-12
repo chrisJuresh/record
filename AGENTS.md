@@ -294,7 +294,8 @@ and that is togglable, because eight of them playing at once is a busy sidebar.
 The Latest plays inline **beside the Run before it**, because judging a change is
 two clips rather than one, and each of them says the Project commit and the
 effective Parameters it was recorded with — a clip nobody can place is a clip
-nobody can judge, and what differs between the two is marked. An Action recorded
+nobody can judge — and what the Latest has that the Run before it did not is
+marked on the Latest, so a difference reads with a direction. An Action recorded
 only once says so where the second clip would be, and one never recorded says
 that instead of standing an empty player there. The width the clips leave over is
 where the Latest's Artifacts are read about rather than blank. Three buttons

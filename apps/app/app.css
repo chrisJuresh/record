@@ -350,14 +350,14 @@ button.act.quiet {
   align-items: start;
 }
 
-.take-head {
+.run-head {
   display: flex;
   align-items: baseline;
   gap: 8px;
   margin-bottom: 6px;
 }
 
-.take-head h3 {
+.run-head h3 {
   margin: 0;
   font-size: 12px;
   text-transform: uppercase;
@@ -366,7 +366,7 @@ button.act.quiet {
 }
 
 /* What a Run was recorded against, so a clip on screen is placeable. */
-.take .facts {
+.run .facts {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -417,7 +417,7 @@ button.act.quiet {
  * hand" wherever a Parameter is shown, and one colour meaning two things is a
  * mark that says neither.
  */
-.take .facts .changed,
+.run .facts .changed,
 .recorded-with li.changed .num {
   background: var(--accent-soft);
   border-radius: 3px;

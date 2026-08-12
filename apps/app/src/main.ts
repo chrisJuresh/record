@@ -18,6 +18,7 @@ import {
   refused,
   stood,
   tuned,
+  unread,
   type ActionState,
   type App,
   type ProjectState,
@@ -197,10 +198,10 @@ async function readStanding(): Promise<void> {
     stood(app, await api.status());
   } catch (failure) {
     // Staleness unread is not staleness absent, so what could not be read is
-    // said rather than left as an app whose Actions all read as current.
-    app.trouble = messageOf(failure);
-    repaint();
-    return;
+    // said rather than left as an app whose Actions all read as current. Said
+    // where staleness is said, since this arrives while the clips are playing
+    // too -- and the flags are left exactly as they were.
+    unread(app, messageOf(failure));
   }
 
   paintStanding(app);

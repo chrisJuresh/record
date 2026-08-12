@@ -84,6 +84,13 @@ export type App = {
    * current, and only one of those means the clip on the stage still stands.
    */
   cannotTell: readonly string[];
+  /**
+   * Why staleness could not be read at all, in the words the attempt failed
+   * with. Kept apart from `trouble` because it is drawn where staleness is,
+   * rather than costing the page a paint while two clips are playing on it -- and
+   * apart from `cannotTell`, which is the command answering that it cannot say.
+   */
+  unread: string | null;
   /** What the app itself could not do, which is never a Run failing. */
   trouble: string | null;
 };
@@ -96,6 +103,7 @@ export function nothingYet(railClips: boolean): App {
     railClips,
     asked: new Map(),
     cannotTell: [],
+    unread: null,
     trouble: null,
   };
 }
@@ -189,6 +197,16 @@ export function stood(app: App, report: StatusReport): void {
   }
 
   app.cannotTell = report.warnings;
+  app.unread = null;
+}
+
+/**
+ * Why staleness could not be read, which leaves every flag exactly as it was.
+ * Nothing is cleared: an answer that never arrived says nothing about whether an
+ * Action is Stale, and clearing the flags would say it was not.
+ */
+export function unread(app: App, message: string): void {
+  app.unread = message;
 }
 
 /**
