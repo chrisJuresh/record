@@ -60,6 +60,16 @@ export type FrameStepper = {
   keyStroke(stroke: KeyStroke): Promise<void>;
   /** Produces the next Frame and returns its PNG. Time only moves forward. */
   next(): Promise<Buffer>;
+  /**
+   * Drives the next Frame without asking the browser for an image of it, for a
+   * Frame nothing keeps: it is driven for what it does to the page, and a PNG
+   * rastered only to be thrown away was a third of the images a Run ever asked
+   * the browser for.
+   *
+   * Time moves exactly as it does for a kept Frame, so what is captured after
+   * one of these is what would have been captured either way.
+   */
+  step(): Promise<void>;
   close(): Promise<void>;
 };
 
@@ -214,6 +224,8 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
     const base = virtualTimeTicksBase as number;
 
     let latest: Buffer | undefined;
+    /** Whether the compositor has drawn at all, which is what priming waits for. */
+    let painted = false;
     let repeated = 0;
     // Frame time only ever moves forward. Stepping the compositor backwards
     // wedges it with no error, so the counter is owned here and callers can
@@ -226,21 +238,32 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
       await expired;
     };
 
-    const next = async (): Promise<Buffer | undefined> => {
+    /**
+     * One Frame, asked for with an image of it or without one. A Frame nothing
+     * keeps is driven for its effect on the page, so asking the browser to
+     * raster and encode a PNG of it is work with nowhere to go.
+     */
+    const drive = async (photograph: boolean): Promise<Buffer | undefined> => {
       await advanceTimerQueue();
 
       const frame = await send("HeadlessExperimental.beginFrame", {
         frameTimeTicks: base + counter++ * interval,
         interval,
         noDisplayUpdates: false,
-        screenshot: { format: "png" },
+        ...(photograph ? { screenshot: { format: "png" } } : {}),
       });
 
       // A Frame the compositor reports as undamaged is pixel-identical to the
       // one before it and returns no image. A still moment is still a Frame of
       // video, so repeat the last one rather than dropping it.
+      //
+      // A Frame nobody asked an image of says whether it drew and nothing more,
+      // which is the same answer without the picture.
       if (typeof frame["screenshotData"] === "string") {
         latest = Buffer.from(frame["screenshotData"], "base64");
+        painted = true;
+      } else if (!photograph && frame["hasDamage"] === true) {
+        painted = true;
       } else {
         repeated++;
       }
@@ -250,10 +273,12 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
       return latest;
     };
 
+    // Nothing keeps a priming Frame -- they are driven until the compositor has
+    // painted at all, which it says for itself.
     for (let frame = 0; frame < primingFrames; frame++) {
-      await next();
+      await drive(false);
     }
-    if (latest === undefined) {
+    if (!painted) {
       throw new RecordError(`${url} had still not painted after ${primingFrames} priming Frames`);
     }
 
@@ -302,11 +327,14 @@ export async function openFrameStepper(url: string, options: StepperOptions): Pr
         await send("Input.dispatchKeyEvent", { ...identity, type: "keyUp" });
       },
       async next() {
-        const frame = await next();
+        const frame = await drive(true);
         if (frame === undefined) {
           throw new RecordError("the compositor produced no Frame and none to repeat");
         }
         return frame;
+      },
+      async step() {
+        await drive(false);
       },
       close: shutDown,
     };

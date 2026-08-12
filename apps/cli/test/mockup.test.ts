@@ -14,7 +14,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { after, before, test } from "node:test";
 
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
-import type { ContactSheetReport, RunReport } from "@record/core";
+import type { ContactSheetReport, RunReport, RunSummary } from "@record/core";
 
 import {
   actionIn,
@@ -43,6 +43,9 @@ export default peek;
 /** The captured Frames of this Project, before anything is composited around them. */
 const captured = { width: 400, height: 300 };
 
+/** The second width a Matrix records at here, which is another size of clip. */
+const wider = 560;
+
 /** What an Artifact of those Frames is encoded at, undecorated. */
 const bareSize = { width: 320, height: 240 };
 
@@ -61,6 +64,11 @@ let overridden: RunReport;
 let onDark: RunReport;
 let onLight: RunReport;
 let retina: RunReport;
+/** Two Actions of one Project recorded in one request, and each on its own. */
+let together: RunSummary;
+let apart: RunReport[];
+/** The same Action across two viewport widths, which is two sizes of clip. */
+let widths: RunSummary;
 
 before(async () => {
   site = await startFixtureSite();
@@ -77,6 +85,9 @@ before(async () => {
     // way the geometry of a surround can be held to anything: at scale 1 every
     // way of arriving at it agrees.
     retina: projectAt(site.url, 2, 'mockup = "browser-light"'),
+    // Two Actions wanting the one surround, which is what a request renders
+    // once and hands to both of them.
+    shared: project(site.url, 'mockup = "browser-light"'),
   });
 
   for (const [name, action] of [
@@ -86,6 +97,8 @@ before(async () => {
     ["dark", "peek"],
     ["light", "peek"],
     ["retina", "peek"],
+    ["shared", "first"],
+    ["shared", "second"],
   ] as const) {
     await actionIn(workspace, name, action, peek);
   }
@@ -97,6 +110,10 @@ before(async () => {
   onDark = await recordRun("dark", "peek");
   onLight = await recordRun("light", "peek");
   retina = await recordRun("retina", "peek");
+
+  together = await recordMany("run", "shared");
+  apart = [await recordRun("shared", "first"), await recordRun("shared", "second")];
+  widths = await recordMany("run", "demo", "peek", "--width", `${captured.width},${wider}`);
 });
 
 after(async () => {
@@ -129,6 +146,13 @@ async function recordRun(project: string, action: string, ...args: string[]): Pr
   const { stdout, stderr, code } = await record(workspace, "run", project, action, ...args, "--json");
   assert.equal(code, 0, stderr);
   return JSON.parse(stdout) as RunReport;
+}
+
+/** A request that records several Runs at once, which answers with a summary of them. */
+async function recordMany(...args: string[]): Promise<RunSummary> {
+  const { stdout, stderr, code } = await record(workspace, ...args, "--json");
+  assert.equal(code, 0, stderr);
+  return JSON.parse(stdout) as RunSummary;
 }
 
 /**
@@ -252,6 +276,65 @@ test("two Runs of an Action inside a Mockup stay byte-identical", async () => {
   assert.deepEqual(again.mockup, inWindow.mockup);
 
   assert.deepEqual(await artifactsOf(again), await artifactsOf(inWindow));
+});
+
+/**
+ * A surround is a template laid out around a clip of a size, and nothing of the
+ * Frames reaches it -- so the Runs of one request render it once between them
+ * rather than launching a browser each to draw the same pixels again.
+ *
+ * What sharing it must not change is anything anybody can see, which is what is
+ * asserted: an Action recorded beside another is byte for byte the Action
+ * recorded on its own, exactly as recording at once has always been.
+ */
+test("Actions sharing a surround are the Artifacts they are recorded alone", async () => {
+  assert.deepEqual(together.failures, []);
+  assert.deepEqual(
+    together.runs.map((run) => run.action),
+    ["first", "second"],
+  );
+
+  for (const [at, alone] of apart.entries()) {
+    const shared = together.runs[at];
+    assert.ok(shared !== undefined, `nothing was recorded for ${alone.action}`);
+
+    assert.deepEqual(shared.mockup, alone.mockup, alone.action);
+    assert.deepEqual(await artifactsOf(shared), await artifactsOf(alone), alone.action);
+  }
+});
+
+/**
+ * ...and a Condition photographed at another width is another size of clip, so
+ * it is laid out around a surround of its own. One shared without regard for
+ * the size would composite the narrow Condition into the wide one's Aperture,
+ * which is the clip scaled on the way in -- the failure the geometry of a
+ * Mockup is held to everywhere else.
+ */
+test("each Condition of a Matrix is composited into a surround laid out around it", async () => {
+  assert.deepEqual(widths.failures, []);
+  assert.deepEqual(widths.conditions, [`${captured.width}w`, `${wider}w`]);
+
+  for (const run of widths.runs) {
+    const surround = run.mockup.surround;
+    assert.ok(surround !== null, `${run.condition?.name} composited no surround`);
+
+    assert.equal(run.frames.width, run.condition?.width, `${run.condition?.name} was photographed at its own width`);
+    assert.deepEqual(
+      { width: surround.aperture.width, height: surround.aperture.height },
+      { width: run.frames.width, height: run.frames.height },
+      `${run.condition?.name}: the Aperture is the size of the Frames going into it`,
+    );
+  }
+
+  // ...so the two surrounds are two surrounds, rather than one handed to both.
+  const [narrow, broad] = widths.runs;
+  assert.ok(narrow !== undefined && broad !== undefined, "a Matrix of two widths recorded twice");
+  assert.ok(
+    broad.mockup.surround !== null &&
+      narrow.mockup.surround !== null &&
+      broad.mockup.surround.width > narrow.mockup.surround.width,
+    "the wider clip is inside the wider surround",
+  );
 });
 
 test("the rendered surround is swept up with the Frames it was composited around", async () => {
