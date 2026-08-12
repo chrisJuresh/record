@@ -60,6 +60,7 @@ let bare: RunReport;
 let overridden: RunReport;
 let onDark: RunReport;
 let onLight: RunReport;
+let retina: RunReport;
 
 before(async () => {
   site = await startFixtureSite();
@@ -72,6 +73,10 @@ before(async () => {
     // itself nearly black; the same site in light is a page of its own.
     dark: project(site.url),
     light: project(`${site.url}light.html`),
+    // The one Project here photographed at any scale but 1, which is the only
+    // way the geometry of a surround can be held to anything: at scale 1 every
+    // way of arriving at it agrees.
+    retina: projectAt(site.url, 2, 'mockup = "browser-light"'),
   });
 
   for (const [name, action] of [
@@ -80,6 +85,7 @@ before(async () => {
     ["demo", "elsewhere"],
     ["dark", "peek"],
     ["light", "peek"],
+    ["retina", "peek"],
   ] as const) {
     await actionIn(workspace, name, action, peek);
   }
@@ -90,6 +96,7 @@ before(async () => {
   overridden = await recordRun("demo", "elsewhere", "--set", "mockup=rounded");
   onDark = await recordRun("dark", "peek");
   onLight = await recordRun("light", "peek");
+  retina = await recordRun("retina", "peek");
 });
 
 after(async () => {
@@ -99,6 +106,11 @@ after(async () => {
 
 /** A Project pointed at a page of the fixture site, tiny and never started. */
 function project(baseUrl: string, ...lines: string[]): string {
+  return projectAt(baseUrl, 1, ...lines);
+}
+
+/** The same, photographed at a device scale factor of its own. */
+function projectAt(baseUrl: string, scale: number, ...lines: string[]): string {
   return [
     `base_url = "${baseUrl}"`,
     `source_repository = "."`,
@@ -108,7 +120,7 @@ function project(baseUrl: string, ...lines: string[]): string {
     "[viewport]",
     `width = ${captured.width}`,
     `height = ${captured.height}`,
-    "device_scale_factor = 1",
+    `device_scale_factor = ${scale}`,
     "",
   ].join("\n");
 }
@@ -143,6 +155,50 @@ test("a Mockup is composited around the Frames, and the Artifact keeps its decla
 });
 
 /**
+ * The Frames go into the Aperture at their own size, whatever the Project is
+ * photographed at. Anything else is the clip scaled on the way in, and the
+ * surround is then laid over a canvas that is not the size of the image it is:
+ * a Project at scale 2 had its window composited at half width in the corner of
+ * every clip, with a band of Backdrop between the titlebar and the page.
+ *
+ * Asserted at both scale factors, because at 1 every way of arriving at the
+ * geometry agrees -- which is exactly why the whole suite recording at 1 could
+ * not see this.
+ */
+test("the Frames are composited at their own size, at any device scale factor", async () => {
+  for (const [name, report] of [
+    ["scale 1", inWindow],
+    ["scale 2", retina],
+  ] as const) {
+    const surround = report.mockup.surround;
+    assert.ok(surround !== null, `${name} composited no surround`);
+
+    assert.deepEqual(
+      { width: surround.aperture.width, height: surround.aperture.height },
+      { width: report.frames.width, height: report.frames.height },
+      `${name}: the Aperture is the size of the Frames going into it`,
+    );
+
+    // ...and the surround really is the image it says it is, with the whole of
+    // the Aperture inside it rather than off the edge of its own canvas.
+    assert.ok(
+      surround.aperture.x + surround.aperture.width <= surround.width &&
+        surround.aperture.y + surround.aperture.height <= surround.height,
+      `${name}: the Aperture at ${surround.aperture.x},${surround.aperture.y} is outside the ` +
+        `${surround.width}x${surround.height} surround`,
+    );
+    assert.ok(
+      surround.aperture.y >= surround.aperture.x,
+      `${name}: a titlebar leaves the Aperture further down than it is in from the side`,
+    );
+  }
+
+  // The Artifact is as wide as the Project asked for either way: a scale factor
+  // is what the page was photographed at, not how big the clip is.
+  assert.equal((await probeSize(artifact(retina, "mp4"))).width, bareSize.width);
+});
+
+/**
  * A Mockup is chosen for a Project and overridden for the one Action that wants
  * a different one, which is the same shape as every other Parameter: the
  * Project's choice is the declared default, and the sidecar wins over it.
@@ -168,17 +224,23 @@ test("a Mockup is selected per Project and overridden per Action", async () => {
  * whole of the choice.
  */
 test("a Project that chose no Mockup gets the window its page reads as", () => {
-  assert.deepEqual(onDark.mockup, {
+  assert.deepEqual(chose(onDark), {
     asked: "auto",
     name: "browser-dark",
     colourScheme: "dark",
   });
-  assert.deepEqual(onLight.mockup, {
+  assert.deepEqual(chose(onLight), {
     asked: "auto",
     name: "browser-light",
     colourScheme: "light",
   });
 });
+
+/** Which surround a Run came to, without the geometry it was rendered at. */
+function chose(report: RunReport): { asked: string; name: string; colourScheme: string } {
+  const { asked, name, colourScheme } = report.mockup;
+  return { asked, name, colourScheme };
+}
 
 /**
  * Compositing must not perturb the premise everything else rests on (ADR 0001).

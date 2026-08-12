@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { allParameters, effectiveParameters, loadAction } from "./action.js";
 import type { Dimensions } from "./artifacts.js";
 import { findHeadlessShell } from "./browser.js";
-import { captureFrames, frameFile } from "./capture.js";
+import { captureFrames, frameFile, type CapturedFrames } from "./capture.js";
 import { actionModule, readProject, type Viewport } from "./config.js";
 import { cursorOverlay, cursorSettings } from "./cursor.js";
 import { compositeFrame } from "./encode.js";
@@ -118,10 +118,11 @@ export async function renderContactSheet(
 
   const running = await ensureRunning(project);
 
+  let photograph: CapturedFrames;
   try {
     // Driven from the first Frame to the one being photographed, because a
     // Frame of a Timeline is what the Frames before it left the page as.
-    await captureFrames({
+    photograph = await captureFrames({
       url: project.baseUrl,
       executable,
       viewport: project.viewport,
@@ -136,10 +137,9 @@ export async function renderContactSheet(
   }
 
   const photographed = join(frames, frameFile(frame));
-  const captured: Dimensions = {
-    width: project.viewport.width * project.viewport.deviceScaleFactor,
-    height: project.viewport.height * project.viewport.deviceScaleFactor,
-  };
+  // The Frame's own size, as capture read it off the image: what the viewport
+  // asked to be rendered at is not what the browser hands back.
+  const captured: Dimensions = photograph.size;
 
   const rendered: SheetEntry[] = [];
 

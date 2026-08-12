@@ -12,21 +12,22 @@
  * Two passes, because a surround is as big as its own layout: the template is
  * laid out first to find out how large it is, and then photographed at exactly
  * that size so the image is the surround and nothing around it.
+ *
+ * How large the resulting image is, though, is the browser's answer rather than
+ * this tool's: it is measured off the PNG and the Aperture is scaled by what
+ * that comes to. The alternative -- multiplying the layout by the device scale
+ * factor the viewport asked for -- is arithmetic that agrees only with itself,
+ * and it laid every surround over a quarter of its own canvas for as long as a
+ * Project was configured at any scale but 1.
  */
 import { writeFile } from "node:fs/promises";
 
+import type { Dimensions } from "./artifacts.js";
 import type { Viewport } from "./config.js";
 import { openPage } from "./driver.js";
 import { RecordError } from "./errors.js";
-import type { Mockup } from "./mockup.js";
-
-/** Where the clip goes inside a rendered surround, in the image's own pixels. */
-export type Aperture = {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-};
+import type { Aperture, Mockup } from "./mockup.js";
+import { pngDimensions } from "./png.js";
 
 /** One Mockup as it was rendered, ready to be composited around a clip. */
 export type RenderedMockup = {
@@ -68,8 +69,9 @@ export type RenderOptions = {
   readonly executable: string;
   /**
    * The Frames the surround is laid out around. Its CSS size is what the
-   * template is given; its scale is what the image is rendered at, so the
-   * aperture lands on whole captured pixels rather than between them.
+   * template is given; its scale is what the browser is asked to render at,
+   * which the browser is free to ignore -- what the image came out at is
+   * measured rather than assumed.
    */
   readonly viewport: Viewport;
 };
@@ -160,12 +162,15 @@ export async function renderMockup(
       );
     }
 
+    const bytes = Buffer.from(image, "base64");
+    const drawn = pngDimensions(bytes, `the '${mockup.name}' Mockup`);
+
     return {
       name: mockup.name,
-      image: Buffer.from(image, "base64"),
-      width: width * scale,
-      height: height * scale,
-      aperture: aperture(mockup, placed.aperture, scale, width * scale, height * scale),
+      image: bytes,
+      width: drawn.width,
+      height: drawn.height,
+      aperture: aperture(mockup, placed.aperture, drawnAt(mockup, drawn, { width, height }), drawn),
       backdrop: mockup.backdrop,
     };
   } finally {
@@ -236,6 +241,34 @@ function measured(
   return { surround, aperture };
 }
 
+/** How far a surround's rendered image is off the layout it was measured in. */
+const scaleTolerance = 0.01;
+
+/**
+ * What the image came out at against the layout it was photographed from, as
+ * one factor -- which is what the Aperture measured in CSS pixels has to be
+ * multiplied by to land on the image.
+ *
+ * An image that is not a uniform scaling of its own layout is refused. The
+ * check that was here compared the Aperture against a surround size derived
+ * from the same multiplication, so it could only ever agree with itself: a
+ * surround half the size the pipeline believed it was passed, and was then laid
+ * over a quarter of the canvas.
+ */
+function drawnAt(mockup: Mockup, drawn: Dimensions, laidOut: Dimensions): number {
+  const across = drawn.width / laidOut.width;
+  const down = drawn.height / laidOut.height;
+
+  if (Math.abs(across - down) > scaleTolerance) {
+    throw new RecordError(
+      `the '${mockup.name}' Mockup laid out at ${laidOut.width}x${laidOut.height} and was drawn ` +
+        `${drawn.width}x${drawn.height}, which is not the same surround at one scale`,
+    );
+  }
+
+  return across;
+}
+
 /**
  * Where the clip goes, in the pixels of the image rather than the CSS pixels
  * the template was written in.
@@ -245,13 +278,7 @@ function measured(
  * quietly cropped -- the Frames going missing is the failure this whole feature
  * would otherwise hide.
  */
-function aperture(
-  mockup: Mockup,
-  laidOut: Rect,
-  scale: number,
-  width: number,
-  height: number,
-): Aperture {
+function aperture(mockup: Mockup, laidOut: Rect, scale: number, drawn: Dimensions): Aperture {
   const placed = {
     x: Math.round(laidOut.x * scale),
     y: Math.round(laidOut.y * scale),
@@ -264,12 +291,13 @@ function aperture(
     placed.height < 1 ||
     placed.x < 0 ||
     placed.y < 0 ||
-    placed.x + placed.width > width ||
-    placed.y + placed.height > height
+    placed.x + placed.width > drawn.width ||
+    placed.y + placed.height > drawn.height
   ) {
     throw new RecordError(
       `the '${mockup.name}' Mockup puts its aperture at ${placed.width}x${placed.height} ` +
-        `at ${placed.x},${placed.y}, which is not inside its own ${width}x${height} surround`,
+        `at ${placed.x},${placed.y}, which is not inside its own ` +
+        `${drawn.width}x${drawn.height} surround`,
     );
   }
 
