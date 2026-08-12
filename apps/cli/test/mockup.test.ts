@@ -111,9 +111,22 @@ before(async () => {
   onLight = await recordRun("light", "peek");
   retina = await recordRun("retina", "peek");
 
-  together = await recordMany("run", "shared");
+  // One at a time, and not because it changes what they record: every file of
+  // this suite runs beside the others, and a browser a Run cannot launch is a
+  // Run that failed for the machine's reasons rather than the tool's. Recording
+  // in step also makes the second Run of a request find the surround already
+  // rendered rather than possibly racing the first to render it.
+  together = await recordMany("run", "shared", "--concurrency", "1");
   apart = [await recordRun("shared", "first"), await recordRun("shared", "second")];
-  widths = await recordMany("run", "demo", "peek", "--width", `${captured.width},${wider}`);
+  widths = await recordMany(
+    "run",
+    "demo",
+    "peek",
+    "--width",
+    `${captured.width},${wider}`,
+    "--concurrency",
+    "1",
+  );
 });
 
 after(async () => {
