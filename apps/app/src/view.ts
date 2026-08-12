@@ -6,13 +6,15 @@
  * whatever the command said. None of those are things a page should be able to
  * be written by.
  *
- * There are three ways in. `paint` draws the whole app, and is what a choice, a
+ * There are five ways in. `paint` draws the whole app, and is what a choice, a
  * request or a new Latest costs. `paintProgress` writes into the handful of nodes
  * a Run in flight changes -- because a Run says something every Frame, and
  * redrawing a stage sixty times a second would take the clip out from under
  * whoever is watching it. `paintStanding` writes the Stale flags, for the same
  * reason: they are read again as every request ends, and by then there are two
- * clips playing that a repaint would restart.
+ * clips playing that a repaint would restart. `paintTuning` and
+ * `paintConfiguration` draw the controls a value was just written from, and
+ * nothing else on the page they sit on.
  */
 import {
   artifactUrl,
@@ -21,12 +23,15 @@ import {
   type Parameter,
   type ParameterSetting,
   type Run,
+  type Setting,
 } from "./api.js";
 import {
   actionsIn,
   chosenAction,
   chosenProject,
+  configuring,
   latestOf,
+  playing,
   previousOf,
   recording,
   type ActionState,
@@ -45,6 +50,20 @@ export type Handlers = {
   tune(project: string, action: string, name: string, value: ParameterSetting): void;
   /** Removes that Override, leaving what the Action declares. */
   reset(project: string, action: string, name: string): void;
+  /** Puts what one Project is configured with on the stage, in place of the clips. */
+  showConfiguration(project: string): void;
+  /** ...and the form a Project this machine does not have yet is configured from. */
+  showNewProject(): void;
+  /** Back to the clips, which is what the stage is for the rest of the time. */
+  showClips(): void;
+  /**
+   * Changes one setting of one Project, by the value it is to take -- written
+   * as the command writes it, since nothing given a value here is worth
+   * spelling twice. Nothing at all takes the setting out of the file.
+   */
+  configure(project: string, name: string, value: string): void;
+  /** Configures a Project this machine does not have yet, which is never Published. */
+  add(project: string, settings: readonly string[]): void;
 };
 
 /** Which of the two Runs on the stage a clip is, which is what it is headed by. */
@@ -63,6 +82,8 @@ type Live = {
   readonly tally: HTMLElement;
   /** The rail's marks, by the Action they belong to. */
   readonly marks: Map<string, Marks>;
+  /** Where the rail says a Project is Published, by the Project it says it of. */
+  readonly published: Map<string, HTMLElement>;
   /** Where the stage says the Action on it has gone Stale. */
   readonly standing: HTMLElement;
   /** Where the Run of the Action on the stage says what it is doing. */
@@ -71,6 +92,12 @@ type Live = {
   readonly runAction: HTMLButtonElement | null;
   /** The Parameters of the Action on the stage, which tuning redraws on its own. */
   readonly parameters: HTMLElement;
+  /** What one Project is configured with, which changing a setting redraws. */
+  readonly configuration: HTMLElement;
+  /** Where that is written down, which is not known until it has been read. */
+  readonly where: HTMLElement;
+  /** Why a Project the app was asked to add was not configured. */
+  readonly notConfigured: HTMLElement;
   /** What the controls in there call, since they are drawn again without a paint. */
   readonly handlers: Handlers;
 };
@@ -80,12 +107,16 @@ let live: Live | undefined;
 /** Draws the whole app. */
 export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   const marks = new Map<string, Marks>();
+  const published = new Map<string, HTMLElement>();
   const tally = el("span", { class: "faint" }, [tallyOf(app)]);
   const standing = el("div", { class: "standing" });
   const progress = el("div", { class: "progress" });
   const parameters = el("aside", { class: "params" });
+  const configuration = el("div", { class: "settings" });
+  const where = el("span", { class: "muted" });
+  const notConfigured = el("div", { class: "not-configured" });
 
-  const chosen = chosenAction(app);
+  const chosen = playing(app);
   const runAction =
     chosen === undefined
       ? null
@@ -94,16 +125,31 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   root.replaceChildren(
     topbar(app, handlers, tally),
     el("div", { class: "body" }, [
-      rail(app, handlers, marks),
-      stage(app, handlers, standing, progress, runAction),
+      rail(app, handlers, marks, published),
+      stage(app, handlers, { standing, progress, runAction, configuration, where }),
       parameters,
     ]),
   );
 
-  live = { tally, marks, standing, progress, runAction, parameters, handlers };
+  live = {
+    tally,
+    marks,
+    published,
+    standing,
+    progress,
+    runAction,
+    parameters,
+    configuration,
+    where,
+    notConfigured,
+    handlers,
+  };
   paintProgress(app);
   paintStanding(app);
   paintTuning(app);
+  // Drawn rather than left empty: it is the one of these that puts a whole
+  // panel on the stage rather than writing into one already there.
+  paintConfiguration(app);
 }
 
 /**
@@ -144,6 +190,42 @@ export function paintTuning(app: App): void {
   }
 
   live.parameters.replaceChildren(...tuningIn(app, live.handlers));
+}
+
+/**
+ * Draws what the Project on the stage is configured with, and nothing else.
+ *
+ * A Project being added is a form somebody is halfway through typing into, so
+ * what was refused is written beside it rather than the form drawn again --
+ * redrawing it would take back what they had typed. A Project that exists is
+ * drawn from the report the command just gave, which is what its file now says.
+ */
+export function paintConfiguration(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  live.where.textContent = whereOf(app);
+
+  if (app.stage.kind === "new" && live.configuration.contains(live.notConfigured)) {
+    live.notConfigured.replaceChildren(...notConfiguredIn(app));
+    return;
+  }
+
+  live.configuration.replaceChildren(
+    ...configurationIn(app, live.handlers, live.notConfigured),
+  );
+
+  // ...and the rail says which Projects are Published, which is a setting that
+  // was possibly just changed. Written into the pill already there rather than
+  // drawn again: the rail is full of clips that a repaint would restart.
+  for (const project of app.projects) {
+    const pill = live.published.get(project.configured.name);
+
+    if (pill !== undefined) {
+      pill.textContent = project.configured.published ? "published" : "";
+    }
+  }
 }
 
 /**
@@ -205,22 +287,53 @@ function tallyOf(app: App): string {
 }
 
 /** A section per Project, its Actions listed by name under it. */
-function rail(app: App, handlers: Handlers, marks: Map<string, Marks>): HTMLElement {
-  return el(
-    "nav",
-    { class: "rail" },
-    app.projects.flatMap((project) => [
-      el("div", { class: "project" }, [
-        el("span", {}, [project.configured.name]),
-        ...(project.configured.published
-          ? [el("span", { class: "pill published" }, ["published"])]
-          : []),
-      ]),
+function rail(
+  app: App,
+  handlers: Handlers,
+  marks: Map<string, Marks>,
+  published: Map<string, HTMLElement>,
+): HTMLElement {
+  return el("nav", { class: "rail" }, [
+    ...app.projects.flatMap((project) => [
+      railProject(app, handlers, project, published),
       ...(project.actions.length === 0
         ? [el("div", { class: "absent none" }, ["no Actions"])]
         : project.actions.map((action) => railAction(app, handlers, action, marks))),
     ]),
-  );
+    // A Project is configured from here as well as recorded from here, so that
+    // adding one is not a file somebody has to remember the shape of.
+    el("div", { class: "rail-foot" }, [
+      button("Add a Project", "act quiet", () => handlers.showNewProject()),
+    ]),
+  ]);
+}
+
+/**
+ * One Project in the rail: its name, whether it is Published, and the way to
+ * what it is configured with -- which is where publishing is turned on.
+ */
+function railProject(
+  app: App,
+  handlers: Handlers,
+  project: ProjectState,
+  published: Map<string, HTMLElement>,
+): HTMLElement {
+  const name = project.configured.name;
+  const pill = el("span", { class: "pill published" }, [
+    project.configured.published ? "published" : "",
+  ]);
+
+  published.set(name, pill);
+
+  const chosen =
+    app.stage.kind === "configuration" && app.stage.project === name ? " selected" : "";
+
+  return el("div", { class: "project" }, [
+    el("span", {}, [name]),
+    pill,
+    el("span", { class: "spacer" }),
+    button("settings", `act tiny${chosen}`, () => handlers.showConfiguration(name)),
+  ]);
 }
 
 function railAction(
@@ -282,15 +395,30 @@ function railClip(action: ActionState): HTMLElement {
   return image;
 }
 
+/** The nodes on the stage that are written into rather than drawn again. */
+type Written = {
+  readonly standing: HTMLElement;
+  readonly progress: HTMLElement;
+  readonly runAction: HTMLButtonElement | null;
+  readonly configuration: HTMLElement;
+  readonly where: HTMLElement;
+};
+
 /** The Action on the stage: what it last produced, and what it can be asked for. */
-function stage(
-  app: App,
-  handlers: Handlers,
-  standing: HTMLElement,
-  progress: HTMLElement,
-  runAction: HTMLButtonElement | null,
-): HTMLElement {
+function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
+  const { standing, progress, runAction, configuration, where } = written;
   const trouble = app.trouble === null ? [] : [troublePanel("The app", app.trouble)];
+
+  // What a Project is configured with takes the stage in place of the clips,
+  // because it is read and changed a few times in a Project's life while the
+  // clips are what the app is open for the rest of the time.
+  if (app.stage.kind !== "action") {
+    return el("section", { class: "stage" }, [
+      ...trouble,
+      configuringHead(app, handlers, where),
+      configuration,
+    ]);
+  }
 
   if (app.projects.length === 0) {
     return el("section", { class: "stage" }, [
@@ -300,7 +428,10 @@ function stage(
         el("code", {}, ["projects/"]),
         " holding a ",
         el("code", {}, ["project.toml"]),
-        ".",
+        ", which this will write.",
+        el("div", { class: "row" }, [
+          button("Configure a Project", "act primary", () => handlers.showNewProject()),
+        ]),
       ]),
     ]);
   }
@@ -596,7 +727,9 @@ function artifactOf(run: Run, format: Artifact["format"]): Artifact | undefined 
  * will not take said out loud.
  */
 function tuningIn(app: App, handlers: Handlers): readonly Node[] {
-  const action = chosenAction(app);
+  // The Parameters are the Action on the stage's, and while a Project is being
+  // configured there is no Action on it.
+  const action = playing(app);
 
   if (action === undefined) {
     return [];
@@ -661,8 +794,8 @@ function control(action: ActionState, parameter: Parameter, handlers: Handlers):
     ...(parameter.kind === "number"
       ? numberControl(parameter, extentOf(parameter), value, tune)
       : parameter.kind === "flag"
-        ? [tickBox(parameter, tune)]
-        : [menu(parameter, tune)]),
+        ? [tickBox(fieldOf(parameter), labelOf(parameter), parameter.value === true, tune)]
+        : [menu(fieldOf(parameter), parameter.choices ?? [], parameter.value, tune)]),
   ]);
 }
 
@@ -791,34 +924,269 @@ function stepOf(extent: { readonly min: number; readonly max: number }): number 
   return span <= 0 ? 1 : 0.01;
 }
 
-/** One of a named set, which is what an easing and a choice both are. */
-function menu(parameter: Parameter, tune: (value: ParameterSetting) => void): HTMLElement {
-  const select = el("select", { id: fieldOf(parameter) });
+/**
+ * One of a named set: an easing, a choice, a Mockup. Built from what it is
+ * called and what it takes rather than from a Parameter or a setting, because
+ * picking one of a list is the same gesture whichever of the two it writes.
+ */
+function menu(
+  field: string,
+  choices: readonly string[],
+  chosen: ParameterSetting | null,
+  chose: (value: string) => void,
+): HTMLElement {
+  const select = el("select", { id: field });
 
-  for (const choice of parameter.choices ?? []) {
+  for (const choice of choices) {
     const option = el("option", { value: choice }, [choice]);
-    option.selected = choice === parameter.value;
+    option.selected = choice === chosen;
     select.append(option);
   }
 
-  select.addEventListener("change", () => tune(select.value));
+  select.addEventListener("change", () => chose(select.value));
 
   return select;
 }
 
-function tickBox(parameter: Parameter, tune: (value: ParameterSetting) => void): HTMLElement {
-  // Named by the Parameter's own name rather than by the label it sits in, which
-  // says what it is worth: "cursorCaptions", not "false".
+/**
+ * A box to tick, labelled by the name of what it is worth rather than by the
+ * value beside it: "cursorCaptions", not "false".
+ */
+function tickBox(
+  field: string,
+  labelledBy: string,
+  ticked: boolean,
+  tick: (on: boolean) => void,
+): HTMLElement {
   const box = el("input", {
-    id: fieldOf(parameter),
+    id: field,
     type: "checkbox",
-    "aria-labelledby": labelOf(parameter),
+    "aria-labelledby": labelledBy,
   });
 
-  box.checked = parameter.value === true;
-  box.addEventListener("change", () => tune(box.checked));
+  box.checked = ticked;
+  box.addEventListener("change", () => tick(box.checked));
 
-  return el("label", { class: "ticking" }, [box, String(parameter.value)]);
+  return el("label", { class: "ticking" }, [box, String(ticked)]);
+}
+
+/**
+ * What the stage says it is showing while a Project is being configured: which
+ * Project, where that is written down, and the way back to the clips.
+ */
+function configuringHead(app: App, handlers: Handlers, where: HTMLElement): HTMLElement {
+  // Named from what was asked for rather than from what was found, so a Project
+  // that has gone from the workspace is still said by name.
+  const named = app.stage.kind === "configuration" ? app.stage.project : "A new Project";
+
+  return el("div", { class: "stage-head" }, [
+    el("h2", {}, [named]),
+    // Where it is written is not known until it has been read, so it is written
+    // into rather than drawn: the file arrives with the settings do.
+    where,
+    el("span", { class: "spacer" }),
+    button("Back to the clips", "act", () => handlers.showClips()),
+  ]);
+}
+
+/** Where the Project on the stage is configured, as far as that is known yet. */
+function whereOf(app: App): string {
+  if (app.stage.kind === "new") {
+    return "configured here, and recorded from here after that";
+  }
+
+  return configuring(app)?.configuration?.file ?? "reading its configuration…";
+}
+
+/**
+ * Everything one Project is configured with: a control per setting, marked
+ * where the file says it rather than the tool standing a value in, and whatever
+ * the tool refused said in its own words.
+ *
+ * Which settings there are is the command's answer. Nothing here keeps a list
+ * of them, so a Project that grows a setting grows a control without the app
+ * being told twice.
+ */
+function configurationIn(
+  app: App,
+  handlers: Handlers,
+  notConfigured: HTMLElement,
+): readonly Node[] {
+  if (app.stage.kind === "new") {
+    notConfigured.replaceChildren(...notConfiguredIn(app));
+
+    return [newProject(handlers, notConfigured)];
+  }
+
+  const project = configuring(app);
+
+  if (project === undefined) {
+    return [];
+  }
+
+  const configuration = project.configuration;
+
+  if (configuration === null) {
+    return [el("p", { class: "faint" }, ["reading what this Project is configured with…"])];
+  }
+
+  const name = project.configured.name;
+
+  return [
+    ...(project.misconfigured === null
+      ? []
+      : [troublePanel("That setting was refused", project.misconfigured)]),
+    ...configuration.settings.map((setting) => settingControl(name, setting, handlers)),
+    el("p", { class: "faint" }, [
+      "Actions are written beside this file, under actions/, and stay the agent's.",
+    ]),
+  ];
+}
+
+/**
+ * One setting as the control its kind calls for: a box for text, a number box
+ * within its range, a menu for one of a named set, a box to tick for a flag.
+ *
+ * A setting the file does not say is marked as standing rather than written,
+ * and one it does say can be cleared -- which takes the line out and leaves the
+ * tool's own value standing again. What a Project cannot record without has no
+ * such button: emptying it is refused, and offering it would be offering a
+ * refusal.
+ */
+function settingControl(project: string, setting: Setting, handlers: Handlers): HTMLElement {
+  const configure = (value: string): void => handlers.configure(project, setting.name, value);
+  const clearable = setting.written && !setting.required;
+
+  return el("div", { class: `setting${setting.written ? " written" : ""}` }, [
+    el("div", { class: "row" }, [
+      nameOfSetting(setting),
+      el("span", { class: "spacer" }),
+      ...(setting.written ? [] : [el("span", { class: "faint tag" }, ["standing"])]),
+      ...(clearable ? [button("clear", "act tiny", () => configure(""))] : []),
+    ]),
+    el("div", { class: "describes" }, [setting.describes]),
+    setting.kind === "flag"
+      ? tickBox(settingField(setting), settingLabel(setting), setting.value === true, (on) =>
+          configure(String(on)),
+        )
+      : setting.kind === "choice"
+        ? menu(settingField(setting), setting.choices ?? [], setting.value, configure)
+        : box(setting, configure),
+  ]);
+}
+
+/**
+ * What the setting is called, which is the name it is written under in the
+ * file -- so that what the app shows and what the file says are one word.
+ *
+ * A flag is labelled by a name that does not reach for its box: clicking the
+ * label of a box to tick ticks it, and ticking it writes to the file.
+ */
+function nameOfSetting(setting: Setting): HTMLElement {
+  return setting.kind === "flag"
+    ? el("span", { class: "name num", id: settingLabel(setting) }, [setting.name])
+    : el("label", { class: "name num", id: settingLabel(setting), for: settingField(setting) }, [
+        setting.name,
+      ]);
+}
+
+/** A setting typed rather than picked, which is text and a number alike. */
+function box(setting: Setting, configure: (value: string) => void): HTMLElement {
+  const written = setting.value === null ? "" : String(setting.value);
+
+  const field = el("input", {
+    id: settingField(setting),
+    class: `typed${setting.kind === "number" ? " num" : ""}`,
+    type: setting.kind === "number" ? "number" : "text",
+    value: written,
+    ...(setting.min === undefined ? {} : { min: String(setting.min) }),
+    ...(setting.max === undefined ? {} : { max: String(setting.max) }),
+    ...(setting.required ? { required: "required" } : {}),
+  });
+
+  // Written when the box is left rather than as it is typed in: every change is
+  // a line rewritten in a file, and a URL is not a value halfway through
+  // spelling it.
+  field.addEventListener("change", () => {
+    if (field.value === written) {
+      return;
+    }
+    configure(field.value);
+  });
+
+  return el("div", { class: "typing" }, [field]);
+}
+
+/**
+ * The form a Project this machine does not have yet is configured from: a name
+ * for the directory it will be configured in, and the two settings it cannot be
+ * configured without.
+ *
+ * Everything else is left to the settings this opens onto once it exists, and
+ * what may be written at all is the command's answer -- a request it refuses
+ * comes back in its own words rather than being guessed at here.
+ *
+ * This is the one place outside the command's own registry that spells a
+ * setting's name, because there is no Project yet to have asked what its
+ * settings are. If what a Project cannot be configured without ever changes,
+ * `record add` says so in words that name it.
+ */
+function newProject(handlers: Handlers, notConfigured: HTMLElement): HTMLElement {
+  const name = field("name", "the directory it is configured in");
+  const baseUrl = field("base_url", "http://127.0.0.1:5173/");
+  const repository = field("source_repository", "where the Project's own code is");
+
+  const add = (): void =>
+    handlers.add(name.value.trim(), [
+      `base_url=${baseUrl.value.trim()}`,
+      `source_repository=${repository.value.trim()}`,
+    ]);
+
+  return el("div", { class: "new-project" }, [
+    el("p", { class: "faint" }, [
+      "A Project is a website running on this machine. It is never Published until it is " +
+        "turned on, one Project at a time.",
+    ]),
+    labelled("name", name),
+    labelled("base_url", baseUrl),
+    labelled("source_repository", repository),
+    notConfigured,
+    el("div", { class: "row" }, [button("Configure it", "act primary", add)]),
+  ]);
+}
+
+/** Why the Project the app was last asked to add was not configured, if it was not. */
+function notConfiguredIn(app: App): readonly Node[] {
+  return app.notConfigured === null
+    ? []
+    : [troublePanel("That Project was not configured", app.notConfigured)];
+}
+
+/** One box of the form, which is only ever read when the form is submitted. */
+function field(name: string, placeholder: string): HTMLInputElement {
+  return el("input", {
+    id: `new-${name}`,
+    class: "typed",
+    type: "text",
+    placeholder,
+  });
+}
+
+function labelled(name: string, box: HTMLInputElement): HTMLElement {
+  return el("div", { class: "setting" }, [
+    el("label", { class: "name num", for: `new-${name}` }, [name]),
+    el("div", { class: "typing" }, [box]),
+  ]);
+}
+
+/** What a setting's control is called, so its label is the label of that control. */
+function settingField(setting: Setting): string {
+  return `setting-${setting.name}`;
+}
+
+/** ...and what its name is called, for a control labelled by it rather than for it. */
+function settingLabel(setting: Setting): string {
+  return `setting-${setting.name}-name`;
 }
 
 /** What a control is called, so its label is the label of that control. */

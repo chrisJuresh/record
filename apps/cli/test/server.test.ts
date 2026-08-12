@@ -13,7 +13,13 @@ import { get, request as ask } from "node:http";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
-import type { ParameterReport, RunProgress, RunReport, RunSummary } from "@record/core";
+import type {
+  ParameterReport,
+  ProjectReport,
+  RunProgress,
+  RunReport,
+  RunSummary,
+} from "@record/core";
 import type { RunRequest } from "@record/server";
 import { startFixtureSite, type FixtureSite } from "@record/fixture-site";
 
@@ -268,6 +274,68 @@ test("a value the Action refuses is answered with what the command said about it
   assert.match(JSON.stringify(await nothing.json()), /is not overridden, so there is nothing to reset/);
 });
 
+/**
+ * Configuration over HTTP is `record configure`, so a setting changed from the
+ * app is the same line in the same file as one changed by hand -- and what
+ * comes back is the report the command gives for itself, which is how whatever
+ * asked finds out what the Project will now record with.
+ */
+test("what a Project is configured with is served, exactly as the command says it", async () => {
+  const { stdout, code } = await record(workspace, "configure", "hollow", "--json");
+  assert.equal(code, 0);
+
+  assert.deepEqual(await read("api/projects/hollow"), JSON.parse(stdout));
+});
+
+test("a setting is changed over HTTP, in the file the command writes it in", async () => {
+  const changed = await written<ProjectReport>("api/projects/hollow", {
+    set: ["published=true", "video_width=320"],
+  });
+
+  assert.equal(changed.configured.published, true);
+  assert.equal(changed.configured.videoWidth, 320);
+  assert.deepEqual(
+    changed,
+    JSON.parse((await record(workspace, "configure", "hollow", "--json")).stdout),
+  );
+  assert.match(await readFile(changed.file, "utf8"), /published = true/);
+});
+
+/**
+ * A setting the command refuses is answered in its own words, and the file is
+ * left saying exactly what it said: a value that would fail at record time must
+ * not be written down first.
+ */
+test("a setting the command refuses is answered with what it said about it", async () => {
+  const before = await readFile(join(workspace, "projects", "hollow", "project.toml"), "utf8");
+
+  const refusedSetting = await fetch(new URL("api/projects/hollow", server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ set: ["viewport.width=0"] }),
+  });
+
+  assert.equal(refusedSetting.status, 400);
+  assert.match(JSON.stringify(await refusedSetting.json()), /takes a number between 1 and 7680/);
+  assert.equal(await readFile(join(workspace, "projects", "hollow", "project.toml"), "utf8"), before);
+});
+
+test("a Project is added over HTTP, and it arrives not Published", async () => {
+  const added = await written<ProjectReport>("api/projects", {
+    project: "added",
+    set: [`base_url=${site.url}`, `source_repository=${workspace}`],
+  });
+
+  assert.equal(added.configured.published, false);
+  assert.deepEqual(
+    added,
+    JSON.parse((await record(workspace, "configure", "added", "--json")).stdout),
+  );
+  assert.ok(
+    (await read<{ name: string }[]>("api/projects")).some((project) => project.name === "added"),
+  );
+});
+
 test("status over HTTP is exactly what the command says", async () => {
   const { stdout, code } = await record(workspace, "status", "demo", "--json");
   assert.equal(code, 0);
@@ -471,7 +539,7 @@ test("a path the server does not serve says so rather than answering something e
   assert.equal((await fetch(new URL("api/nothing", server.url))).status, 404);
   assert.equal((await fetch(new URL("nothing", server.url))).status, 404);
 
-  const written = await fetch(new URL("api/projects", server.url), { method: "POST" });
+  const written = await fetch(new URL("api/mockups", server.url), { method: "POST" });
   assert.equal(written.status, 405);
 });
 
@@ -527,7 +595,7 @@ async function read<Answer = unknown>(path: string): Promise<Answer> {
 }
 
 /** Asks the server to write something, and reads back what the command answered. */
-async function written(path: string, body: unknown): Promise<ParameterReport> {
+async function written<Answer = ParameterReport>(path: string, body: unknown): Promise<Answer> {
   const response = await fetch(new URL(path, server.url), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -537,7 +605,7 @@ async function written(path: string, body: unknown): Promise<ParameterReport> {
 
   assert.equal(response.status, 200, `${path} answered ${response.status}: ${answered}`);
 
-  return JSON.parse(answered) as ParameterReport;
+  return JSON.parse(answered) as Answer;
 }
 
 /** Asks the server to record, which it answers before the Run is anywhere near done. */

@@ -12,9 +12,12 @@ import {
   actionOf,
   actionsIn,
   asking,
+  configuredWith,
   ended,
+  misconfigured,
   nothingYet,
   progressed,
+  projectOf,
   refused,
   stood,
   tuned,
@@ -23,7 +26,14 @@ import {
   type App,
   type ProjectState,
 } from "./model.js";
-import { paint, paintProgress, paintStanding, paintTuning, type Handlers } from "./view.js";
+import {
+  paint,
+  paintConfiguration,
+  paintProgress,
+  paintStanding,
+  paintTuning,
+  type Handlers,
+} from "./view.js";
 
 /** Where the rail's clips being on or off is remembered between openings. */
 const railClipsKept = "record.rail-clips";
@@ -40,14 +50,50 @@ const readsAtOnce = 4;
 const root = pageRoot();
 const app = nothingYet(remembered(railClipsKept) ?? true);
 
-/** What tuning is waiting on, so that two changes settle in the order they were made. */
+/**
+ * What a change to one control is waiting on, so that two of them settle in the
+ * order they were made -- an Action's tuning and a Project's settings alike.
+ *
+ * Adding a Project is not one of these. It reads the machine again when it
+ * lands, and reading it asks what the Action on the stage is tuned to, which
+ * would be a change queued behind the one it is waiting for.
+ */
 let writing: Promise<void> = Promise.resolve();
 
 const handlers: Handlers = {
   choose(project, action) {
     app.chosen = { project, action };
+    app.stage = { kind: "action" };
     repaint();
     void readTuning(project, action);
+  },
+
+  showConfiguration(project) {
+    app.stage = { kind: "configuration", project };
+    repaint();
+    void readConfiguration(project);
+  },
+
+  showNewProject() {
+    app.stage = { kind: "new" };
+    app.notConfigured = null;
+    repaint();
+  },
+
+  showClips() {
+    app.stage = { kind: "action" };
+    repaint();
+  },
+
+  configure(project, name, value) {
+    // Written into the file the Project is already configured in, and read back
+    // from it: a setting the tool refuses was never written, so the controls go
+    // back to what the file really says.
+    void changing(project, () => api.configure(project, [`${name}=${value}`]));
+  },
+
+  add(name, settings) {
+    void adding(name, settings);
   },
 
   runAction(project, action) {
@@ -152,6 +198,10 @@ async function read(project: api.Project, troubles: string[]): Promise<ProjectSt
     // What the Project is at now is `record status`, which is asked for the
     // whole workspace once rather than Project by Project.
     commit: null,
+    // ...and what it is configured with is read when it is asked for, since it
+    // is the clips the app is opened for.
+    configuration: null,
+    misconfigured: null,
     actions: await eachAtOnce(named, (action) => readAction(project.name, action, troubles)),
   };
 }
@@ -248,6 +298,72 @@ function tuning(
     // must not put a new video element in the page.
     paintTuning(app);
   });
+}
+
+/**
+ * What one Project is configured with, read when its configuration reaches the
+ * stage. Read once and kept, since the file changes only through the app --
+ * and a setting changed by hand while the app is open is what re-opening it is
+ * for.
+ */
+async function readConfiguration(project: string): Promise<void> {
+  const state = projectOf(app, project);
+
+  if (state === undefined || state.configuration !== null) {
+    return;
+  }
+
+  await changing(project, () => api.configuration(project));
+}
+
+/**
+ * Reads or changes one Project's configuration, and draws what the command
+ * answered.
+ *
+ * A refusal is kept against the Project in the command's own words, and what it
+ * is configured with is left exactly as it was: the file was never written, so
+ * the controls go back to what it really says.
+ */
+function changing(project: string, ask: () => Promise<api.ProjectReport>): Promise<void> {
+  return oneAtATime(async () => {
+    try {
+      configuredWith(app, await ask());
+    } catch (failure) {
+      misconfigured(app, project, messageOf(failure));
+    }
+
+    paintConfiguration(app);
+  });
+}
+
+/**
+ * Configures a Project this machine does not have yet, and opens what it is
+ * configured with -- which is where the rest of it is filled in.
+ *
+ * What the app knows about this machine is read again rather than added to: a
+ * Project that was not there is Actions, Runs and staleness the app has never
+ * asked about.
+ */
+async function adding(name: string, settings: readonly string[]): Promise<void> {
+  let added: api.ProjectReport;
+
+  try {
+    added = await api.add(name, settings);
+  } catch (failure) {
+    // Said beside the form rather than drawn over it: what was typed into the
+    // rest of it is what the next attempt is made of.
+    app.notConfigured = messageOf(failure);
+    paintConfiguration(app);
+    return;
+  }
+
+  app.notConfigured = null;
+  app.stage = { kind: "configuration", project: added.project };
+
+  await settle();
+
+  configuredWith(app, added);
+  repaint();
 }
 
 /**

@@ -15,6 +15,8 @@ export type {
 export type { Artifact, ArtifactFormat } from "./artifacts.js";
 export { actionModule, overridesFile, readActions, readProject, readProjects } from "./config.js";
 export type { ProjectConfig, Viewport } from "./config.js";
+export { addProject, configureProject, readConfiguration } from "./configure.js";
+export type { ProjectReport, ReportedSetting, SettingKind } from "./configure.js";
 export { RecordError } from "./errors.js";
 export { readConditions, readHistory } from "./history.js";
 export type { Key, KeyName, KeyStroke } from "./keys.js";

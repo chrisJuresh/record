@@ -85,6 +85,16 @@ export async function readProject(workspace: string, name: string): Promise<Proj
     throw failure;
   });
 
+  return projectFromToml(name, text, file);
+}
+
+/**
+ * One Project as some text configures it, held to exactly what the file on disk
+ * is held to. An edit is read back through this before it is written, so a
+ * setting the tool would refuse is refused while the file still says what it
+ * said -- rather than at record time, with the refusal already saved.
+ */
+export function projectFromToml(name: string, text: string, file: string): ProjectConfig {
   let table: unknown;
   try {
     table = parseToml(text);
@@ -130,16 +140,18 @@ export function overridesFile(workspace: string, project: string, action: string
   return join(actionsDirectory(workspace, project), `${action}.overrides.toml`);
 }
 
-function projectsDirectory(workspace: string): string {
-  return join(workspace, "projects");
+/** Where one Project is configured, which is the file the app edits in place. */
+export function configFile(workspace: string, name: string): string {
+  return join(projectsDirectory(workspace), name, "project.toml");
 }
 
-function actionsDirectory(workspace: string, project: string): string {
+/** The directory a Project's Actions are declared in. */
+export function actionsDirectory(workspace: string, project: string): string {
   return join(projectsDirectory(workspace), project, "actions");
 }
 
-function configFile(workspace: string, name: string): string {
-  return join(projectsDirectory(workspace), name, "project.toml");
+function projectsDirectory(workspace: string): string {
+  return join(workspace, "projects");
 }
 
 async function isReadable(file: string): Promise<boolean> {

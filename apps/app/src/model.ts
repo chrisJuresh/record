@@ -15,6 +15,7 @@ import type {
   ParameterReport,
   Progress,
   Project,
+  ProjectReport,
   Request,
   Run,
   StatusReport,
@@ -58,22 +59,54 @@ export type ActionState = {
 };
 
 export type ProjectState = {
-  /** The Project as the command reports it configured. */
-  readonly configured: Project;
+  /**
+   * The Project as the command reports it configured. Replaced whenever its
+   * configuration is changed, since what the command answers with is the
+   * Project as it now reads.
+   */
+  configured: Project;
   /**
    * What its repository is at now, as `record status` reports it -- and nothing
    * where there is no commit to read, or where it has not been read yet.
    */
   commit: string | null;
+  /**
+   * Everything it is configured with, once that has been read -- which is when
+   * its configuration is put on the stage rather than when the app opens.
+   */
+  configuration: ProjectReport | null;
+  /** Why the last change to its configuration was refused, in the command's own words. */
+  misconfigured: string | null;
   readonly actions: readonly ActionState[];
 };
 
 /** The Action on the stage, which is the one whose Latest is playing. */
 export type Chosen = { readonly project: string; readonly action: string };
 
+/**
+ * What the stage is showing: the Action's clips, what one Project is configured
+ * with, or a Project being configured for the first time.
+ *
+ * Configuration takes the stage rather than a column of its own, because it is
+ * read and changed a few times in a Project's life and the clips are what the
+ * app is open for the rest of the time.
+ */
+export type Stage =
+  | { readonly kind: "action" }
+  | { readonly kind: "configuration"; readonly project: string }
+  | { readonly kind: "new" };
+
 export type App = {
   projects: readonly ProjectState[];
   chosen: Chosen | null;
+  /** What is on the stage, which is a clip unless a Project is being configured. */
+  stage: Stage;
+  /**
+   * Why the Project the app was last asked to add was not configured, in the
+   * command's own words. Kept apart from a configured Project's own refusals:
+   * there is no Project for it to belong to yet.
+   */
+  notConfigured: string | null;
   /** Whether the rail shows a clip of each Action under its name. */
   railClips: boolean;
   /** The requests being watched, and what each of them named. */
@@ -100,12 +133,55 @@ export function nothingYet(railClips: boolean): App {
   return {
     projects: [],
     chosen: null,
+    stage: { kind: "action" },
+    notConfigured: null,
     railClips,
     asked: new Map(),
     cannotTell: [],
     unread: null,
     trouble: null,
   };
+}
+
+/** The Project whose configuration is on the stage, or nothing where none is. */
+export function configuring(app: App): ProjectState | undefined {
+  return app.stage.kind === "configuration" ? projectOf(app, app.stage.project) : undefined;
+}
+
+/** One Project by name, or nothing where this machine has none by it. */
+export function projectOf(app: App, project: string): ProjectState | undefined {
+  return app.projects.find((state) => state.configured.name === project);
+}
+
+/**
+ * What a Project is configured with, as the command has just reported it.
+ *
+ * Every answer about configuration is a whole report -- reading it, changing a
+ * setting, adding a Project -- so this is the one way it ever changes, and the
+ * Project the rail lists is replaced along with it: a Project just Published is
+ * a Project the rail says is Published.
+ */
+export function configuredWith(app: App, report: ProjectReport): void {
+  const project = projectOf(app, report.project);
+
+  if (project !== undefined) {
+    project.configuration = report;
+    project.configured = report.configured;
+    project.misconfigured = null;
+  }
+}
+
+/**
+ * Why a change to a Project's configuration was refused. What it is configured
+ * with is left exactly as it was, because a setting the tool refused was never
+ * written down.
+ */
+export function misconfigured(app: App, project: string, message: string): void {
+  const state = projectOf(app, project);
+
+  if (state !== undefined) {
+    state.misconfigured = message;
+  }
 }
 
 /**
@@ -135,9 +211,17 @@ export function chosenAction(app: App): ActionState | undefined {
   return app.chosen === null ? undefined : actionOf(app, app.chosen.project, app.chosen.action);
 }
 
+/**
+ * The Action the stage is playing, which is none at all while a Project is
+ * being configured -- the clips and the configuration are not both on it.
+ */
+export function playing(app: App): ActionState | undefined {
+  return app.stage.kind === "action" ? chosenAction(app) : undefined;
+}
+
 /** The Project the Action on the stage belongs to. */
 export function chosenProject(app: App): ProjectState | undefined {
-  return app.projects.find((project) => project.configured.name === app.chosen?.project);
+  return app.chosen === null ? undefined : projectOf(app, app.chosen.project);
 }
 
 /** Every Action of every Project, in the order the rail lists them. */

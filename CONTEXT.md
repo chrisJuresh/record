@@ -64,8 +64,17 @@ _Avoid_: current, head, newest
 
 **Parameter**:
 A named, tunable value an Action declares — a distance, a duration, an easing, a
-framerate — with a default and a sensible range.
+framerate — with a default and a sensible range. Never called a setting: a
+Setting is a Project's, and the two have different owners and different files.
 _Avoid_: option, setting, config, knob, prop
+
+**Setting**:
+A named value a Project is configured with — where it answers, how it is
+started, what it is photographed at, whether it is Published. Written in the
+Project's `project.toml` and owned by whoever configures the Project, where a
+Parameter is declared by whoever writes an Action. A Setting the Project's file
+does not say is one the tool stands its own value in for.
+_Avoid_: option, preference, field, property, parameter
 
 **Override**:
 A Parameter value chosen by hand that replaces the Action's declared default.
