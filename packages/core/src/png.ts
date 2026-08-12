@@ -3,9 +3,10 @@
  *
  * Both the Frames and the rendered Mockups arrive as PNG bytes from
  * `HeadlessExperimental.beginFrame`, and the browser -- not this tool -- decides
- * what size they come out at: the device scale factor asked for through
- * `Emulation.setDeviceMetricsOverride` does not reach that screenshot, so an
- * image is CSS-sized however the viewport was emulated.
+ * what size they come out at. It is the scale the browser was *launched* at
+ * that decides it, rather than the one asked for through
+ * `Emulation.setDeviceMetricsOverride`, which moves only what the page believes
+ * its own `devicePixelRatio` is (`spikes/device-scale/`).
  *
  * So the size is read off the image rather than worked out from the viewport it
  * was asked for. Everything that composites a surround around a clip depends on

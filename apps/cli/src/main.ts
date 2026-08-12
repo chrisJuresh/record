@@ -948,7 +948,8 @@ function asRun(report: RunReport): string {
     started
       ? `  started the Project at ${readyUrl}, and stopped it again`
       : `  recorded the Project already answering at ${readyUrl}`,
-    `  ${captured} Frames at ${report.framerate}fps (${seconds}s), ${repeated} repeated`,
+    `  ${captured} Frames of ${capturedAt(report.frames)} at ${report.framerate}fps ` +
+      `(${seconds}s), ${repeated} repeated`,
     ...asCondition(report),
     ...asCursor(report),
     ...asMockup(report),
@@ -964,6 +965,25 @@ function asRun(report: RunReport): string {
     `  embed ${report.embed}`,
     "",
   ].join("\n");
+}
+
+/**
+ * How big the Frames really came out, and at what scale where it is not one to
+ * one. The scale is worth saying alongside the size because it is what the size
+ * varies with: 2880x1800 is either a very wide viewport or an ordinary one
+ * photographed at scale 2, and only one of those is sharp on a 4K display.
+ *
+ * A scale of nothing is a Run whose record predates Runs recording one, which
+ * is said rather than read as 1 -- `status` reports Runs recorded long before
+ * this reader existed.
+ */
+function capturedAt(captured: { width: number; height: number; scale: number | null }): string {
+  const size = `${captured.width}x${captured.height}`;
+
+  if (captured.scale === null) {
+    return `${size}, at a scale it did not record`;
+  }
+  return captured.scale === 1 ? size : `${size} at scale ${captured.scale}`;
 }
 
 /**
@@ -1069,6 +1089,11 @@ function asRuns(recorded: RunSummary): string {
  * One block per Project: the commit it is at, and how each of its Actions
  * stands against it. An Action nobody has run says so rather than reading as
  * current, because the two are worth telling apart.
+ *
+ * Each standing clip says what it was captured at, which is the one thing about
+ * it that staleness cannot tell: `viewport.device_scale_factor` lives in this
+ * workspace rather than in the Project's own repository, so raising it leaves
+ * every clip current and soft until each is recorded again.
  */
 function asStatus(reported: StatusReport): string {
   return reported.projects
@@ -1080,7 +1105,9 @@ function asStatus(reported: StatusReport): string {
         ...project.actions.map((action) => {
           const standing = action.lastRun === null ? "never run" : action.stale ? "stale" : "current";
           const last =
-            action.lastRun === null ? "" : `  ${action.lastRun.recordedAt}  ${action.runs} kept`;
+            action.lastRun === null
+              ? ""
+              : `  ${action.lastRun.recordedAt}  ${action.runs} kept  ${capturedAt(action.lastRun.captured)}`;
 
           return `  ${action.action.padEnd(name)}  ${standing.padEnd("never run".length)}${last}`;
         }),

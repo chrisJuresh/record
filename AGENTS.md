@@ -196,6 +196,31 @@ does not have yet, in a directory named for it under `projects/`. It cannot be
 Published as it is added (ADR 0007): publishing is turned on afterwards, on a
 Project that exists and has clips to look at.
 
+#### What a Project is photographed at
+
+`viewport.width` and `viewport.height` are **CSS pixels** — the page really is
+that wide, and it is what the Timeline scrolls and clicks in.
+`viewport.device_scale_factor` is how many pixels of Frame each of those is
+captured as, and `video_width` is how wide the video Artifacts are then encoded.
+
+A clip is sharp on a high-density display when `video_width` is above the CSS
+width the page was laid out at, and the Frames really held that many pixels. So
+the scale factor is what makes a wider `video_width` worth asking for: encoding
+1440 CSS pixels at 2560 without it is upsampling detail that was never captured.
+The two are set together or neither is worth setting.
+
+It costs what it sounds like. Scale 2 is four times the pixels through every
+screenshot, every PNG written and every encode, in a tool whose slowest part is
+already capture — so **tune at scale 1 and record what is to be published at 2**,
+rather than paying for it on every Run while a Parameter is being found.
+
+What a Run was captured at is reported rather than inferred: `run.json` says the
+Frame size and the scale, `record run` says both, and `record status` says what
+the standing clip of each Action was captured at. Raising the scale factor does
+**not** make an Action Stale — staleness is the Project's own repository, and
+this setting lives in this workspace — so a clip recorded before it was raised
+reads as current and is soft, which is exactly why `status` says the size.
+
 ### Matrix Runs
 
 `--scheme light,dark` and `--width 480,900,1440` record one request across

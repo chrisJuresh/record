@@ -18,4 +18,9 @@ published = false
 [viewport]
 width = 1440
 height = 900
-device_scale_factor = 2
+
+# device_scale_factor is left at 1 deliberately. It was 2 while nothing honoured
+# it, and now that it does, 2 would be four times the pixels through capture and
+# every encode for no sharpness at all: these clips are encoded at video_width
+# 1280, below the 1440 CSS pixels the page is already laid out at, so there is
+# nothing for the extra detail to survive into. Raise both together or neither.
