@@ -47,6 +47,19 @@ export type Mockup = {
   document(clip: Dimensions): string;
 };
 
+/**
+ * Where the clip goes inside a rendered surround, in the pixels of the image
+ * rather than the CSS pixels the template was written in. A Mockup declares
+ * where its Aperture is by putting an element there; where that lands is
+ * measured off the laid-out document rather than agreed in advance.
+ */
+export type Aperture = {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+};
+
 /** The Frames as captured, with nothing composited around them. */
 export const noMockup = "none";
 
@@ -242,6 +255,11 @@ const darkChrome: Chrome = {
  * A window with a titlebar and no tab strip, no logo and no wording: an empty
  * address pill says "a browser" without claiming to be one anybody could name,
  * and without inviting the question of what URL a local Project would show.
+ *
+ * The pill takes the whole of the titlebar it is not sharing with the lights,
+ * which is what an address bar does. Stopping it partway leaves a band of empty
+ * chrome that reads as a mistake rather than as a choice, and nothing is drawn
+ * to the right of it to make that space mean anything.
  */
 function browserDocument(clip: Dimensions, chrome: Chrome): string {
   const margin = scaled(clip, 0.03, 6);
@@ -262,7 +280,7 @@ function browserDocument(clip: Dimensions, chrome: Chrome): string {
         `border-bottom:1px solid ${chrome.line}}`,
       `#lights{display:flex;gap:${gap}px}`,
       `#lights i{display:block;width:${light}px;height:${light}px;border-radius:50%;background:${chrome.light}}`,
-      `#address{flex:0 1 46%;height:${address}px;border-radius:999px;background:${chrome.address};` +
+      `#address{flex:1 1 auto;height:${address}px;border-radius:999px;background:${chrome.address};` +
         `border:1px solid ${chrome.addressLine}}`,
       `#aperture{--fill:${chrome.bar};width:${clip.width}px;height:${clip.height}px}`,
     ].join(""),

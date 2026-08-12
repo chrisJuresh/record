@@ -33,7 +33,7 @@ import { RecordError } from "./errors.js";
 import { beginRun, pruneHistory, writeRun } from "./history.js";
 import { ensureRunning, type RunningProject } from "./lifecycle.js";
 import type { Condition } from "./matrix.js";
-import { mockupAsked, mockupFor, noMockup } from "./mockup.js";
+import { mockupAsked, mockupFor, noMockup, type Aperture } from "./mockup.js";
 import { readOverrides } from "./overrides.js";
 import { renderMockup, writeMockup, type Composite } from "./render.js";
 import { headCommit, repositoryOf } from "./repository.js";
@@ -98,6 +98,20 @@ export type RunReport = {
     readonly name: string;
     /** How the page reads, which is what a Mockup left to choose itself went by. */
     readonly colourScheme: ColourScheme;
+    /**
+     * The surround as it was actually rendered, and where in it the Frames were
+     * composited -- nothing at all for the Run that composited nothing.
+     *
+     * Reported because it is the one part of a Run that two correct-looking
+     * numbers can disagree about: an Aperture that is not the size of the
+     * Frames going into it is a clip scaled on the way in, which is how a
+     * surround came to be laid over a quarter of its own canvas unnoticed.
+     */
+    readonly surround: {
+      readonly width: number;
+      readonly height: number;
+      readonly aperture: Aperture;
+    } | null;
   };
   /** What the Action actually ran with, declarations and Overrides together. */
   readonly parameters: Readonly<Record<string, ParameterSetting>>;
@@ -107,6 +121,9 @@ export type RunReport = {
   readonly warnings: readonly string[];
   readonly frames: {
     readonly captured: number;
+    /** How big each Frame came out, which is what a Mockup was composited around. */
+    readonly width: number;
+    readonly height: number;
     /** Frames driven before the first Frame was kept, which must not vary between Runs. */
     readonly priming: { readonly compositor: number; readonly settle: number };
     /** Frames the compositor reported undamaged, kept as repeats rather than dropped. */
@@ -574,12 +591,22 @@ async function record(
         asked,
         name: surround?.name ?? noMockup,
         colourScheme: captured.colourScheme,
+        surround:
+          surround === undefined
+            ? null
+            : {
+                width: surround.composite.width,
+                height: surround.composite.height,
+                aperture: surround.composite.aperture,
+              },
       },
       parameters: effective.values,
       overridden: effective.overridden,
       warnings: effective.warnings,
       frames: {
         captured: states.length,
+        width: captured.size.width,
+        height: captured.size.height,
         priming: captured.priming,
         repeated: captured.repeated,
         hashes: captured.hashes,

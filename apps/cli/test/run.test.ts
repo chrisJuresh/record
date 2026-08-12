@@ -321,7 +321,14 @@ test("a Run reports the Parameter values it ran with, the Artifacts' included", 
   // An Action that only travels draws no cursor, so this clip is the page and
   // nothing else.
   assert.deepEqual(first.cursor, { shown: false, style: "soft-dot", captions: false });
-  assert.deepEqual(first.mockup, { asked: "none", name: "none", colourScheme: "dark" });
+  // ...and a Run that composited nothing reports no surround, rather than an
+  // empty one it passed its Frames through.
+  assert.deepEqual(first.mockup, {
+    asked: "none",
+    name: "none",
+    colourScheme: "dark",
+    surround: null,
+  });
   assert.deepEqual(first.overridden, []);
   assert.deepEqual(first.warnings, []);
 });

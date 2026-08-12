@@ -7,10 +7,12 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { Dimensions } from "./artifacts.js";
 import type { Viewport } from "./config.js";
 import type { CursorOverlay } from "./cursor.js";
 import { openFrameStepper, type FrameStepper } from "./driver.js";
 import { RecordError } from "./errors.js";
+import { pngDimensions } from "./png.js";
 import type { Substitution, TextSubstitution } from "./text.js";
 import type { ThemeSwitch } from "./theme.js";
 import type { CursorState, PageEffect, PageState } from "./timeline.js";
@@ -26,6 +28,12 @@ const settlingFrames = 60;
 const hashLength = 16;
 
 export type CapturedFrames = {
+  /**
+   * How big the Frames came out, read off the first one rather than worked out
+   * from the viewport: the browser decides what a screenshot is rendered at,
+   * and what is composited around a clip has to agree with the clip.
+   */
+  readonly size: Dimensions;
   /** Frames driven before the first Frame was kept. */
   readonly priming: { readonly compositor: number; readonly settle: number };
   /** Frames the compositor reported undamaged, recorded as repeats of the one before. */
@@ -180,6 +188,7 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
       (await stepper.evaluate(colourScheme)) === "dark" ? "dark" : "light";
 
     const hashes: string[] = [];
+    let size: Dimensions | undefined;
     let cursor: CursorState | null = null;
 
     for (const [index, state] of options.states.entries()) {
@@ -206,13 +215,23 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
 
       const frame = await stepper.next();
 
+      // Read off the first Frame alone: every Frame of one Run comes out of the
+      // same viewport, and a Run whose Frames changed size partway through is
+      // not a clip.
+      size ??= pngDimensions(frame, "a captured Frame");
+
       await writeFile(join(options.directory, frameFile(index)), frame);
       hashes.push(createHash("sha256").update(frame).digest("hex").slice(0, hashLength));
 
       options.progress?.(hashes.length);
     }
 
+    if (size === undefined) {
+      throw new RecordError("the Timeline produced no Frames to capture");
+    }
+
     return {
+      size,
       priming: { compositor: stepper.primingFrames, settle: settlingFrames },
       repeated: stepper.repeatedFrames - repeatedWhileSettling,
       hashes,
