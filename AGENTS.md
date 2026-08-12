@@ -752,6 +752,14 @@ images, which is also all a Run leaves behind.
 
 ## Agent skills
 
+### Skill pipeline
+
+Decisions come from `/grilling`, a spec from `/to-spec`, tickets from
+`/to-tickets`, and code from `/implement` against one ticket in a fresh context.
+**A thinking session ends at decisions**: being told to decide is not being told
+to build, and a spike is a ticket rather than a detour. See
+`docs/agents/skill-pipeline.md`.
+
 ### Issue tracker
 
 Issues and specs live as GitHub issues on `chrisJuresh/record`, driven through the
@@ -765,7 +773,9 @@ and a merge that closes the issue. Nothing is committed to `main` directly.
 **Committing is not delivering.** An agent that has committed against an issue
 **pushes the branch and opens the PR itself**, unasked — work left on a local
 branch is work nobody can see, and a PR opened early is where the diff is read
-while it is still cheap to change. Only the merge waits: agents open, push to
+while it is still cheap to change. This says what to do once there is a commit;
+whether there should be one at all is the skill pipeline's question, and the
+answer during a thinking session is no. Only the merge waits: agents open, push to
 and update PRs and answer review comments on them, and never merge or close the
 issue behind the PR's back.
 

@@ -22,7 +22,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 └── packages/, apps/
 ```
 
-A `CONTEXT-MAP.md` at the root would mean the repo had split into multiple contexts. It has not. Note that this repo *will* become a pnpm workspace with several packages — that alone is not a reason to split contexts. Split only when packages stop sharing one vocabulary.
+A `CONTEXT-MAP.md` at the root would mean the repo had split into multiple contexts. It has not. Note that this repo **is** a pnpm workspace of five packages — that alone is not a reason to split contexts, and here every one of them speaks about the same Projects, Actions, Runs and Frames. Split only when packages stop sharing one vocabulary.
 
 ## Use the glossary's vocabulary
 
