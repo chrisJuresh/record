@@ -10,12 +10,15 @@ import { startServer } from "@record/server";
 
 import {
   actionModule,
+  addProject,
   conditionsFor,
+  configureProject,
   defaultConcurrency,
   mockups,
   noMockup,
   readActions,
   readConditions,
+  readConfiguration,
   readHistory,
   readParameters,
   readProjects,
@@ -30,6 +33,7 @@ import {
   type ContactSheetReport,
   type ParameterReport,
   type ProjectConfig,
+  type ProjectReport,
   type RunProgress,
   type RunReport,
   type RunSummary,
@@ -39,6 +43,9 @@ import {
 const usage = `record -- repeatable clips of locally-running websites
 
   record projects                        List every configured Project
+  record configure <project>             Show what a Project is configured with
+  record configure <project> <name>=<value>...      Change it, where it is written
+  record add <project> <name>=<value>...            Configure a new Project, not Published
   record actions <project>               List a Project's Actions
   record parameters <project> <action>   Show an Action's Parameters and their values
   record set <project> <action> <name>=<value>...   Override Parameters by hand
@@ -141,6 +148,32 @@ async function main(argv: string[]): Promise<number> {
           return fail(`projects takes no arguments\n\n${usage}`);
         }
         return await projects(json);
+      case "configure": {
+        const [project, ...assignments] = operands;
+        if (project === undefined) {
+          return fail(
+            `configure takes one Project, and any of its settings to change\n\n${usage}`,
+          );
+        }
+        // Reading it and changing it are the same answer -- what the Project
+        // will now record with -- so they are the same command, and which one
+        // it is is whether anything was named to change.
+        return configuration(
+          assignments.length === 0
+            ? await readConfiguration(workspace(), project)
+            : await configureProject(workspace(), project, assignments),
+          json,
+        );
+      }
+      case "add": {
+        const [project, ...assignments] = operands;
+        if (project === undefined || assignments.length === 0) {
+          return fail(
+            `add takes a name for the new Project, and what it is configured with\n\n${usage}`,
+          );
+        }
+        return configuration(await addProject(workspace(), project, assignments), json);
+      }
       case "actions": {
         const [project] = operands;
         if (project === undefined || operands.length > 1) {
@@ -714,12 +747,53 @@ function asParameters(reported: ParameterReport): string {
     .join("");
 }
 
-/** What one Parameter will take: a range, a set of names, or nothing to say. */
-function takes(parameter: ParameterReport["parameters"][number]): string {
-  if (parameter.min !== undefined) {
-    return `  (${parameter.min}..${parameter.max})`;
+function configuration(reported: ProjectReport, json: boolean): number {
+  return emit(json, reported, () => asConfiguration(reported));
+}
+
+/**
+ * What a Project is configured with: the file it is written in, and then one
+ * line per setting -- what it is worth, what it will take, and whether the file
+ * says so or the tool is standing a value in.
+ */
+function asConfiguration(reported: ProjectReport): string {
+  const name = widest(reported.settings.map((setting) => setting.name));
+  const value = widest(reported.settings.map((setting) => worth(setting.value)));
+
+  return [
+    `${reported.project}  ${reported.file}`,
+    ...reported.settings.map(
+      (setting) =>
+        `  ${setting.name.padEnd(name)}  ${worth(setting.value).padEnd(value)}` +
+        `${accepts(setting)}${setting.written ? "" : "  standing"}`,
+    ),
+    "",
+  ].join("\n");
+}
+
+/** What one setting is worth, and that a Project saying nothing says nothing. */
+function worth(value: ProjectReport["settings"][number]["value"]): string {
+  return value === null ? "-" : String(value);
+}
+
+/** ...and what one setting will take, which is that or true and false. */
+function accepts(setting: ProjectReport["settings"][number]): string {
+  return setting.kind === "flag" ? "  (true|false)" : takes(setting);
+}
+
+/**
+ * What one value will take: a range, a set of names, or nothing to say. The
+ * same question of a Parameter and of a setting, so the same answer.
+ */
+function takes(declared: {
+  readonly min?: number;
+  readonly max?: number;
+  readonly choices?: readonly string[];
+}): string {
+  if (declared.min !== undefined) {
+    return `  (${declared.min}..${declared.max})`;
   }
-  return parameter.choices === undefined ? "" : `  (${parameter.choices.join("|")})`;
+  return declared.choices === undefined ? "" : `  (${declared.choices.join("|")})`;
 }
 
 /** What a Run captured, and what it left behind. */

@@ -185,8 +185,9 @@ async function handle(
 }
 
 /**
- * What is read about a Project -- its Actions, and one Action's Parameters --
- * and what is written of one Action's tuning.
+ * What is read about a Project -- how it is configured, its Actions, and one
+ * Action's Parameters -- and what is written of its configuration and of one
+ * Action's tuning.
  */
 function projects(
   request: IncomingMessage,
@@ -197,7 +198,20 @@ function projects(
   const [project, actions, action, parameters, reset] = under;
 
   if (under.length === 0) {
-    return get(request, response, () => command(response, serving, ["projects"]));
+    // The Projects there are, and one more: a Project is configured by the same
+    // command that lists them, so adding one is a POST to where they are read.
+    return request.method === "POST"
+      ? add(request, response, serving)
+      : get(request, response, () => command(response, serving, ["projects"]));
+  }
+
+  // What one Project is configured with, and changing it. The app owns
+  // configuration; which settings there are and what each will take is the
+  // command's, so both are handed straight on to it.
+  if (under.length === 1 && project !== undefined) {
+    return request.method === "POST"
+      ? configure(request, response, serving, project)
+      : get(request, response, () => command(response, serving, ["configure", project]));
   }
 
   if (under.length === 2 && project !== undefined && actions === "actions") {
@@ -230,6 +244,70 @@ function projects(
   }
 
   answer(response, 404, { error: "nothing is served at that path" });
+}
+
+/**
+ * Changes what one Project is configured with, written as the `name=value`
+ * settings the command takes.
+ *
+ * It answers with what the Project will now record with, read back from the
+ * file rather than assumed -- and a setting the command refuses is answered in
+ * its own words, since "takes a number between 1 and 7680" is what says what to
+ * send instead. A refused setting was never written, so the file still says
+ * exactly what it said.
+ */
+async function configure(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+  project: string,
+): Promise<void> {
+  const body = await jsonIn(request);
+
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
+  }
+
+  const said = isObject(body.said) ? body.said["set"] : undefined;
+  const settings = assignmentsIn(said, "settings");
+
+  if ("error" in settings) {
+    return answer(response, 400, { error: settings.error });
+  }
+
+  return command(response, serving, ["configure", project, ...settings.given]);
+}
+
+/**
+ * Configures a Project this workspace does not have yet. What it may be named
+ * and what it cannot be configured without is the command's business; that a
+ * request named a Project at all is this one's.
+ */
+async function add(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+): Promise<void> {
+  const body = await jsonIn(request);
+
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
+  }
+
+  const said = isObject(body.said) ? body.said : {};
+  const project = said["project"];
+
+  if (!isName(project)) {
+    return answer(response, 400, { error: "a request to add a Project names the Project" });
+  }
+
+  const settings = assignmentsIn(said["set"], "settings");
+
+  if ("error" in settings) {
+    return answer(response, 400, { error: settings.error });
+  }
+
+  return command(response, serving, ["add", project, ...settings.given]);
 }
 
 /**
@@ -279,9 +357,9 @@ function namesFor(
   const named = (body as Record<string, unknown>)[asked];
 
   if (asked === "set") {
-    const written = overridesIn(named);
+    const written = assignmentsIn(named, "Overrides");
 
-    return "error" in written ? { error: written.error } : { names: written.set };
+    return "error" in written ? { error: written.error } : { names: written.given };
   }
 
   if (!Array.isArray(named) || named.length === 0 || named.some((entry) => !isName(entry))) {
@@ -292,20 +370,28 @@ function namesFor(
 }
 
 /**
- * The `name=value` Overrides a request names, wherever one names them -- the same
- * check for a request to record with them as for a request to write them, since
- * it is the same list on the way to the same command.
+ * The `name=value` assignments a request names, wherever one names them -- the
+ * same check for a request to record with Overrides as for one to write them or
+ * to configure a Project, since each is the same list on the way to a command.
  */
-function overridesIn(value: unknown): { readonly set: readonly string[] } | { readonly error: string } {
+function assignmentsIn(
+  value: unknown,
+  about: string,
+): { readonly given: readonly string[] } | { readonly error: string } {
   if (
     !Array.isArray(value) ||
     value.length === 0 ||
     value.some((entry) => !isName(entry) || !entry.includes("="))
   ) {
-    return { error: "'set' is a list of 'name=value' Overrides" };
+    return { error: `'set' is a list of 'name=value' ${about}` };
   }
 
-  return { set: value as string[] };
+  return { given: value as string[] };
+}
+
+/** Whether a request said an object at all, which every one that writes says. */
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -359,6 +445,9 @@ function index(serving: Serving): unknown {
     endpoints: [
       "GET  /  the app",
       "GET  /api/projects",
+      "POST /api/projects",
+      "GET  /api/projects/<project>",
+      "POST /api/projects/<project>",
       "GET  /api/projects/<project>/actions",
       "GET  /api/projects/<project>/actions/<action>/parameters",
       "POST /api/projects/<project>/actions/<action>/parameters",
@@ -482,12 +571,12 @@ function wordsFor(body: unknown): { readonly words: readonly string[] } | { read
 
   const sets = asked["set"];
   if (sets !== undefined) {
-    const written = overridesIn(sets);
+    const written = assignmentsIn(sets, "Overrides");
 
     if ("error" in written) {
       return { error: written.error };
     }
-    for (const assignment of written.set) {
+    for (const assignment of written.given) {
       words.push("--set", assignment);
     }
   }

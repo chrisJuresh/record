@@ -19,6 +19,43 @@ export type Project = {
   readonly published: boolean;
 };
 
+/** What one of a Project's settings is worth. */
+export type SettingValue = string | number | boolean;
+
+/**
+ * One setting of a Project, with what it is worth and what it will take.
+ *
+ * Which settings there are is the command's answer rather than a list kept
+ * here: a Project grows a setting by the tool growing one, and the app draws a
+ * control for whatever it is told about.
+ */
+export type Setting = {
+  /** The name it is written under in `project.toml`, tables and all. */
+  readonly name: string;
+  readonly kind: "text" | "number" | "choice" | "flag";
+  /** Written for whoever is configuring the Project, so it is shown to them. */
+  readonly describes: string;
+  /** A Project cannot record without it, so it is changed and never emptied. */
+  readonly required: boolean;
+  readonly min?: number;
+  readonly max?: number;
+  readonly choices?: readonly string[];
+  /** What it records with, whether the file says it or the tool stands it in. */
+  readonly value: SettingValue | null;
+  /** Whether the file says it, rather than the tool standing a value in. */
+  readonly written: boolean;
+};
+
+/** Everything a Project is configured with, and where it is written down. */
+export type ProjectReport = {
+  readonly project: string;
+  /** The file it is configured in, comments and all. */
+  readonly file: string;
+  /** The Project as every command now reads it, which is what the rail shows. */
+  readonly configured: Project;
+  readonly settings: readonly Setting[];
+};
+
 export type Artifact = {
   readonly format: "mp4" | "webm" | "gif";
   /** Where it is on this machine. Its last segment is what it is served as. */
@@ -172,6 +209,29 @@ export function projects(): Promise<readonly Project[]> {
 
 export function actions(project: string): Promise<readonly string[]> {
   return read<readonly string[]>(["api", "projects", project, "actions"]);
+}
+
+/** What one Project is configured with, and what each of its settings will take. */
+export function configuration(project: string): Promise<ProjectReport> {
+  return read<ProjectReport>(["api", "projects", project]);
+}
+
+/**
+ * Changes settings written as `name=value`, and answers with what the Project
+ * will now record with -- read from the answer rather than assumed, since a
+ * setting the tool refuses was never written down. A setting given nothing at
+ * all is taken out of the file, and what the tool stands in stands again.
+ */
+export function configure(
+  project: string,
+  settings: readonly string[],
+): Promise<ProjectReport> {
+  return wrote<ProjectReport>(["api", "projects", project], { set: settings });
+}
+
+/** Configures a Project this workspace does not have yet, which is never Published. */
+export function add(project: string, settings: readonly string[]): Promise<ProjectReport> {
+  return wrote<ProjectReport>(["api", "projects"], { project, set: settings });
 }
 
 /** Every Run of an Action still kept on this machine, newest first. */

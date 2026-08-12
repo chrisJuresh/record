@@ -28,9 +28,11 @@ A pnpm workspace of TypeScript packages, built with project references.
   (ADR 0002). It holds no logic of its own either — every button is one request
   to the server, which is one `record` command — and it has no test seam of its
   own for that reason.
-- `projects/<name>/project.toml` — one configured Project. Actions live beside
-  it under `actions/`, as TypeScript modules the engine imports directly
-  (ADR 0004) and `tsc --project projects` type-checks. Hand-tuned Parameter
+- `projects/<name>/project.toml` — one configured Project. Hand-written, and
+  edited a line at a time by the app, so the notes in it survive an edit made
+  through it. Actions live beside it under `actions/`, as TypeScript modules
+  the engine imports directly (ADR 0004) and `tsc --project projects`
+  type-checks. Hand-tuned Parameter
   values sit next to each Action in `actions/<action>.overrides.toml` and never
   inside the module (ADR 0005). Nothing is ever written into a Project's own
   repository (ADR 0003).
@@ -67,6 +69,18 @@ node --enable-source-maps --test apps/cli/dist/test/cli.test.js
 
 ```bash
 pnpm record projects
+```
+
+```bash
+pnpm record configure photos
+```
+
+```bash
+pnpm record configure photos published=true video_width=960
+```
+
+```bash
+pnpm record add demo base_url=http://127.0.0.1:5173/ source_repository=C:\demo\site
 ```
 
 ```bash
@@ -134,6 +148,39 @@ be started is started **once** and shared by every Action recording against it,
 and stopped when the last of them is done. **One Action failing does not abandon
 the others**: the rest record, the summary names what failed, and the command
 still fails.
+
+### Configuring a Project
+
+Everything a Project says about itself — where it answers, how it is started,
+what it is photographed at, which Mockup its clips are shown in, and whether
+they are ever Published — is a setting `record configure` reads and writes.
+`record configure <project>` says what it is configured with and what each
+setting will take; naming settings as `name=value` changes them. **Adding a
+setting is adding an entry** to the registry in `packages/core/src/configure.ts`,
+which is the only place a setting is declared: the command lists a new one and
+the app draws a control for it without being told twice. The one place outside
+it that spells a setting's name is the form a Project is added from, which asks
+for the two a Project cannot be configured without — and `record add` names what
+is missing in its own words if that ever stops being true.
+
+A change is written **into the file the Project is already configured in**, one
+line at a time, so the notes a person left in `project.toml` survive an edit
+made through the app — the key keeps its spelling, its indentation and whatever
+was written after it. A setting given nothing at all is taken out of the file
+and the tool's own value stands again; one a Project cannot record without is
+changed rather than emptied.
+
+Nothing is written until the whole file has been read back through the same
+reader a Run reads it with, so **a setting the tool would refuse is refused
+while the file still says what it said** rather than at record time, with the
+refusal already saved. What a Project answers on has to be a URL, a path under
+it has to be a path, a working directory has to be a directory on this machine,
+and a Mockup has to be one there is.
+
+`record add <project> <name>=<value>...` configures a Project this workspace
+does not have yet, in a directory named for it under `projects/`. It cannot be
+Published as it is added (ADR 0007): publishing is turned on afterwards, on a
+Project that exists and has clips to look at.
 
 ### Matrix Runs
 
@@ -242,6 +289,9 @@ able to drive a tool that starts processes on this machine.
 | `GET /` | The app, and every other path under it is a file it is made of |
 | `GET /api` | What this server offers, for whoever is reading the API |
 | `GET /api/projects` | `record projects` |
+| `POST /api/projects` | `record add` |
+| `GET /api/projects/<project>` | `record configure` |
+| `POST /api/projects/<project>` | `record configure`, with settings to change |
 | `GET /api/projects/<project>/actions` | `record actions` |
 | `GET /api/projects/<project>/actions/<action>/parameters` | `record parameters` |
 | `POST /api/projects/<project>/actions/<action>/parameters` | `record set` |
@@ -254,12 +304,14 @@ able to drive a tool that starts processes on this machine.
 | `GET /api/runs/<id>/events` | One Run's progress, as it happens |
 | `GET /artifacts/<project>/<action>/[conditions/<condition>/]<run>/<file>` | What a Run left behind |
 
-The two that write take `{ set: ["name=value"] }` and `{ reset: ["name"] }` —
-the words the commands take — and both answer with the report the command gives
-for itself, so a client reads what the Action will now run with rather than
-assuming it got what it sent. A value the Action refuses is answered `400` in
-the command's own words, because "outside the declared range 1..120" is what says
-what to send instead.
+The ones that write take `{ set: ["name=value"] }` and `{ reset: ["name"] }` —
+the words the commands take — and each answers with the report the command gives
+for itself, so a client reads what the Action will now run with, or what the
+Project is now configured with, rather than assuming it got what it sent. A
+value the command refuses is answered `400` in its own words, because "outside
+the declared range 1..120" is what says what to send instead. `POST
+/api/projects` takes `{ project, set }`: the Project to configure, and what to
+configure it with.
 
 `POST /api/runs` takes `{ project, action, all, schemes, widths, concurrency,
 set }` — the same request `record run` takes — and answers `202` with the
@@ -331,9 +383,22 @@ applied — a Parameter the Action no longer declares, most of all — are surfa
 with the sidecar they are written in rather than left to be found: an Action
 running on its declared default while its sidecar says otherwise reads as tuned.
 
-Tuning redraws only that column, and staleness only the flags it is written into.
-Clips are playing beside both, and neither a slider let go of nor a Stale flag
-arriving may put a new video element in the page.
+What a Project is configured with is edited from the app too, on the stage in
+place of the clips: a control per setting, marked where the file says it rather
+than where the tool is standing a value in, and a **publish toggle** per Project.
+Which settings there are is `record configure`'s answer rather than a list the
+app keeps, so a Project that grows a setting grows a control. Changing one
+writes into `project.toml` at once and the app is redrawn from what the command
+answered — a setting the tool refuses is said in its own words and the control
+goes back to what the file really says, since a refused setting was never
+written. The rail configures a Project this machine does not have yet as well:
+a name, where it answers and where its code is, which is `record add` and so is
+never Published.
+
+Tuning redraws only that column, configuration only its own panel and the
+Published pill beside the Project it belongs to, and staleness only the flags it
+is written into. Clips are playing beside all three, and neither a slider let go
+of nor a Stale flag arriving may put a new video element in the page.
 
 They are read for the Action on the stage rather than for all of them, because
 reading them imports the Action's module.
