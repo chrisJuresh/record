@@ -41,6 +41,10 @@ export type Run = {
   readonly condition: { readonly name: string } | null;
   readonly framerate: number;
   readonly frames: { readonly captured: number };
+  /** What the Action ran with, declarations and Overrides together. */
+  readonly parameters: Readonly<Record<string, ParameterSetting>>;
+  /** Which of those came from an Override rather than from the declaration. */
+  readonly overridden: readonly string[];
   readonly artifacts: readonly Artifact[];
   /** Where the embed snippet naming both video Artifacts was written. */
   readonly embed: string;
@@ -77,6 +81,38 @@ export type ParameterReport = {
    * Parameter it no longer declares. Said rather than dropped, because an Action
    * rewritten out from under its sidecar would otherwise run quietly differently
    * from how it reads.
+   */
+  readonly warnings: readonly string[];
+};
+
+/** How one Action stands against its Project, as the command reports it. */
+export type ActionStatus = {
+  readonly action: string;
+  /** How many Runs of it are still kept on this machine. */
+  readonly runs: number;
+  /**
+   * Whether the Project has been committed to since that Action last ran. Read
+   * from the command rather than worked out here: what counts as Stale is one
+   * rule, and it lives where `record status` answers.
+   */
+  readonly stale: boolean;
+};
+
+export type ProjectStatus = {
+  readonly project: string;
+  /** What its repository is at now, or nothing where there is no commit to read. */
+  readonly commit: string | null;
+  readonly actions: readonly ActionStatus[];
+};
+
+/** Which Actions have gone Stale, and what could not be told either way. */
+export type StatusReport = {
+  readonly projects: readonly ProjectStatus[];
+  /**
+   * Staleness that could not be told -- a Project under no repository, or an
+   * Action last recorded when there was no commit to read. Carried in the
+   * command's own words, because "not Stale" and "cannot say" are not the same
+   * answer and only one of them means the clip is current.
    */
   readonly warnings: readonly string[];
 };
@@ -143,6 +179,14 @@ export function actions(project: string): Promise<readonly string[]> {
 /** Every Run of an Action still kept on this machine, newest first. */
 export function history(project: string, action: string): Promise<readonly Run[]> {
   return read<readonly Run[]>(["api", "history", project, action]);
+}
+
+/**
+ * Which Actions of this workspace have gone Stale. Asked for every Project at
+ * once, because it is one command and the rail flags all of them.
+ */
+export function status(): Promise<StatusReport> {
+  return read<StatusReport>(["api", "status"]);
 }
 
 /** What an Action declares, what it is tuned to, and what it will run with. */

@@ -20,6 +20,10 @@
   --accent-soft: #e5ecfb;
   --trouble: #a3232d;
   --trouble-soft: #fbeaec;
+  /* An Action gone Stale is not a failure, so it is not the colour of one. */
+  --caution: #8a5a00;
+  --caution-soft: #fdf3dc;
+  --caution-line: #eddcae;
   --radius: 8px;
 }
 
@@ -149,6 +153,23 @@ button.act.quiet {
   background: var(--accent-soft);
   border-color: #c6d6f5;
   color: var(--accent);
+}
+
+/*
+ * An Action whose Project has been committed to since it last ran, which is the
+ * reason to press the button beside it. A flag and nothing more: staleness is
+ * reported and never acted on.
+ */
+.pill.stale {
+  background: var(--caution-soft);
+  border-color: var(--caution-line);
+  color: var(--caution);
+}
+
+/* Nothing at all for an Action the command reports as current, so a rail with
+   nothing to say is quiet rather than a column of empty flags. */
+.pill:empty {
+  display: none;
 }
 
 /* -------------------------------------------------------------------- rail */
@@ -282,9 +303,32 @@ button.act.quiet {
 }
 
 /*
- * The clip, and the width to the right of it. A GIF at its default width leaves
- * a third of the stage over, which is where the Latest is read about -- and
- * where the previous Run will be compared against it.
+ * How the Action on the stage stands: that its Project has been committed to
+ * since the clip was recorded, and whatever staleness the command could not tell
+ * either way. Present whether or not there is anything to say, because it is
+ * written into rather than drawn again -- staleness is read as every request ends,
+ * and there are clips playing by then.
+ */
+.standing {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.standing:empty {
+  display: none;
+}
+
+.standing p {
+  margin: 0;
+}
+
+.standing .gone-stale {
+  color: var(--caution);
+}
+
+/*
+ * The clips, and the width to the right of them. A GIF at its default width
+ * leaves a third of the stage over, which is where the Latest is read about.
  */
 .stage-body {
   display: grid;
@@ -292,6 +336,93 @@ button.act.quiet {
   gap: 18px;
   align-items: start;
   margin-top: 14px;
+}
+
+/*
+ * The Latest and the Run before it, side by side. Judging a change is two clips
+ * rather than one, so they get equal room: neither of them is the reference the
+ * other is a thumbnail of.
+ */
+.compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.take-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.take-head h3 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+/* What a Run was recorded against, so a clip on screen is placeable. */
+.take .facts {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.recorded-with {
+  margin-top: 8px;
+}
+
+.recorded-with h4 {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.recorded-with ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recorded-with li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 1px 0;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+/* A value chosen by hand rather than declared, marked as it is in the column
+   that tunes it -- what a Run ran with is never left to be worked out. */
+.recorded-with li.overridden .name::after {
+  content: "\2022";
+  color: var(--accent);
+  margin-left: 5px;
+}
+
+/*
+ * What differs between the two Runs, which is the whole reason both are on the
+ * stage. Highlighted rather than recoloured: the accent already means "chosen by
+ * hand" wherever a Parameter is shown, and one colour meaning two things is a
+ * mark that says neither.
+ */
+.take .facts .changed,
+.recorded-with li.changed .num {
+  background: var(--accent-soft);
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--ink);
 }
 
 .clip {
@@ -554,6 +685,16 @@ button.act.tiny:hover {
  */
 @media (max-width: 1500px) {
   .stage-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/*
+ * ...and narrower still, the two clips stack rather than shrink. Two clips too
+ * small to see the difference in are one clip's worth of information twice.
+ */
+@media (max-width: 1080px) {
+  .compare {
     grid-template-columns: minmax(0, 1fr);
   }
 }

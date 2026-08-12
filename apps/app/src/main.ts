@@ -16,12 +16,13 @@ import {
   nothingYet,
   progressed,
   refused,
+  stood,
   tuned,
   type ActionState,
   type App,
   type ProjectState,
 } from "./model.js";
-import { paint, paintProgress, paintTuning, type Handlers } from "./view.js";
+import { paint, paintProgress, paintStanding, paintTuning, type Handlers } from "./view.js";
 
 /** Where the rail's clips being on or off is remembered between openings. */
 const railClipsKept = "record.rail-clips";
@@ -122,6 +123,10 @@ async function settle(): Promise<void> {
 
   repaint();
 
+  // ...which of them the Project has been committed to since, which is one
+  // command for the whole workspace rather than one per Action...
+  void readStanding();
+
   // ...and what the Action that landed on the stage is tuned to, which is read
   // for the one being looked at rather than for every Action there is.
   if (app.chosen !== null) {
@@ -129,7 +134,7 @@ async function settle(): Promise<void> {
   }
 }
 
-/** One Project's Actions, and the Latest of each of them. */
+/** One Project's Actions, and the Runs each of them still keeps. */
 async function read(project: api.Project, troubles: string[]): Promise<ProjectState> {
   let named: readonly string[] = [];
 
@@ -143,6 +148,9 @@ async function read(project: api.Project, troubles: string[]): Promise<ProjectSt
 
   return {
     configured: project,
+    // What the Project is at now is `record status`, which is asked for the
+    // whole workspace once rather than Project by Project.
+    commit: null,
     actions: await eachAtOnce(named, (action) => readAction(project.name, action, troubles)),
   };
 }
@@ -152,21 +160,50 @@ async function readAction(
   action: string,
   troubles: string[],
 ): Promise<ActionState> {
-  const idle = { project, action, doing: null, failure: null, tuning: null, refused: null };
+  const idle = {
+    project,
+    action,
+    stale: false,
+    doing: null,
+    failure: null,
+    tuning: null,
+    refused: null,
+  };
 
   try {
-    // Newest first, so the Latest is the first of them -- and an Action nobody
-    // has run keeps none at all, which is a state rather than a failure.
-    const kept = await api.history(project, action);
-
-    return { ...idle, latest: kept[0] ?? null };
+    // Newest first, so the Latest is the first of them and the Run it is judged
+    // against is the second -- and an Action nobody has run keeps none at all,
+    // which is a state rather than a failure.
+    return { ...idle, history: await api.history(project, action) };
   } catch (failure) {
     // Listed by name with nothing to play, which is what it is: whether it has
     // ever recorded is exactly what could not be read.
     troubles.push(`'${project} ${action}': ${messageOf(failure)}`);
 
-    return { ...idle, latest: null };
+    return { ...idle, history: [] };
   }
+}
+
+/**
+ * Which Actions the Project has been committed to since, and what could not be
+ * told either way.
+ *
+ * Written into the flags already on the page rather than by drawing it again:
+ * this is read when the app opens and as every request ends, and by then there
+ * are clips playing on the stage that a repaint would restart.
+ */
+async function readStanding(): Promise<void> {
+  try {
+    stood(app, await api.status());
+  } catch (failure) {
+    // Staleness unread is not staleness absent, so what could not be read is
+    // said rather than left as an app whose Actions all read as current.
+    app.trouble = messageOf(failure);
+    repaint();
+    return;
+  }
+
+  paintStanding(app);
 }
 
 /**
@@ -311,6 +348,11 @@ async function ask(asked: api.Ask): Promise<void> {
       ended(app, request);
       app.asked.delete(request.id);
       repaint();
+
+      // A Run that recorded against the Project as it stands now is no longer
+      // Stale, and which Actions are is the command's answer rather than
+      // something worked out from the Run that just landed.
+      void readStanding();
     },
 
     lost() {
