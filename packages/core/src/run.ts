@@ -711,10 +711,17 @@ async function composite(
   const { width, height, deviceScaleFactor } = into.viewport;
   const key = `${mockup.name} ${width}x${height}@${deviceScaleFactor}`;
 
-  const rendering =
-    surrounds.get(key) ??
-    renderMockup(mockup, { executable: into.executable, viewport: into.viewport });
-  surrounds.set(key, rendering);
+  let rendering = surrounds.get(key);
+
+  if (rendering === undefined) {
+    rendering = renderMockup(mockup, { executable: into.executable, viewport: into.viewport });
+    surrounds.set(key, rendering);
+    // A rendering that failed is not this request's answer for every Run after
+    // it: a browser that could not be launched for one Run is one the next Run
+    // may launch, and a template that really cannot be rendered fails each of
+    // them on its own terms exactly as it did before they shared anything.
+    void rendering.catch(() => surrounds.delete(key));
+  }
 
   const rendered = await rendering;
 
