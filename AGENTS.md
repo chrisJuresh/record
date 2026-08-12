@@ -298,7 +298,12 @@ plan and then ask again, so nothing can hang waiting to be answered.
 A Project that is not Published is in neither the plan nor the directory, and
 that holds in both directions — a Project that **stops** being Published has its
 clips taken back out and the removal committed, because a clip left behind is a
-clip still public. **Run history is never published**: what is copied is the
+clip still public. `published/` is therefore the tool's own directory and is
+**mirrored rather than added to**: what is in it afterwards is exactly the Latest
+Artifacts of every Published Project, and nothing put there by hand survives a
+publish. Everything it would take out is on the plan beside everything it would
+put in, which is what makes that safe to confirm rather than surprising.
+**Run history is never published**: what is copied is the
 Latest of each history and nothing behind it, and each Condition of a Matrix
 publishes its own Latest under the name it recorded apart as. Nothing else in a
 Run's directory goes — the record it left of itself says where every Frame of it
@@ -308,7 +313,12 @@ Per ADR 0007 the only repository it writes to is this one. The commit names
 `published/` as its pathspec, so work sitting staged or edited elsewhere in this
 repository is not swept up by a button pressed without thinking, and no
 Project's own repository is read from, written to, committed to or pushed.
-Publishing what is already public commits nothing rather than failing.
+Publishing what is already public commits nothing rather than failing, and this
+repository is pushed **as it stands** — the branch it was on is reported, since
+a publish onto a branch nobody reads is not a clip anybody can link to. A
+repository that ignores `published/` is refused rather than published into:
+every copy would succeed and nothing would reach anybody, which on this
+operation reads exactly like having published.
 
 ### Serving
 
@@ -454,8 +464,9 @@ compares no Projects and copies no files of its own.
 
 Tuning redraws only that column, configuration only its own panel and the
 Published pill beside the Project it belongs to, publishing only its own panel,
-and staleness only the flags it is written into. Clips are playing beside all three, and neither a slider let go
-of nor a Stale flag arriving may put a new video element in the page.
+and staleness only the flags it is written into. Clips are playing beside all
+four, and neither a slider let go of nor a Stale flag arriving may put a new
+video element in the page.
 
 They are read for the Action on the stage rather than for all of them, because
 reading them imports the Action's module.

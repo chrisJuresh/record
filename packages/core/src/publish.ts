@@ -17,6 +17,13 @@
  * Run history is never published (ADR 0007). What is copied is the Latest of
  * each history and nothing behind it, and the record a Run left of itself stays
  * on this machine.
+ *
+ * The published directory is the tool's own and is **mirrored** rather than
+ * added to: what is in it afterwards is exactly the Latest Artifacts of every
+ * Published Project, so a Project that stops being Published stops being public
+ * and nothing hand-written there survives. Everything it would take out is on
+ * the plan beside everything it would put in, which is what makes that safe to
+ * confirm rather than surprising.
  */
 import { execFile } from "node:child_process";
 import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
@@ -77,7 +84,11 @@ export type PublishPlan = {
   readonly projects: readonly PublishedProject[];
   /** Every file about to be written, gathered from the Projects above. */
   readonly files: readonly PublishedFile[];
-  /** ...and every one about to be taken out, by the path it is at now. */
+  /**
+   * ...and every one about to be taken out, by the path it is at now, which is
+   * everything in the directory the plan does not put back: it is mirrored
+   * rather than added to.
+   */
   readonly removing: readonly string[];
   /** How much is about to be public, in bytes. */
   readonly bytes: number;
@@ -91,6 +102,12 @@ export type PublishReport = {
   readonly published: boolean;
   /** The commit this repository now stands at, or nothing where none was made. */
   readonly commit: string | null;
+  /**
+   * The branch that commit was made on, which is the branch that was pushed --
+   * publishing pushes this repository as it stands rather than moving it to a
+   * branch of its own, so which one it was is worth saying out loud.
+   */
+  readonly branch: string | null;
   /** Whether this repository was pushed, which is the only one ever pushed. */
   readonly pushed: boolean;
 };
@@ -150,13 +167,18 @@ export async function planPublish(workspace: string): Promise<PublishPlan> {
 
   const files = projects.flatMap((project) => project.actions.flatMap((action) => action.files));
 
-  atOnePathEach(files);
+  noTwoUnderOneName(files);
 
   const present = new Set(files.map((file) => file.path));
 
   if (!(await isRepository(workspace))) {
     warnings.push(
       `${workspace} is not a git repository, so there is nothing here to commit these to`,
+    );
+  } else if (await isIgnored(workspace)) {
+    warnings.push(
+      `${publishedDirectory}/ is ignored by this repository, so nothing copied into it could ` +
+        "be committed and none of this would reach anybody",
     );
   }
 
@@ -185,13 +207,23 @@ export async function publishClips(
   const plan = await planPublish(workspace);
 
   if (options.confirm !== true) {
-    return { plan, published: false, commit: null, pushed: false };
+    return { plan, published: false, commit: null, branch: null, pushed: false };
   }
 
   if (!(await isRepository(workspace))) {
     throw new RecordError(
       `${workspace} is not a git repository, so there is nothing here to commit these to -- ` +
         "publishing commits and pushes this repository and nothing else (ADR 0007)",
+    );
+  }
+
+  // Copying into a directory this repository ignores would succeed at every
+  // step and make nothing public, which on the one irreversible operation here
+  // is the worst possible answer: it reads exactly like having published.
+  if (await isIgnored(workspace)) {
+    throw new RecordError(
+      `${publishedDirectory}/ is ignored by this repository, so these clips would be copied ` +
+        "into it and never committed",
     );
   }
 
@@ -227,13 +259,17 @@ async function commitAndPush(workspace: string, plan: PublishPlan): Promise<Publ
   // What was published is already what is public. Nothing to commit is not a
   // failure: it is the answer to having published twice.
   if (changed.trim() === "") {
-    return { plan, published: true, commit: null, pushed: false };
+    return { plan, published: true, commit: null, branch: null, pushed: false };
   }
 
   await git(workspace, ["add", "--all", "--", publishedDirectory]);
   await git(workspace, ["commit", "--message", messageFor(plan), "--", publishedDirectory]);
 
   const commit = await git(workspace, ["rev-parse", "HEAD"]);
+  // This repository as it stands, rather than moved to a branch of its own --
+  // so the branch is reported, because a publish from a branch nobody reads is
+  // a clip nobody can link to and it must not read as one that is public.
+  const branch = await git(workspace, ["rev-parse", "--abbrev-ref", "HEAD"]);
 
   try {
     await git(workspace, ["push"]);
@@ -241,12 +277,12 @@ async function commitAndPush(workspace: string, plan: PublishPlan): Promise<Publ
     // The commit is made and the clips are not public yet, which is exactly
     // what has to be said: the next step is a push rather than a publish.
     throw new RecordError(
-      `the clips were committed as ${commit.slice(0, 7)} and this repository could not be ` +
-        `pushed: ${(failure as Error).message}`,
+      `the clips were committed as ${commit.slice(0, 7)} on ${branch} and this repository ` +
+        `could not be pushed: ${(failure as Error).message}`,
     );
   }
 
-  return { plan, published: true, commit, pushed: true };
+  return { plan, published: true, commit, branch, pushed: true };
 }
 
 /** What the commit says it did, which is which Projects went public. */
@@ -304,7 +340,7 @@ async function filesOf(
  * name claiming to be another is the one outcome worth refusing the whole plan
  * over.
  */
-function atOnePathEach(files: readonly PublishedFile[]): void {
+function noTwoUnderOneName(files: readonly PublishedFile[]): void {
   const taken = new Map<string, string>();
 
   for (const file of files) {
@@ -355,6 +391,22 @@ async function pruneEmpty(directory: string): Promise<void> {
 /** Whether the workspace is a repository at all, which is what publishing writes to. */
 async function isRepository(workspace: string): Promise<boolean> {
   return git(workspace, ["rev-parse", "--git-dir"]).then(
+    () => true,
+    () => false,
+  );
+}
+
+/**
+ * Whether this repository ignores the very directory publishing writes into.
+ *
+ * Asked with the trailing slash, because that is what makes it the directory:
+ * a rule written `published/` matches nothing when the directory is not there
+ * yet, and a publish into a repository that would ignore it is exactly the case
+ * where it is not there yet. A repository that cannot be asked is not one
+ * saying yes.
+ */
+async function isIgnored(workspace: string): Promise<boolean> {
+  return git(workspace, ["check-ignore", "--quiet", "--", `${publishedDirectory}/`]).then(
     () => true,
     () => false,
   );

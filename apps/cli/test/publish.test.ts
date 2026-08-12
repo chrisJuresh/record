@@ -457,6 +457,9 @@ test("only this repository is committed to and pushed, and only its published di
   assert.equal(published.published, true);
   assert.notEqual(published.commit, null);
   assert.equal(published.pushed, true);
+  // As this repository stands rather than moved to a branch of its own, and it
+  // says which branch, because that is where the clips now are.
+  assert.equal(published.branch, "main");
 
   const commit = published.commit ?? "";
 
@@ -565,4 +568,34 @@ test("a Published Project with no Run to publish is warned about rather than fai
   );
 
   await record(workspace, "configure", "vault", "published=false");
+});
+
+/**
+ * Copying into a directory this repository ignores would succeed at every step
+ * and make nothing public -- which, on the one irreversible operation here,
+ * reads exactly like having published. It is refused before anything is copied.
+ */
+test("a repository ignoring the published directory is refused rather than published into", async () => {
+  const ignoring = join(workspace, ".gitignore");
+  await writeFile(ignoring, "published/\n", "utf8");
+
+  const planned = await publishing("--dry-run");
+
+  assert.equal(
+    planned.plan.warnings.some((said) => said.includes("ignored")),
+    true,
+    `nothing said about an ignored directory: ${planned.plan.warnings.join(", ")}`,
+  );
+
+  const { stderr, code } = await record(workspace, "publish", "--confirm");
+
+  assert.equal(code, 1);
+  assert.match(stderr, /ignored by this repository/);
+  assert.deepEqual(
+    await readdir(join(workspace, "published")).catch(() => null),
+    null,
+    "and nothing was copied into it on the way to finding out",
+  );
+
+  await rm(ignoring, { force: true });
 });

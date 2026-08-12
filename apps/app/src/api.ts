@@ -196,6 +196,8 @@ export type PublishReport = {
   readonly plan: PublishPlan;
   readonly published: boolean;
   readonly commit: string | null;
+  /** The branch that commit was made on, which is the branch that was pushed. */
+  readonly branch: string | null;
   readonly pushed: boolean;
 };
 

@@ -1320,21 +1320,31 @@ function publishIn(app: App, handlers: Handlers): readonly Node[] {
         ]),
     el("p", { class: "publish-total" }, [totalOf(plan)]),
     el("div", { class: "row" }, [
-      ...(report.published ? [readAgain(handlers)] : nothing ? [] : [confirm(app, plan, handlers)]),
+      ...(report.published
+        ? [readAgain(handlers)]
+        : nothing
+          ? []
+          : [confirming(app, plan, handlers)]),
     ]),
   ];
 }
 
-/** What became of the plan, said as what a person would want to be told. */
+/**
+ * What became of the plan, said as what a person would want to be told -- the
+ * branch included, since this repository is pushed as it stands and a publish
+ * from a branch nobody reads is not a clip anybody can link to.
+ */
 function outcomeOf(report: PublishReport): string {
+  const on = `${shortCommit(report.commit ?? "")} on ${report.branch ?? "this branch"}`;
+
   if (report.commit === null) {
     return "Everything Published was already public, so nothing was committed.";
   }
   if (!report.pushed) {
-    return `Committed as ${shortCommit(report.commit)}, and this repository was not pushed.`;
+    return `Committed as ${on}, and this repository was not pushed.`;
   }
 
-  return `Published as ${shortCommit(report.commit)}, and pushed. These clips are public now.`;
+  return `Published as ${on}, and pushed. These clips are public now.`;
 }
 
 /**
@@ -1360,7 +1370,7 @@ function totalOf(plan: PublishPlan): string {
  * itself: "Publish" is what was pressed to get here, and pressing the same word
  * twice is how something goes public without being read.
  */
-function confirm(app: App, plan: PublishPlan, handlers: Handlers): HTMLButtonElement {
+function confirming(app: App, plan: PublishPlan, handlers: Handlers): HTMLButtonElement {
   const pressing = button(
     app.publishing ? "publishing…" : askingFor(plan),
     "act primary",

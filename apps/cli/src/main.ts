@@ -755,7 +755,12 @@ function saidOf(published: PublishReport): string {
     return "everything Published is already public, so nothing was committed";
   }
 
-  return `published as ${shortCommit(published.commit)}${published.pushed ? ", and pushed" : ""}`;
+  // The branch as well as the commit: this repository is pushed as it stands,
+  // and a publish from a branch nobody reads is not a clip anybody can link to.
+  return (
+    `published as ${shortCommit(published.commit)} on ${published.branch ?? "this branch"}` +
+    `${published.pushed ? ", and pushed" : ""}`
+  );
 }
 
 /** How big a file is, as somebody deciding whether to make it public reads it. */
