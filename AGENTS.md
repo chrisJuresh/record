@@ -291,10 +291,26 @@ stage: the layout chosen from the prototype sheet. The rail can show a clip of
 each Action under its name — the GIF, because it plays without being asked to —
 and that is togglable, because eight of them playing at once is a busy sidebar.
 
-The Latest plays inline, and the width the clip leaves over is where it is read
-about rather than blank. Three buttons record: one Action, every Action of a
-Project, and everything. Each is one `POST /api/runs`, watched at `/events`, so
-what the app knows about a Run is what the command said about it.
+The Latest plays inline **beside the Run before it**, because judging a change is
+two clips rather than one, and each of them says the Project commit and the
+effective Parameters it was recorded with — a clip nobody can place is a clip
+nobody can judge — and what the Latest has that the Run before it did not is
+marked on the Latest, so a difference reads with a direction. An Action recorded
+only once says so where the second clip would be, and one never recorded says
+that instead of standing an empty player there. The width the clips leave over is
+where the Latest's Artifacts are read about rather than blank. Three buttons
+record: one Action, every Action of a Project, and everything. Each is one
+`POST /api/runs`, watched at `/events`, so what the app knows about a Run is what
+the command said about it.
+
+An Action gone **Stale** is flagged in the rail and said on the stage, which is
+the other half of what a re-record button is for. The flag is `record status` and
+nothing else: the app compares no commits of its own, and the answer is read again
+as every request ends, so a Run recorded against the Project as it stands clears
+the flag without anything being cleared by hand. Staleness the command could not
+tell — a Project under no repository, an Action last recorded when there was no
+commit to read — is said **in the command's own words**, because "not Stale" and
+"cannot say" are not the same answer and only one of them means the clip stands.
 
 A Run in flight says so on the Action it belongs to and on the stage, and a Frame
 arriving rewrites those words rather than the page — redrawing a stage sixty
@@ -315,8 +331,9 @@ applied — a Parameter the Action no longer declares, most of all — are surfa
 with the sidecar they are written in rather than left to be found: an Action
 running on its declared default while its sidecar says otherwise reads as tuned.
 
-Tuning redraws only that column. A clip is playing beside it, and a slider let go
-of must not put a new video element in the page.
+Tuning redraws only that column, and staleness only the flags it is written into.
+Clips are playing beside both, and neither a slider let go of nor a Stale flag
+arriving may put a new video element in the page.
 
 They are read for the Action on the stage rather than for all of them, because
 reading them imports the Action's module.

@@ -17,6 +17,7 @@ import type {
   Project,
   Request,
   Run,
+  StatusReport,
   Summary,
 } from "./api.js";
 
@@ -31,8 +32,19 @@ export type Doing = {
 export type ActionState = {
   readonly project: string;
   readonly action: string;
-  /** The Artifacts of its most recent successful Run, or nothing where it has none. */
-  latest: Run | null;
+  /**
+   * Every Run of it still kept on this machine, newest first. The first is the
+   * Latest and the second is what the Latest is judged against, which is what
+   * makes re-recording worth pressing -- so the history is held rather than the
+   * newest of it plucked out of the answer and the rest dropped.
+   */
+  history: readonly Run[];
+  /**
+   * Whether the Project has been committed to since it last ran, as
+   * `record status` reports it -- and false where that command has not answered
+   * yet, since an Action is flagged on what was read and never on a guess.
+   */
+  stale: boolean;
   doing: Doing | null;
   /** Why the last request naming it failed, in the command's own words. */
   failure: string | null;
@@ -48,6 +60,11 @@ export type ActionState = {
 export type ProjectState = {
   /** The Project as the command reports it configured. */
   readonly configured: Project;
+  /**
+   * What its repository is at now, as `record status` reports it -- and nothing
+   * where there is no commit to read, or where it has not been read yet.
+   */
+  commit: string | null;
   readonly actions: readonly ActionState[];
 };
 
@@ -61,13 +78,51 @@ export type App = {
   railClips: boolean;
   /** The requests being watched, and what each of them named. */
   readonly asked: Map<string, Ask>;
+  /**
+   * Staleness the command could not tell, in its own words. Said rather than
+   * kept quiet: an Action that cannot be told Stale is not an Action that is
+   * current, and only one of those means the clip on the stage still stands.
+   */
+  cannotTell: readonly string[];
+  /**
+   * Why staleness could not be read at all, in the words the attempt failed
+   * with. Kept apart from `trouble` because it is drawn where staleness is,
+   * rather than costing the page a paint while two clips are playing on it -- and
+   * apart from `cannotTell`, which is the command answering that it cannot say.
+   */
+  unread: string | null;
   /** What the app itself could not do, which is never a Run failing. */
   trouble: string | null;
 };
 
 /** An app that has been told nothing yet. */
 export function nothingYet(railClips: boolean): App {
-  return { projects: [], chosen: null, railClips, asked: new Map(), trouble: null };
+  return {
+    projects: [],
+    chosen: null,
+    railClips,
+    asked: new Map(),
+    cannotTell: [],
+    unread: null,
+    trouble: null,
+  };
+}
+
+/**
+ * An Action's most recent Run, whose Artifacts are the Latest -- and nothing at
+ * all where it keeps none.
+ */
+export function latestOf(action: ActionState): Run | null {
+  return action.history[0] ?? null;
+}
+
+/**
+ * The Run before the Latest, which is what a change is judged against -- and
+ * nothing for an Action that has only ever run once, which is an absence to say
+ * rather than a player to leave empty.
+ */
+export function previousOf(action: ActionState): Run | null {
+  return action.history[1] ?? null;
 }
 
 /** One Action of one Project, or nothing where neither is configured here. */
@@ -118,6 +173,40 @@ export function asking(app: App, ask: Ask): void {
     action.doing = { stage: "queued", frames: null };
     action.failure = null;
   }
+}
+
+/**
+ * How every Action stands against its Project, as `record status` has just
+ * reported it. Nothing else ever flags one Stale.
+ *
+ * Asked again as each request ends rather than cleared here: a Run recorded
+ * against the Project as it stands now is not Stale, and reading that from the
+ * command leaves what counts as Stale in the one place that decides it.
+ */
+export function stood(app: App, report: StatusReport): void {
+  for (const project of app.projects) {
+    const standing = report.projects.find((one) => one.project === project.configured.name);
+
+    project.commit = standing?.commit ?? null;
+
+    for (const action of project.actions) {
+      // A Project the report says nothing about is one the command could not
+      // read, which is not a reason to flag its Actions either way.
+      action.stale = standing?.actions.find((one) => one.action === action.action)?.stale ?? false;
+    }
+  }
+
+  app.cannotTell = report.warnings;
+  app.unread = null;
+}
+
+/**
+ * Why staleness could not be read, which leaves every flag exactly as it was.
+ * Nothing is cleared: an answer that never arrived says nothing about whether an
+ * Action is Stale, and clearing the flags would say it was not.
+ */
+export function unread(app: App, message: string): void {
+  app.unread = message;
 }
 
 /**
@@ -213,7 +302,9 @@ function recorded(app: App, run: Run): void {
   // A Condition's Runs are a history of their own with a Latest of their own, so
   // the clip of the dark theme is not the Action's Latest however new it is.
   if (run.condition === null) {
-    action.latest = run;
+    // The Latest, and what was the Latest is what it is now judged against. The
+    // command prunes the far end of the history; nothing here reads that far.
+    action.history = [run, ...action.history];
   }
 }
 

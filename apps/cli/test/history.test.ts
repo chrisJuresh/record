@@ -217,6 +217,39 @@ test("reporting staleness never records anything", async () => {
 });
 
 /**
+ * The other half of what staleness is for: an Action recorded against the Project
+ * as it now stands is current again, and the Run it was current before is still
+ * kept -- with the commit and the Parameters it was recorded with, which is what
+ * makes two clips of one Action tellable apart rather than merely two files.
+ */
+test("recording a Stale Action again reports it current, with the Run before it kept", async () => {
+  const head = await headOf(repository);
+
+  const { action: stale } = statusOfAction(await statusOf(), "peek");
+  assert.equal(stale.stale, true, "the Action is Stale before it is recorded again");
+
+  const again = await recordRun("peek");
+  const { action: current } = statusOfAction(await statusOf(), "peek");
+
+  assert.equal(current.stale, false);
+  assert.equal(current.runs, 2);
+  assert.equal(current.lastRun?.id, again.id);
+  assert.equal(current.lastRun?.commit, head);
+
+  const { stdout } = await record(workspace, "history", "demo", "peek", "--json");
+  const kept = JSON.parse(stdout) as RunReport[];
+
+  assert.deepEqual(
+    kept.map((run) => run.id),
+    [again.id, first.id],
+    "the Latest, and the Run it is judged against behind it",
+  );
+  assert.equal(kept[1]?.commit, first.commit, "each Run keeps the commit it was recorded at");
+  assert.notEqual(kept[0]?.commit, kept[1]?.commit);
+  assert.deepEqual(kept[1]?.parameters, first.parameters, "...and the Parameters it ran with");
+});
+
+/**
  * The tool must not be able to fill the disk, so a Run is kept only until ten
  * newer ones exist. Overflowing that by recording eleven times would be eleven
  * browsers and thirty-three encodes; the Runs being pruned are seeded instead,

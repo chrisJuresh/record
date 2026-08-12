@@ -6,11 +6,13 @@
  * whatever the command said. None of those are things a page should be able to
  * be written by.
  *
- * There are two ways in. `paint` draws the whole app, and is what a choice, a
+ * There are three ways in. `paint` draws the whole app, and is what a choice, a
  * request or a new Latest costs. `paintProgress` writes into the handful of nodes
  * a Run in flight changes -- because a Run says something every Frame, and
  * redrawing a stage sixty times a second would take the clip out from under
- * whoever is watching it.
+ * whoever is watching it. `paintStanding` writes the Stale flags, for the same
+ * reason: they are read again as every request ends, and by then there are two
+ * clips playing that a repaint would restart.
  */
 import {
   artifactUrl,
@@ -24,6 +26,8 @@ import {
   actionsIn,
   chosenAction,
   chosenProject,
+  latestOf,
+  previousOf,
   recording,
   type ActionState,
   type App,
@@ -43,11 +47,24 @@ export type Handlers = {
   reset(project: string, action: string, name: string): void;
 };
 
+/** Which of the two Runs on the stage a clip is, which is what it is headed by. */
+type Which = "Latest" | "Previous";
+
+/** What the rail says about one Action without being drawn again. */
+type Marks = {
+  /** How far through its Run is, or that its last one failed. */
+  readonly badge: HTMLElement;
+  /** That its Project has been committed to since it last ran. */
+  readonly flag: HTMLElement;
+};
+
 /** The nodes a Run in flight writes into, kept from the last full paint. */
 type Live = {
   readonly tally: HTMLElement;
-  /** One badge per Action, by the Action it belongs to. */
-  readonly badges: Map<string, HTMLElement>;
+  /** The rail's marks, by the Action they belong to. */
+  readonly marks: Map<string, Marks>;
+  /** Where the stage says the Action on it has gone Stale. */
+  readonly standing: HTMLElement;
   /** Where the Run of the Action on the stage says what it is doing. */
   readonly progress: HTMLElement;
   /** Disabled while the Action it records is already recording. */
@@ -62,8 +79,9 @@ let live: Live | undefined;
 
 /** Draws the whole app. */
 export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
-  const badges = new Map<string, HTMLElement>();
+  const marks = new Map<string, Marks>();
   const tally = el("span", { class: "faint" }, [tallyOf(app)]);
+  const standing = el("div", { class: "standing" });
   const progress = el("div", { class: "progress" });
   const parameters = el("aside", { class: "params" });
 
@@ -76,15 +94,41 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   root.replaceChildren(
     topbar(app, handlers, tally),
     el("div", { class: "body" }, [
-      rail(app, handlers, badges),
-      stage(app, handlers, progress, runAction),
+      rail(app, handlers, marks),
+      stage(app, handlers, standing, progress, runAction),
       parameters,
     ]),
   );
 
-  live = { tally, badges, progress, runAction, parameters, handlers };
+  live = { tally, marks, standing, progress, runAction, parameters, handlers };
   paintProgress(app);
+  paintStanding(app);
   paintTuning(app);
+}
+
+/**
+ * Writes which Actions the Project has been committed to since into the flags
+ * already on the page, and says on the stage what that means for the Action on
+ * it -- along with whatever the command could not tell either way.
+ *
+ * Staleness is read when the app opens and again as every request ends, so it is
+ * its own paint: two clips are playing on the stage by then, and neither of them
+ * should restart because a word beside them changed.
+ */
+export function paintStanding(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  for (const action of actionsIn(app)) {
+    const marks = live.marks.get(keyOf(action.project, action.action));
+
+    if (marks !== undefined) {
+      marks.flag.textContent = action.stale ? "stale" : "";
+    }
+  }
+
+  live.standing.replaceChildren(...standingOf(app));
 }
 
 /**
@@ -114,13 +158,13 @@ export function paintProgress(app: App): void {
   live.tally.textContent = tallyOf(app);
 
   for (const action of actionsIn(app)) {
-    const badge = live.badges.get(keyOf(action.project, action.action));
+    const marks = live.marks.get(keyOf(action.project, action.action));
 
-    if (badge !== undefined) {
+    if (marks !== undefined) {
       const says = badgeOf(action);
 
-      badge.textContent = says.text;
-      badge.className = says.failed ? "badge failed" : "badge num";
+      marks.badge.textContent = says.text;
+      marks.badge.className = says.failed ? "badge failed" : "badge num";
     }
   }
 
@@ -161,7 +205,7 @@ function tallyOf(app: App): string {
 }
 
 /** A section per Project, its Actions listed by name under it. */
-function rail(app: App, handlers: Handlers, badges: Map<string, HTMLElement>): HTMLElement {
+function rail(app: App, handlers: Handlers, marks: Map<string, Marks>): HTMLElement {
   return el(
     "nav",
     { class: "rail" },
@@ -174,7 +218,7 @@ function rail(app: App, handlers: Handlers, badges: Map<string, HTMLElement>): H
       ]),
       ...(project.actions.length === 0
         ? [el("div", { class: "absent none" }, ["no Actions"])]
-        : project.actions.map((action) => railAction(app, handlers, action, badges))),
+        : project.actions.map((action) => railAction(app, handlers, action, marks))),
     ]),
   );
 }
@@ -183,15 +227,24 @@ function railAction(
   app: App,
   handlers: Handlers,
   action: ActionState,
-  badges: Map<string, HTMLElement>,
+  marks: Map<string, Marks>,
 ): HTMLElement {
   const badge = el("span", { class: "badge num" });
-  badges.set(keyOf(action.project, action.action), badge);
+  // Flagged in the rail rather than only on the stage: an Action gone Stale is
+  // one to go and look at, and one that has to be opened to find that out is one
+  // nobody finds out about.
+  const flag = el("span", { class: "pill stale" });
+
+  marks.set(keyOf(action.project, action.action), { badge, flag });
 
   const chosen =
     app.chosen?.project === action.project && app.chosen.action === action.action ? " selected" : "";
 
-  const row = el("span", { class: "row" }, [el("span", { class: "name" }, [action.action]), badge]);
+  const row = el("span", { class: "row" }, [
+    el("span", { class: "name" }, [action.action]),
+    flag,
+    badge,
+  ]);
 
   return button(
     "",
@@ -206,9 +259,10 @@ function railAction(
  * "the one I meant" -- the GIF, because it plays without being asked to.
  */
 function railClip(action: ActionState): HTMLElement {
-  const gif = action.latest === null ? undefined : artifactOf(action.latest, "gif");
+  const latest = latestOf(action);
+  const gif = latest === null ? undefined : artifactOf(latest, "gif");
 
-  if (action.latest === null || gif === undefined) {
+  if (latest === null || gif === undefined) {
     return el("span", { class: "absent" }, ["not recorded yet"]);
   }
 
@@ -217,7 +271,7 @@ function railClip(action: ActionState): HTMLElement {
   // scrolled is a rail that reads as empty.
   const image = el("img", {
     class: "gif",
-    src: artifactUrl(action.latest, gif),
+    src: artifactUrl(latest, gif),
     alt: `The Latest clip of ${action.action}`,
   });
   // What the clip's shape is, so the rail reserves the room the GIF will take
@@ -232,6 +286,7 @@ function railClip(action: ActionState): HTMLElement {
 function stage(
   app: App,
   handlers: Handlers,
+  standing: HTMLElement,
   progress: HTMLElement,
   runAction: HTMLButtonElement | null,
 ): HTMLElement {
@@ -270,49 +325,210 @@ function stage(
       ...(runAction === null ? [] : [runAction]),
     ]),
     el("p", { class: "stage-meta" }, [recordedOf(project, action)]),
+    standing,
     progress,
     ...(action.failure === null ? [] : [troublePanel("The Run failed", action.failure)]),
-    el("div", { class: "stage-body" }, [clip(action), beside(action)]),
+    el("div", { class: "stage-body" }, [comparison(action), beside(action)]),
   ]);
 }
 
-/** What the Latest was recorded against, so a clip on screen is placeable. */
+/**
+ * Where the Project answers, and that this Action has never been recorded where
+ * it has not. What each Run was recorded under is said beside that Run rather
+ * than here, now that there are two of them on the stage.
+ */
 function recordedOf(project: ProjectState, action: ActionState): string {
-  const latest = action.latest;
-
-  if (latest === null) {
-    return `${project.configured.baseUrl} · never recorded`;
-  }
-
   return [
     project.configured.baseUrl,
-    `recorded ${ago(latest.recordedAt)}`,
-    ...(latest.commit === null ? [] : [`commit ${latest.commit.slice(0, 7)}`]),
-    `${latest.frames.captured} Frames at ${latest.framerate}fps`,
+    ...(latestOf(action) === null ? ["never recorded"] : []),
   ].join(" · ");
 }
 
 /**
- * The Latest, playing where it will be embedded. WebM first and the MP4 behind
- * it, exactly as the embed snippet names them (ADR 0006).
+ * What the stage says about how the Action on it stands: that its Project has
+ * been committed to since the Latest was recorded, and whatever staleness the
+ * command could not tell either way.
  *
- * A failed Run took its own directory away with it, so this is the last good
- * clip whether or not the most recent request for it succeeded.
+ * Both are the command's answer. Nothing here compares two commits: what counts
+ * as Stale is `record status`, and a second opinion in a page would be a second
+ * place for that rule to drift.
  */
-function clip(action: ActionState): HTMLElement {
-  const latest = action.latest;
-  const webm = latest === null ? undefined : artifactOf(latest, "webm");
-  const mp4 = latest === null ? undefined : artifactOf(latest, "mp4");
+function standingOf(app: App): readonly Node[] {
+  const action = chosenAction(app);
+  const project = chosenProject(app);
+  const latest = action === undefined ? null : latestOf(action);
 
-  if (latest === null || webm === undefined || mp4 === undefined) {
+  const since =
+    latest?.commit == null || project?.commit == null
+      ? ""
+      : ` — ${shortCommit(latest.commit)} then, ${shortCommit(project.commit)} now`;
+
+  return [
+    ...(action?.stale === true
+      ? [
+          el("p", { class: "gone-stale" }, [
+            `The Project has been committed to since this Action last ran${since}.`,
+          ]),
+        ]
+      : []),
+    // Said in the command's own words: "not Stale" and "cannot be told" are
+    // different answers, and only one of them means the clip still stands.
+    ...app.cannotTell.map((said) => el("p", { class: "faint" }, [said])),
+    // ...and an answer that never arrived is a third: the flags say what the
+    // last one said, which is not what this machine says now.
+    ...(app.unread === null ? [] : [troublePanel("Staleness could not be read", app.unread)]),
+  ];
+}
+
+/**
+ * The Latest and the Run before it, side by side.
+ *
+ * One clip says what the site does now; two say what changed, which is the half
+ * of re-recording that makes it worth pressing. An Action with nothing to
+ * compare says so plainly rather than standing an empty player next to the
+ * clip it has.
+ *
+ * The Latest is the one drawn against the other, so a difference reads as
+ * something this Run has and the one before it did not. Marked on both, it would
+ * say only that the two are not the same, which is what having two of them on
+ * the stage already says.
+ */
+function comparison(action: ActionState): HTMLElement {
+  const latest = latestOf(action);
+  const previous = previousOf(action);
+
+  if (latest === null) {
     return el("div", { class: "empty" }, [
       "Nothing has been recorded for this Action yet. Run it, and the clip plays here.",
     ]);
   }
 
+  return el("div", { class: "compare" }, [
+    runPanel("Latest", latest, previous),
+    previous === null
+      ? el("div", { class: "run" }, [
+          runHead("Previous", null),
+          el("div", { class: "empty" }, [
+            "This is the only Run of this Action kept on this machine. Run it again and the one " +
+              "before it plays here, to judge the change against.",
+          ]),
+        ])
+      : runPanel("Previous", previous, null),
+  ]);
+}
+
+/**
+ * One Run on the stage: its clip, and what it was recorded under. A clip nobody
+ * can place is a clip nobody can judge, so the commit it was recorded against
+ * and the Parameters it ran with are beside it rather than in a file somewhere.
+ */
+function runPanel(which: Which, run: Run, against: Run | null): HTMLElement {
+  return el("div", { class: "run" }, [
+    runHead(which, run),
+    clip(run),
+    facts(run, against),
+    recordedWith(run, against),
+  ]);
+}
+
+/** Which of the two a clip is, and when it was recorded. */
+function runHead(which: Which, run: Run | null): HTMLElement {
+  return el("div", { class: "run-head" }, [
+    el("h3", {}, [which]),
+    el("span", { class: "spacer" }),
+    ...(run === null ? [] : [el("span", { class: "faint" }, [ago(run.recordedAt)])]),
+  ]);
+}
+
+/**
+ * What a Run was recorded against: the Project's commit, and how much was
+ * captured. A commit that differs from the Run being judged against is marked,
+ * because a Project committed to between the two is the reason to be looking at
+ * both of them.
+ */
+function facts(run: Run, against: Run | null): HTMLElement {
+  const differs = against !== null && run.commit !== against.commit;
+
+  return el("p", { class: "facts" }, [
+    el("span", { ...(differs ? { class: "changed" } : {}) }, [
+      run.commit === null ? "no commit to read" : `commit ${shortCommit(run.commit)}`,
+    ]),
+    el("span", { class: "spacer" }),
+    el("span", { class: "faint num" }, [`${run.frames.captured} Frames at ${run.framerate}fps`]),
+  ]);
+}
+
+/**
+ * What the Action ran with when this Run recorded, declarations and Overrides
+ * together, as the Run's own record says. An Override is marked as one, and so
+ * is a value that differs from the Run this one is judged against: a clip that
+ * changed because a slider moved and one that changed because the site did are
+ * not the same news.
+ */
+function recordedWith(run: Run, against: Run | null): HTMLElement {
+  const values = Object.entries(run.parameters);
+
+  return el("div", { class: "recorded-with" }, [
+    el("h4", {}, ["Recorded with"]),
+    ...(values.length === 0
+      ? [el("p", { class: "faint" }, ["this Run recorded no Parameters"])]
+      : [
+          el(
+            "ul",
+            {},
+            values.map(([name, value]) => recordedValue(run, against, name, value)),
+          ),
+        ]),
+  ]);
+}
+
+function recordedValue(
+  run: Run,
+  against: Run | null,
+  name: string,
+  value: ParameterSetting,
+): HTMLElement {
+  // Compared as they read rather than by type: a Parameter the other Run never
+  // carried differs from this one, which is what an Action rewritten between the
+  // two of them looks like.
+  const differs = against !== null && String(against.parameters[name]) !== String(value);
+  const marks = [
+    ...(run.overridden.includes(name) ? ["overridden"] : []),
+    ...(differs ? ["changed"] : []),
+  ];
+
+  return el("li", { ...(marks.length === 0 ? {} : { class: marks.join(" ") }) }, [
+    el("span", { class: "name" }, [name]),
+    el("span", { class: "spacer" }),
+    el("span", { class: "num" }, [String(value)]),
+  ]);
+}
+
+/** As much of a commit as places a Run, which is as much as anyone reads of one. */
+function shortCommit(commit: string): string {
+  return commit.slice(0, 7);
+}
+
+/**
+ * One Run playing where it will be embedded. WebM first and the MP4 behind it,
+ * exactly as the embed snippet names them (ADR 0006).
+ *
+ * A failed Run took its own directory away with it, so what plays here is a Run
+ * that succeeded whether or not the most recent request for it did.
+ */
+function clip(run: Run): HTMLElement {
+  const webm = artifactOf(run, "webm");
+  const mp4 = artifactOf(run, "mp4");
+
+  if (webm === undefined || mp4 === undefined) {
+    return el("div", { class: "empty" }, [
+      "This Run left no video Artifact to play, which is what its own record says.",
+    ]);
+  }
+
   const video = el("video", { preload: "metadata" }, [
-    el("source", { src: artifactUrl(latest, webm), type: "video/webm" }),
-    el("source", { src: artifactUrl(latest, mp4), type: "video/mp4" }),
+    el("source", { src: artifactUrl(run, webm), type: "video/webm" }),
+    el("source", { src: artifactUrl(run, mp4), type: "video/mp4" }),
   ]);
 
   video.controls = true;
@@ -328,22 +544,22 @@ function clip(action: ActionState): HTMLElement {
 }
 
 /**
- * The width to the right of the clip, which the layout leaves over: what the
- * Latest produced, and where each of its files is. The previous Run will be
- * compared against it here.
+ * The width to the right of the clips, which the layout leaves over: what the
+ * Latest produced, and where each of its files is. The Latest's rather than the
+ * previous Run's, because the Latest is what is embedded and Published.
  */
 function beside(action: ActionState): HTMLElement {
-  const latest = action.latest;
+  const latest = latestOf(action);
 
   if (latest === null) {
     return el("aside", { class: "beside" }, [
-      el("h3", {}, ["Artifacts"]),
+      el("h3", {}, ["Artifacts of the Latest"]),
       el("p", { class: "faint" }, ["A Run produces an MP4, a WebM and a GIF."]),
     ]);
   }
 
   return el("aside", { class: "beside" }, [
-    el("h3", {}, ["Artifacts"]),
+    el("h3", {}, ["Artifacts of the Latest"]),
     el("ul", {}, [
       ...latest.artifacts.map((artifact) =>
         el("li", {}, [
