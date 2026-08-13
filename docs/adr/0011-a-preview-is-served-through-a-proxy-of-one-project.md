@@ -68,9 +68,22 @@ origin binds loopback and answers a loopback `Host` and nothing else. ADR 0005
 still holds too — a Preview writes nothing, so asking for one cannot change what
 a Run would record.
 
-The fallback, if the proxy had not been able to carry a real Project, was a warm
-headless browser held open by the server streaming a screencast into the app:
-full fidelity, no cross-origin problem, and a round trip per frame. It was not
-needed. `apps/cli/test/preview.test.ts` is the evidence the proxy carries a
-site — a page injected into, a stylesheet untouched, and the site's own absolute
-URLs resolving through the origin.
+## What is not yet proven
+
+`apps/cli/test/preview.test.ts` is the evidence so far: against the **fixture
+site**, a page comes back injected into, a stylesheet comes back untouched, the
+site's own absolute URLs resolve through the origin, and anything outside the
+Project is refused. That is a real site over real HTTP, and it is what the CLI
+seam can assert.
+
+It is **not** the same as proving the proxy against a Project like `photos` — a
+site with its own API calls, its own load-time work, and whatever a real
+framework does with the URL it thinks it is on. That was the load-bearing
+unknown, and it stays open until somebody points a Preview at one.
+
+If it turns out the proxy cannot carry such a Project, the fallback is a warm
+headless browser held open by the server, streaming a screencast into the app:
+no proxy, no cross-origin problem, and full fidelity, at the cost of a round
+trip per frame. Everything above the pixels survives that change — the same
+command, the same previewability rule, the same driver, the same player. Only
+this ADR and `apps/server/src/preview.ts` would be replaced.

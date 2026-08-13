@@ -146,6 +146,13 @@ export type PreviewReport = {
   readonly baseUrl: string;
   readonly readyUrl: string;
   readonly viewport: Viewport;
+  /**
+   * The expression the tool injects into the Project's page, and nothing at all
+   * where a Timeline was merely read. The app never reads it: it is relayed by
+   * the server into the Preview origin, and how a scroller is found is the
+   * tool's business rather than the page's.
+   */
+  readonly driver: string | null;
 };
 
 /**
@@ -412,7 +419,7 @@ export function timeline(
   action: string,
   named: readonly string[] = [],
 ): Promise<TimelineReport> {
-  return read<TimelineReport>(["api", "timeline", project, action], named.map((set) => ["set", set]));
+  return read<TimelineReport>(["api", "timeline", project, action], { set: named });
 }
 
 /**
@@ -497,19 +504,25 @@ function runFileUrl(run: Run, path: string): string {
  * A path this server answers, spelled so that no name in it can become part of
  * it -- and whatever is asked of it, spelled the same way.
  */
-function url(segments: readonly string[], asked: readonly (readonly [string, string])[] = []): string {
+function url(segments: readonly string[], named: Named = {}): string {
   const path = `/${segments.map(encodeURIComponent).join("/")}`;
-  const query = new URLSearchParams(asked.map(([name, value]) => [name, value])).toString();
+  const query = new URLSearchParams();
 
-  return query === "" ? path : `${path}?${query}`;
+  for (const [name, values] of Object.entries(named)) {
+    for (const value of values) {
+      query.append(name, value);
+    }
+  }
+
+  return query.size === 0 ? path : `${path}?${query.toString()}`;
 }
 
-async function read<Answer>(
-  segments: readonly string[],
-  asked: readonly (readonly [string, string])[] = [],
-): Promise<Answer> {
+/** What a request asks of a path beyond naming it, each name taking a list. */
+type Named = Readonly<Record<string, readonly string[]>>;
+
+async function read<Answer>(segments: readonly string[], named: Named = {}): Promise<Answer> {
   return answered<Answer>(
-    await fetch(url(segments, asked), { headers: { accept: "application/json" } }),
+    await fetch(url(segments, named), { headers: { accept: "application/json" } }),
   );
 }
 

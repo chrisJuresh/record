@@ -234,8 +234,12 @@ test("a value the Action refuses is refused in the command's own words, unwritte
 
 /**
  * An Action that only travels can be played against the live Project, and the
- * answer carries what a Preview of it needs: where the Project answers, the
- * viewport it is shown at, and the driver injected into its page.
+ * answer carries what a Preview of it needs: where the Project answers and the
+ * viewport it is shown at.
+ *
+ * The driver is not in it, because reading a Timeline is not playing one -- a
+ * Timeline is asked for again every time a control moves, and the expression
+ * injected into a page has no business riding along each time.
  */
 test("an Action that only travels is previewable, and says what a Preview would need", async () => {
   const { workspace } = await readable();
@@ -247,8 +251,7 @@ test("an Action that only travels is previewable, and says what a Preview would 
   assert.equal(preview.baseUrl, "http://127.0.0.1:1/");
   assert.equal(preview.readyUrl, "http://127.0.0.1:1/");
   assert.deepEqual(preview.viewport, { width: 400, height: 300, deviceScaleFactor: 1 });
-  assert.match(preview.driver, /__recordScroller/, "the driver finds the scroller capture finds");
-  assert.match(preview.driver, /scroll-behavior:auto/, "...and stops smooth scrolling as capture does");
+  assert.equal(preview.driver, null, "reading a Timeline is not turning a Preview on");
 });
 
 /**
@@ -320,7 +323,13 @@ test("`--preview` names the Project and its URL when there is nothing answering"
   assert.match(stderr, /A Preview never starts a Project/);
 });
 
-test("`--preview` answers exactly what reading the Timeline answers, for a Project that is up", async () => {
+/**
+ * ...and for a Project that is up it is the same Timeline, plus the driver the
+ * page has to be given to be driven at all -- which has to find the scroller
+ * the way capture finds it, or a Preview scrolls a different element than the
+ * clip does.
+ */
+test("`--preview` answers the Timeline that was read, and the driver for the page", async () => {
   const site = await startFixtureSite();
 
   try {
@@ -329,9 +338,15 @@ test("`--preview` answers exactly what reading the Timeline answers, for a Proje
     });
     await actionIn(workspace, "demo", "peek", peek);
 
+    const played = await timeline(workspace, "demo", "peek", "--preview");
+    const read = await timeline(workspace, "demo", "peek");
+
+    assert.match(played.preview.driver ?? "", /__recordScroller/);
+    assert.match(played.preview.driver ?? "", /scroll-behavior:auto/);
     assert.deepEqual(
-      await timeline(workspace, "demo", "peek", "--preview"),
-      await timeline(workspace, "demo", "peek"),
+      { ...played, preview: { ...played.preview, driver: null } },
+      read,
+      "and nothing else about the Timeline differs",
     );
   } finally {
     await site.close();

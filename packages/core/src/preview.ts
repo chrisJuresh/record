@@ -14,7 +14,7 @@
  * continuously while a control is moving, and writes an Override only once the
  * person settles on a value.
  */
-import { allParameters, effectiveParameters, loadAction, overrideFrom } from "./action.js";
+import { allParameters, effectiveParameters, loadAction, overridesFrom } from "./action.js";
 import { actionModule, readProject, type Viewport } from "./config.js";
 import { RecordError } from "./errors.js";
 import { answers, readyUrl } from "./lifecycle.js";
@@ -123,8 +123,12 @@ export type PreviewReport = Previewability & {
   readonly readyUrl: string;
   /** The viewport the Preview is shown at, which is the Project's own. */
   readonly viewport: Viewport;
-  /** The expression injected into the Project's page to drive it. */
-  readonly driver: string;
+  /**
+   * The expression injected into the Project's page to drive it, and nothing at
+   * all where a Timeline was merely read: it is part of what turning a Preview
+   * on needs, and a Timeline is asked for again every time a control moves.
+   */
+  readonly driver: string | null;
 };
 
 /** What an Action's Timeline comes to, and what a Preview of it would need. */
@@ -177,21 +181,17 @@ export async function readTimeline(
   action: string,
   options: TimelineOptions = {},
 ): Promise<TimelineReport> {
-  const configured = await readProject(workspace, project);
+  // The Action first, so that a name nobody declared is answered by the Action
+  // that does not exist rather than by the Project that does.
   const module = await loadAction(await actionModule(workspace, project, action));
+  const configured = await readProject(workspace, project);
   const declared = allParameters(module, configured);
 
   const sidecar = await readOverrides(workspace, project, action);
-  const named: Record<string, ParameterSetting> = {};
-
-  for (const assignment of options.set ?? []) {
-    const at = assignment.indexOf("=");
-    if (at <= 0) {
-      throw new RecordError(`a named value is written name=value, not '${assignment}'`);
-    }
-    const name = assignment.slice(0, at);
-    named[name] = overrideFrom(declared, name, assignment.slice(at + 1));
-  }
+  // Read exactly as an Override is read, and then applied to nothing: a value
+  // the Action would refuse is refused here too, so a Preview can never play a
+  // motion no Run could record.
+  const named = overridesFrom(declared, options.set ?? []);
 
   const effective = effectiveParameters(declared, { ...sidecar, ...named });
   const timeline = module.timeline(effective.values);
@@ -223,7 +223,7 @@ export async function readTimeline(
       baseUrl: configured.baseUrl,
       readyUrl: url,
       viewport: configured.viewport,
-      driver: previewDriver,
+      driver: options.forPreview === true ? previewDriver : null,
     },
   };
 }

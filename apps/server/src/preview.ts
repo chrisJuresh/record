@@ -22,6 +22,7 @@ import { once } from "node:events";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { request as httpsRequest } from "node:https";
 
+import { plainly } from "./files.js";
 import { addressedHere, loopback } from "./loopback.js";
 
 /**
@@ -127,13 +128,7 @@ async function open(project: string, baseUrl: string, driver: string): Promise<A
   const target = new URL(baseUrl);
 
   const server = createServer((request, response) => {
-    void proxy(request, response, target, driver).catch(() => {
-      if (!response.headersSent) {
-        plainly(response, 502, "the Project did not answer that");
-        return;
-      }
-      response.destroy();
-    });
+    void proxy(request, response, target, driver).catch(() => unanswered(response));
   });
 
   server.listen(0, loopback);
@@ -195,15 +190,23 @@ async function proxy(
     },
   );
 
-  forwarded.on("error", () => {
-    if (!response.headersSent) {
-      plainly(response, 502, "the Project did not answer that");
-      return;
-    }
-    response.destroy();
-  });
+  forwarded.on("error", () => unanswered(response));
 
   request.pipe(forwarded);
+}
+
+/**
+ * What a Project that did not answer comes to. Once the answer has begun going
+ * back there is nothing left to say it with, so the connection is dropped
+ * instead -- a half-written page is not a Preview of anything.
+ */
+function unanswered(response: ServerResponse): void {
+  if (response.headersSent) {
+    response.destroy();
+    return;
+  }
+
+  plainly(response, 502, "the Project did not answer that");
 }
 
 /**
@@ -311,12 +314,4 @@ async function bodyOf(answered: IncomingMessage): Promise<string> {
   }
 
   return Buffer.concat(chunks).toString("utf8");
-}
-
-function plainly(response: ServerResponse, status: number, said: string): void {
-  response.writeHead(status, {
-    "content-type": "text/plain; charset=utf-8",
-    "cache-control": "no-store",
-  });
-  response.end(`${said}\n`);
 }

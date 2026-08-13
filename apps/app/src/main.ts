@@ -69,8 +69,7 @@ const handlers: Handlers = {
     app.chosen = { project, action };
     app.stage = { kind: "action" };
     // A Preview is of one Action, so choosing another gives the stage back to
-    // that one's clips rather than playing a Timeline nobody asked for.
-    takeThePreviewDown();
+    // that one's clips -- which is what a repaint does for itself.
     repaint();
     void readTuning(project, action);
   },
@@ -374,7 +373,7 @@ async function previewed(on: boolean): Promise<void> {
     timeline: null,
     trouble: null,
   };
-  repaint();
+  draw();
 
   try {
     const turned = await api.preview(chosen.project, chosen.action);
@@ -397,7 +396,7 @@ async function previewed(on: boolean): Promise<void> {
 
   // A paint rather than a write: this is where the frame the Project is played
   // in reaches the stage, and it is created exactly once.
-  repaint();
+  draw();
 }
 
 /** Takes the Preview off the stage, which is what gives the clips it back. */
@@ -696,7 +695,29 @@ async function ask(asked: api.Ask): Promise<void> {
   });
 }
 
+/**
+ * Draws the whole app, and takes any Preview down on the way.
+ *
+ * A full paint replaces everything under the stage, and moving the frame a
+ * Preview is played in reloads the Project inside it -- so no Preview survives
+ * one, and pretending otherwise would reload somebody's site under them at the
+ * moment they pressed Run.
+ *
+ * The rule is written here rather than at each of the buttons that cause a
+ * paint, because it is about painting rather than about any of them: a Preview
+ * takes the stage in place of the clips, and anything that redraws the stage
+ * gives it back to them.
+ */
 function repaint(): void {
+  takeThePreviewDown();
+  draw();
+}
+
+/**
+ * ...and a full paint that keeps it, which is only ever turning one on: this is
+ * where the frame reaches the stage, and it is created exactly once.
+ */
+function draw(): void {
   paint(root, app, handlers);
 }
 

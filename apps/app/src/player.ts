@@ -154,7 +154,7 @@ export function replay(timeline: TimelineReport): void {
 
   fit(standing);
   drive(standing);
-  said(standing);
+  announce(standing);
 }
 
 /** Plays the Timeline, looping, or holds it where it has been scrubbed to. */
@@ -174,7 +174,7 @@ export function play(playing: boolean): void {
     standing.driving = requestAnimationFrame(next);
   }
 
-  said(standing);
+  announce(standing);
 }
 
 /** Shows one Frame, which is what scrubbing to a moment does. */
@@ -186,7 +186,7 @@ export function showFrame(at: number): void {
   standing.at = Math.max(0, Math.min(at, standing.states.length - 1));
   standing.since = performance.now();
   drive(standing);
-  said(standing);
+  announce(standing);
 }
 
 /**
@@ -233,37 +233,37 @@ export function close(): void {
  * the one Parameter a Preview cannot answer.
  */
 function next(now: number): void {
-  const playing = standing;
+  const preview = standing;
 
-  if (playing === null || !playing.playing) {
+  if (preview === null || !preview.playing) {
     return;
   }
 
-  const interval = 1000 / Math.max(1, playing.framerate);
-  const elapsed = now - playing.since;
+  const interval = 1000 / Math.max(1, preview.framerate);
+  const elapsed = now - preview.since;
   const stepped = Math.floor(elapsed / interval);
 
-  if (stepped > 0 && playing.states.length > 0) {
-    playing.since += stepped * interval;
-    playing.at = (playing.at + stepped) % playing.states.length;
-    drive(playing);
-    said(playing);
+  if (stepped > 0 && preview.states.length > 0) {
+    preview.since += stepped * interval;
+    preview.at = (preview.at + stepped) % preview.states.length;
+    drive(preview);
+    announce(preview);
   }
 
-  playing.driving = requestAnimationFrame(next);
+  preview.driving = requestAnimationFrame(next);
 }
 
 /** Tells the page where the Frame showing says it is scrolled to, and nothing else. */
-function drive(playing: Standing): void {
-  const state = playing.states[playing.at];
+function drive(preview: Standing): void {
+  const state = preview.states[preview.at];
 
-  if (!playing.ready || state === undefined) {
+  if (!preview.ready || state === undefined) {
     return;
   }
 
-  playing.frame.contentWindow?.postMessage(
+  preview.frame.contentWindow?.postMessage(
     { record: "preview", scrollTop: state.scrollTop },
-    playing.origin,
+    preview.origin,
   );
 }
 
@@ -272,17 +272,18 @@ function drive(playing: Standing): void {
  * so that a 1440-wide Project is judgeable on a smaller screen, and a distance
  * chosen here means the same thing in the clip.
  */
-function fit(playing: Standing): void {
-  const { width, height } = playing.viewport;
-  const room = playing.root.clientWidth;
+function fit(preview: Standing): void {
+  const { width, height } = preview.viewport;
+  const room = preview.root.clientWidth;
   const scale = room === 0 ? 1 : Math.min(1, room / width);
 
-  playing.page.style.width = `${width}px`;
-  playing.page.style.height = `${height}px`;
-  playing.page.style.transform = `scale(${scale})`;
-  playing.root.style.height = `${Math.round(height * scale)}px`;
+  preview.page.style.width = `${width}px`;
+  preview.page.style.height = `${height}px`;
+  preview.page.style.transform = `scale(${scale})`;
+  preview.root.style.height = `${Math.round(height * scale)}px`;
 }
 
-function said(playing: Standing): void {
-  playing.moved?.({ at: playing.at, of: playing.states.length, playing: playing.playing });
+/** Tells whatever draws the readout which Frame is showing now. */
+function announce(preview: Standing): void {
+  preview.moved?.({ at: preview.at, of: preview.states.length, playing: preview.playing });
 }
