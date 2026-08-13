@@ -791,18 +791,27 @@ Issues and specs live as GitHub issues on `chrisJuresh/record`, driven through t
 `gh` CLI. Blocking is expressed with GitHub's native issue dependencies, not only
 as prose. See `docs/agents/issue-tracker.md`.
 
-**Every issue resolved by a code change lands through a pull request** — a
-branch named `<issue-number>-<slug>`, a PR whose body says `Closes #<number>`,
-and a merge that closes the issue. Nothing is committed to `main` directly.
+**Every issue resolved by a code change lands through a worktree and a pull
+request** — its own worktree cut from `origin/development`, a branch named
+`<issue-number>-<slug>`, a PR whose body says `Closes #<number>`, and a merge
+that closes the issue. **Nothing is ever written in the main checkout**, and a
+committed `PreToolUse` hook (`.claude/hooks/worktree-guard.py`) denies it: not a
+one-line fix, not a typo. `/worktree-per-change` is the protocol, and
+`.claude/worktree-per-change.json` names `development` as what everything merges
+into. `main` is reached from `development` separately and is never a PR target.
 
-**Committing is not delivering.** An agent that has committed against an issue
-**pushes the branch and opens the PR itself**, unasked — work left on a local
-branch is work nobody can see, and a PR opened early is where the diff is read
-while it is still cheap to change. This says what to do once there is a commit;
-whether there should be one at all is the skill pipeline's question, and the
-answer during a thinking session is no. Only the merge waits: agents open, push to
-and update PRs and answer review comments on them, and never merge or close the
-issue behind the PR's back.
+**Committing is not delivering, and neither is pushing.** An agent that has
+committed against an issue **pushes the branch, opens the PR and merges it
+itself**, unasked — work left on a local branch is work nobody can see, a PR
+opened early is where the diff is read while it is still cheap to change, and a
+PR waiting on somebody is a branch the next worktree gets cut without. The
+session that wrote the change is the one that merges it: it holds the intent
+behind every hunk. A `Stop` hook refuses to end a session still holding
+uncommitted or unpushed work.
+
+This says what to do once there is a commit; whether there should be one at all
+is the skill pipeline's question, and the answer during a thinking session is
+no.
 
 ### Triage labels
 
