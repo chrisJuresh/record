@@ -62,6 +62,20 @@ _Avoid_: current, head, newest
 
 ### Tuning and appearance
 
+**Preview**:
+An Action played live against the running Project, in the app, with no capture
+and no encoding anywhere in the loop. Defined against a Run, which it is not and
+never becomes: a Preview produces no Frames and no Artifacts, keeps no history,
+is never the Latest, clears no staleness and cannot be Published. It also shows
+less than a Run does — no Mockup, no drawn cursor, no keystroke captions, no
+replacement copy and no Condition — and it plays at the browser's refresh rate,
+so framerate is the one Parameter it cannot answer. It exists to close the tuning
+loop: change a number, see the motion, and only then record. "Preview" is also
+listed under **Publish plan** as a word to avoid for a plan; the two do not
+collide in meaning, but "the publish preview" is the phrase that would blur them,
+so a plan is always a plan.
+_Avoid_: live view, playback, simulation, dry run, scratch run
+
 **Parameter**:
 A named, tunable value an Action declares — a distance, a duration, an easing, a
 framerate — with a default and a sensible range. Never called a setting: a
@@ -162,4 +176,6 @@ file, its size, which Project and Action it is the Latest of, and whatever would
 be taken back out. What is confirmed, rather than a step towards a confirmation
 — nothing goes public that is not on it. `record publish --dry-run` is the
 option that asks for one, and the thing it answers with is a plan.
-_Avoid_: preview, diff, manifest, changeset
+_Avoid_: preview, diff, manifest, changeset — "preview" most of all, since a
+**Preview** is a different thing entirely and "the publish preview" would name
+neither of them

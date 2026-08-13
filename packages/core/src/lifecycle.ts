@@ -42,8 +42,12 @@ export type RunningProject = {
   stop(): Promise<void>;
 };
 
-/** Where a Project says it answers when it is ready to record. */
-function readyUrl(project: ProjectConfig): string {
+/**
+ * Where a Project says it answers when it is ready to record -- and where a
+ * Preview requires it to be answering already, since a Preview never starts
+ * one.
+ */
+export function readyUrl(project: ProjectConfig): string {
   try {
     return new URL(project.readyPath, project.baseUrl).href;
   } catch {
@@ -169,7 +173,7 @@ async function waitUntilReady(project: ProjectConfig, url: string, running: Star
  * ready_path naming something the Project never serves reads as a Project that
  * is not running, and the start command that follows fails on the taken port.
  */
-async function answers(url: string): Promise<boolean> {
+export async function answers(url: string): Promise<boolean> {
   const request = new URL(url).protocol === "https:" ? httpsGet : httpGet;
   const options: RequestOptions = { agent: false, timeout: probeTimeoutMs };
 

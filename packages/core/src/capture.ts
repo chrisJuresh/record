@@ -12,6 +12,7 @@ import type { Viewport } from "./config.js";
 import type { CursorOverlay } from "./cursor.js";
 import { openFrameStepper, type FrameStepper } from "./driver.js";
 import { RecordError } from "./errors.js";
+import { findScroller, stopSmoothScrolling } from "./page.js";
 import { pngDimensions } from "./png.js";
 import type { Substitution, TextSubstitution } from "./text.js";
 import type { ThemeSwitch } from "./theme.js";
@@ -104,41 +105,6 @@ const colourScheme = `
     const lightness = painted(document.body) ?? painted(document.documentElement) ?? 1;
 
     return lightness < 0.5 ? "dark" : "light";
-  })()
-`;
-
-/** Smooth scrolling would fight a scroll position chosen per Frame. */
-const stopSmoothScrolling = `
-  (() => {
-    const style = document.createElement("style");
-    style.textContent = "*,html,body{scroll-behavior:auto !important}";
-    document.head.appendChild(style);
-  })()
-`;
-
-/**
- * The page may scroll the document or an inner container. Whichever actually
- * scrolls is found once and driven for the whole Run, so that the Frames of one
- * Action cannot be split across two scrollers.
- */
-const findScroller = `
-  (() => {
-    const document_ = document.scrollingElement || document.documentElement;
-    if (document_.scrollHeight > document_.clientHeight + 4) {
-      window.__recordScroller = document_;
-      return;
-    }
-    let best = null;
-    let deepest = 0;
-    for (const element of document.querySelectorAll("*")) {
-      const overflow = element.scrollHeight - element.clientHeight;
-      const scrollable = /(auto|scroll)/.test(getComputedStyle(element).overflowY);
-      if (scrollable && overflow > deepest) {
-        best = element;
-        deepest = overflow;
-      }
-    }
-    window.__recordScroller = best || document_;
   })()
 `;
 

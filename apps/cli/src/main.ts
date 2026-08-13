@@ -24,6 +24,7 @@ import {
   readParameters,
   readProjects,
   readStatus,
+  readTimeline,
   RecordError,
   renderContactSheet,
   resetOverrides,
@@ -32,6 +33,8 @@ import {
   setOverrides,
   type Condition,
   type ContactSheetReport,
+  type PageEffect,
+  type PageState,
   type ParameterReport,
   type ProjectConfig,
   type ProjectReport,
@@ -40,6 +43,7 @@ import {
   type RunReport,
   type RunSummary,
   type StatusReport,
+  type TimelineReport,
 } from "@record/core";
 
 const usage = `record -- repeatable clips of locally-running websites
@@ -52,6 +56,7 @@ const usage = `record -- repeatable clips of locally-running websites
   record parameters <project> <action>   Show an Action's Parameters and their values
   record set <project> <action> <name>=<value>...   Override Parameters by hand
   record reset <project> <action> <name>...         Remove Overrides
+  record timeline <project> <action>     Show what an Action's Timeline evaluates to
   record run <project> <action>          Record one Action and encode its Artifacts
   record run <project>                   Record every Action in a Project, at once
   record run --all                       Record every Action of every Project, at once
@@ -65,6 +70,9 @@ const usage = `record -- repeatable clips of locally-running websites
   record serve                           Serve the app and these operations, on this machine only
 
   --set <name>=<value>         Override a Parameter for this Run, and keep it
+                               ...or, on timeline, evaluate as if it applied and keep nothing
+  --preview                    Answer only if this Action can be previewed against the
+                               Project, which has to be answering already
   --all                        Record every Project rather than one named Project
   --scheme <light,dark>        Record across colour schemes, as a Matrix
   --width <n,n>                Record at several viewport widths, as a Matrix
@@ -82,6 +90,10 @@ A Matrix records one request across varied conditions, each Run kept and named
 apart -- '--scheme light,dark' writes <action>-light and <action>-dark. Given
 together they multiply, so '--scheme light,dark --width 480,1200' is four Runs.
 
+'timeline' records nothing and writes nothing. It says where the page is on
+every Frame, so that an Action's motion can be read -- and played back live in
+the app, which is a Preview.
+
 The workspace holding projects/ is $RECORD_WORKSPACE, or this checkout.`;
 
 /**
@@ -93,7 +105,7 @@ The workspace holding projects/ is $RECORD_WORKSPACE, or this checkout.`;
 const appDirectory = resolve(import.meta.dirname, "../../../app");
 
 /** Commands that import an Action module, and so need a Node that reads TypeScript. */
-const readsActions = ["run", "parameters", "set", "reset", "mockups"];
+const readsActions = ["run", "parameters", "set", "reset", "mockups", "timeline"];
 
 /** Set on the relaunched process, so a Node that still cannot strip types says so once. */
 const relaunched = "RECORD_TYPE_STRIPPING";
@@ -129,10 +141,17 @@ async function main(argv: string[]): Promise<number> {
     port,
     open,
     progress,
+    preview,
   } = parsed;
 
+  // `--set` belongs to both: a Run records with it and keeps it, and a Timeline
+  // is evaluated as if it applied and keeps nothing. That difference is the
+  // whole of what makes scrubbing a slider not a sidecar full of guesses.
+  if (sets.length > 0 && command !== "run" && command !== "timeline") {
+    return fail(`only run and timeline take --set\n\n${usage}`);
+  }
+
   for (const [option, given] of [
-    ["--set", sets.length > 0],
     ["--all", all],
     ["--scheme", schemes.length > 0],
     ["--width", widths.length > 0],
@@ -142,6 +161,10 @@ async function main(argv: string[]): Promise<number> {
     if (given && command !== "run") {
       return fail(`only run takes ${option}\n\n${usage}`);
     }
+  }
+
+  if (preview && command !== "timeline") {
+    return fail(`only timeline takes --preview\n\n${usage}`);
   }
 
   if (at !== undefined && command !== "mockups") {
@@ -230,6 +253,13 @@ async function main(argv: string[]): Promise<number> {
           return fail(`reset takes a Project, one of its Actions, and Parameter names\n\n${usage}`);
         }
         return report(await resetOverrides(workspace(), project, action, names), json);
+      }
+      case "timeline": {
+        const [project, action] = operands;
+        if (project === undefined || action === undefined || operands.length > 2) {
+          return fail(`timeline takes the name of one Project and one of its Actions\n\n${usage}`);
+        }
+        return await evaluated(project, action, sets, preview, json);
       }
       case "run": {
         const [project, action] = operands;
@@ -366,6 +396,12 @@ type Arguments = {
   readonly open: boolean;
   /** Whether a Run says what it is doing while it is doing it. */
   readonly progress: boolean;
+  /**
+   * Whether a Timeline is being read or a Preview turned on. The answer is the
+   * same either way; what differs is that a Preview refuses an Action it could
+   * not fully drive, and a Project that is not answering.
+   */
+  readonly preview: boolean;
 };
 
 /** The command, its operands, and the options it was given, or a message about one it was not. */
@@ -378,6 +414,7 @@ function parse(argv: string[]): Arguments {
   let all = false;
   let open = false;
   let progress = false;
+  let preview = false;
   let dryRun = false;
   let confirm = false;
   let concurrency: number | undefined;
@@ -395,6 +432,8 @@ function parse(argv: string[]): Arguments {
       open = true;
     } else if (argument === "--progress") {
       progress = true;
+    } else if (argument === "--preview") {
+      preview = true;
     } else if (argument === "--dry-run") {
       dryRun = true;
     } else if (argument === "--confirm") {
@@ -439,6 +478,7 @@ function parse(argv: string[]): Arguments {
     port,
     open,
     progress,
+    preview,
   };
 }
 
@@ -504,6 +544,31 @@ async function actions(project: string, json: boolean): Promise<number> {
   const named = await readActions(workspace(), project);
 
   return emit(json, named, () => `${named.join("\n")}\n`);
+}
+
+/**
+ * What one Action's Timeline evaluates to, which is what the app replays as a
+ * Preview -- and what whoever writes an Action reads to find out where a click,
+ * a keystroke or a wait actually lands.
+ *
+ * It records nothing and writes nothing, `--set` included: a value named here is
+ * evaluated as if it applied, so that scrubbing a slider does not leave forty
+ * Overrides behind it in the sidecar.
+ */
+async function evaluated(
+  project: string,
+  action: string,
+  sets: readonly string[],
+  preview: boolean,
+  json: boolean,
+): Promise<number> {
+  const report = await readTimeline(workspace(), project, action, {
+    ...(sets.length === 0 ? {} : { set: sets }),
+    ...(preview ? { forPreview: true } : {}),
+  });
+  warnAbout(report.warnings);
+
+  return emit(json, report, () => asTimeline(report));
 }
 
 /** One Action recorded on its own, which is what a request varying nothing asks for. */
@@ -773,6 +838,68 @@ function asBytes(bytes: number): string {
   }
 
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+/**
+ * What the Timeline comes to, and then a line per Frame: where the page is, and
+ * what happens to it before that Frame is drawn.
+ *
+ * Every Frame rather than the interesting ones, because which ones are
+ * interesting is exactly what somebody reading this is trying to find out --
+ * where a travel has got to by halfway, and which Frame a keystroke lands on.
+ */
+function asTimeline(report: TimelineReport): string {
+  const { preview } = report;
+  const seconds = (report.durationMs / 1000).toFixed(2);
+  const at = widest(report.states.map((_, frame) => String(frame)));
+
+  return [
+    `${report.project} ${report.action}`,
+    `  ${report.frames} Frames at ${report.framerate}fps (${seconds}s)`,
+    ...(report.overridden.length === 0 ? [] : [`  overridden: ${report.overridden.join(", ")}`]),
+    // Said apart from the Overrides, because it is the difference between a
+    // value that is written down and one that is only being tried.
+    ...(report.named.length === 0
+      ? []
+      : [`  evaluated as if set, and written nowhere: ${report.named.join(", ")}`]),
+    preview.previewable
+      ? `  previewable against ${preview.readyUrl}, at ${preview.viewport.width}x${preview.viewport.height}`
+      : `  not previewable: ${preview.refusal ?? ""}`,
+    ...report.states.map(
+      (state, frame) =>
+        `  ${String(frame).padStart(at)}  scrollTop ${state.scrollTop}${asFrame(state)}`,
+    ),
+    "",
+  ].join("\n");
+}
+
+/** What else one Frame carries: the cursor, the keys captioned on it, and its work. */
+function asFrame(state: PageState): string {
+  return [
+    ...(state.cursor === null
+      ? []
+      : [`cursor ${state.cursor.x},${state.cursor.y}${state.cursor.pressed ? " down" : ""}`]),
+    ...(state.caption === null ? [] : [`caption ${JSON.stringify(state.caption)}`]),
+    ...state.does.map(asEffect),
+  ]
+    .map((said) => `  ${said}`)
+    .join("");
+}
+
+/** What one Frame does to the page, named as the Action wrote it. */
+function asEffect(effect: PageEffect): string {
+  switch (effect.kind) {
+    case "cursor-press":
+      return "press";
+    case "cursor-release":
+      return "release";
+    case "key":
+      return `key ${effect.stroke.key}`;
+    case "evaluate":
+      return `evaluate ${effect.expression}`;
+    case "require":
+      return `require ${effect.describes}`;
+  }
 }
 
 /** Where each rendering went, and the page that shows them together. */

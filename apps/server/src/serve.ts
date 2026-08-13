@@ -18,13 +18,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { serveApp } from "./app.js";
 import { serveArtifact } from "./artifacts.js";
 import { CommandFailed, invoke, type RecordChild, type RecordCommand } from "./command.js";
+import { addressedHere, loopback } from "./loopback.js";
+import { previewOrigins } from "./preview.js";
 import { runRegistry, type RunEvent } from "./runs.js";
-
-/** The only interface this server will bind. Not an option: see ADR 0002. */
-const loopback = "127.0.0.1";
-
-/** The host names a request may be addressed to, all of them this machine. */
-const loopbackNames = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 /** As much of a request body as a run request could possibly need. */
 const largestBody = 64 * 1024;
@@ -55,9 +51,11 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const runs = runRegistry();
   /** The commands this server has running, so closing it does not orphan them. */
   const children = new Set<RecordChild>();
+  /** The Projects being previewed, each proxied at a loopback origin of its own. */
+  const previews = previewOrigins();
 
   const server = createServer((request, response) => {
-    void handle(request, response, { options, runs, children }).catch(() => {
+    void handle(request, response, { options, runs, children, previews }).catch(() => {
       if (!response.headersSent) {
         answer(response, 500, { error: "the server could not answer that" });
         return;
@@ -81,6 +79,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       for (const child of children) {
         child.kill();
       }
+      await previews.closeAll();
       server.closeAllConnections();
       server.close();
       await once(server, "close");
@@ -93,6 +92,7 @@ type Serving = {
   readonly options: ServerOptions;
   readonly runs: ReturnType<typeof runRegistry>;
   readonly children: Set<RecordChild>;
+  readonly previews: ReturnType<typeof previewOrigins>;
 };
 
 /** Keeps hold of a command while it runs, so closing the server does not orphan it. */
@@ -165,6 +165,34 @@ async function handle(
 
   if (asked === "mockups" && under.length === 0) {
     return get(request, response, () => command(response, serving, ["mockups"]));
+  }
+
+  // What an Action's Timeline evaluates to, which is what a Preview replays.
+  // Asked for again every time a control moves, so it is a read like any other
+  // and writes nothing -- the values it is asked about ride in the query.
+  if (asked === "timeline" && under.length === 2) {
+    const named = url.searchParams.getAll("set");
+    const sets = named.length === 0 ? { given: [] } : assignmentsIn(named, "values");
+
+    if ("error" in sets) {
+      return answer(response, 400, { error: sets.error });
+    }
+
+    return get(request, response, () =>
+      command(response, serving, [
+        "timeline",
+        ...under,
+        ...sets.given.flatMap((assignment) => ["--set", assignment]),
+      ]),
+    );
+  }
+
+  // ...and turning a Preview on, which is the same command refusing what it
+  // cannot drive, plus the origin the Project is proxied at.
+  if (asked === "preview" && under.length === 0) {
+    return request.method === "POST"
+      ? preview(request, response, serving)
+      : answer(response, 405, { error: "a Preview is turned on by POST, not read" });
   }
 
   // Reading what publishing would make public, and confirming it. The two are
@@ -350,6 +378,85 @@ async function publish(
 }
 
 /**
+ * Turns a Preview on: the evaluated Timeline the app replays, and the origin
+ * the Project is proxied at so that the app can drive its page.
+ *
+ * The command decides everything that can be decided -- whether the Action can
+ * be previewed at all, whether the Project is answering, and the driver
+ * injected into its page. What is left here is the origin itself, which is the
+ * one thing a command cannot hand over (ADR 0011).
+ *
+ * Nothing is recorded and nothing is written. A Preview produces no Frames and
+ * no Artifacts, appears in no history, and is not among the Runs this server
+ * has been asked for.
+ */
+async function preview(
+  request: IncomingMessage,
+  response: ServerResponse,
+  serving: Serving,
+): Promise<void> {
+  const body = await jsonIn(request);
+
+  if ("error" in body) {
+    return answer(response, 400, { error: body.error });
+  }
+
+  const said = isObject(body.said) ? body.said : {};
+  const project = said["project"];
+  const action = said["action"];
+
+  if (!isName(project) || !isName(action)) {
+    return answer(response, 400, {
+      error: "a request to preview names the Project and one of its Actions",
+    });
+  }
+
+  let timeline: unknown;
+  try {
+    timeline = await invoke({
+      command: serving.options.command,
+      workspace: serving.options.workspace,
+      // `--preview` is what refuses an Action that clicks or types, and a
+      // Project that is not answering -- both in the command's own words.
+      words: ["timeline", project, action, "--preview", "--json"],
+      started: holding(serving),
+    });
+  } catch (failure) {
+    return answer(response, failure instanceof CommandFailed ? 400 : 500, {
+      error: failure instanceof Error ? failure.message : String(failure),
+    });
+  }
+
+  const needs = previewIn(timeline);
+
+  if (needs === undefined) {
+    return answer(response, 500, {
+      error: "the command did not say what a Preview of that would need",
+    });
+  }
+
+  const origin = await serving.previews.serving(project, needs.baseUrl, needs.driver);
+
+  answer(response, 200, { project, action, origin: origin.url, timeline });
+}
+
+/** What the command said a Preview of an Action needs, as far as this server reads it. */
+function previewIn(
+  timeline: unknown,
+): { readonly baseUrl: string; readonly driver: string } | undefined {
+  const said = isObject(timeline) ? timeline["preview"] : undefined;
+
+  if (!isObject(said)) {
+    return undefined;
+  }
+
+  const baseUrl = said["baseUrl"];
+  const driver = said["driver"];
+
+  return typeof baseUrl === "string" && typeof driver === "string" ? { baseUrl, driver } : undefined;
+}
+
+/**
  * Writes one Action's tuning: the Overrides to set, or the ones to remove.
  *
  * Both answer with the report the command gives for itself, so whatever asked
@@ -492,6 +599,8 @@ function index(serving: Serving): unknown {
       "POST /api/projects/<project>/actions/<action>/parameters",
       "POST /api/projects/<project>/actions/<action>/parameters/reset",
       "GET  /api/mockups",
+      "GET  /api/timeline/<project>/<action>[?set=<name>=<value>]",
+      "POST /api/preview",
       "GET  /api/publish",
       "POST /api/publish",
       "GET  /api/status[?project=<project>]",
@@ -713,20 +822,6 @@ function answer(response: ServerResponse, status: number, value: unknown): void 
     "cache-control": "no-store",
   });
   response.end(`${JSON.stringify(value, null, 2)}\n`);
-}
-
-/** Whether a request is addressed to this machine by one of its own names. */
-function addressedHere(host: string | undefined): boolean {
-  if (host === undefined) {
-    return true;
-  }
-
-  // A bracketed IPv6 host keeps its brackets; everything else loses its port.
-  const named = host.startsWith("[")
-    ? host.slice(0, host.indexOf("]") + 1)
-    : (host.split(":")[0] ?? "");
-
-  return loopbackNames.has(named.toLowerCase());
 }
 
 /**

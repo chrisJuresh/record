@@ -323,13 +323,18 @@ test("an Override the sidecar holds but the declaration will not take falls back
   assert.match(reported.warnings[0] ?? "", /outside the declared range 0\.\.2000/);
 });
 
-test("`--set` belongs to run, and says so anywhere else", async () => {
+/**
+ * `--set` belongs to the two commands that take a value: a Run records with it
+ * and keeps it, and a Timeline is evaluated as if it applied and keeps nothing.
+ * Reading what an Action is tuned to is neither.
+ */
+test("`--set` belongs to run and timeline, and says so anywhere else", async () => {
   const { workspace } = await tunable();
 
   const { stderr, code } = await record(workspace, "parameters", "demo", "peek", "--set", "distance=1");
 
   assert.equal(code, 1);
-  assert.match(stderr, /only run takes --set/);
+  assert.match(stderr, /only run and timeline take --set/);
 });
 
 test("an Override written without a value says how one is written", async () => {
