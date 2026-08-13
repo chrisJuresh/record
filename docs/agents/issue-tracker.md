@@ -27,31 +27,48 @@ Blocking is expressed with GitHub's **native issue dependencies**, which are vis
 
 Tickets also carry a `## Blocked by` section in the body listing the same edges, for readers looking at raw markdown.
 
-## Every resolved issue goes through a pull request
+## Every resolved issue goes through a worktree and a pull request
 
-**Nothing is committed to `main` directly.** Every issue resolved by a code
-change gets a branch and a pull request, and the merge is what closes the issue.
-This holds for one-line fixes as much as for features: the PR is where the diff
-is reviewed and where the record of why it landed lives.
+**Nothing is written in the main checkout, and nothing is committed to
+`development` or `main` directly.** Every issue resolved by a code change gets
+its own worktree, its own branch and its own pull request, and the merge is what
+closes the issue. This holds for one-line fixes as much as for features: the PR
+is where the diff is reviewed and where the record of why it landed lives, and
+the worktree is what keeps two sessions out of one index. A committed
+`PreToolUse` hook denies the alternative — see `/worktree-per-change`.
+
+- **Worktree**: one per issue, before the first edit, cut from the integration
+  branch. A bare `EnterWorktree` cuts from the *default* branch, which is `main`
+  here, so create it with git and enter that path:
+
+  ```bash
+  git worktree add .claude/worktrees/<issue-number> -b <issue-number>-<slug> origin/development
+  ```
 
 - **Branch**: one per issue, named `<issue-number>-<slug>` — `2-workspace-cli-and-project-config`.
-  Branch from up-to-date `main`.
+- **Base**: `development`. It is the integration branch; `main` is reached from
+  it separately, and no PR targets `main`.
 - **Push and open the PR without being asked.** Committing is not delivering:
   the branch is pushed and the PR opened as soon as there is a commit on it,
   rather than when the work is finished and rather than when somebody asks.
-  `gh pr create --title "..." --body-file <file>`, with the same body-file rule
-  as issues — write multi-line bodies to a file, BOM-free (see below). A skill
-  that says only "commit your work" is not saying to stop there; this is the
-  repo's convention and it wins.
+  `gh pr create --base development --title "..." --body-file <file>`, with the
+  same body-file rule as issues — write multi-line bodies to a file, BOM-free
+  (see below). A skill that says only "commit your work" is not saying to stop
+  there; this is the repo's convention and it wins.
 - **Keep pushing.** Later commits on the branch go up as they are made, so the
   PR is always what the branch actually is.
 - **Link the issue** from the PR body with a closing keyword on its own line —
   `Closes #<number>` — so merging closes the issue and GitHub records the link.
   One issue per PR; if a branch resolves several, list a `Closes` line for each.
 - **Read a PR**: `gh pr view <number> --comments`, `gh pr diff <number>`.
-- **Merging is the human's call.** Agents open, push to, and update PRs, and
-  answer review comments on them; they don't merge, and they don't close the
-  issue behind the PR's back.
+- **Merge it, and do not stop before you have.** `gh pr merge --squash`, by the
+  session that wrote the change — it holds the intent behind every hunk, and a
+  PR waiting on somebody is a branch the next worktree is cut without. A `Stop`
+  hook refuses to end a session still holding unpushed work. The worktree is
+  spent once its PR merges; the next issue takes a new one.
+- **Never `git stash`.** `refs/stash` is one stack for the whole repository,
+  shared by every worktree, so a push here renumbers another tree's entries and
+  a later `pop` takes the wrong one. Commit instead.
 
 ## Pull requests as a triage surface
 

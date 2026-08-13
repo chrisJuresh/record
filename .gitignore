@@ -9,3 +9,8 @@ runs/
 # Compiled output.
 dist/
 *.tsbuildinfo
+
+# One worktree per change lives here. The hook and its config beside them are
+# committed, because a worktree only gets a file if git puts it there.
+.claude/worktrees/
+.claude/settings.local.json
