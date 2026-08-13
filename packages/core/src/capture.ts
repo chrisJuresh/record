@@ -175,9 +175,21 @@ export async function captureFrames(options: CaptureOptions): Promise<CapturedFr
 
     await stepper.evaluate(findScroller);
 
-    for (let frame = 0; frame < settlingFrames; frame++) {
-      await stepper.next();
+    // Driven for their effect on the page rather than for their pixels, so no
+    // image is asked of them at all.
+    for (let frame = 0; frame < settlingFrames - 1; frame++) {
+      await stepper.step();
     }
+
+    // The last of them is photographed, and is the only Frame before capture
+    // that is: a kept Frame the compositor reports as undamaged is written as a
+    // repeat of the Frame before it, so there has to be one in hand. It is this
+    // Frame rather than an earlier one because the image standing behind the
+    // first kept Frame has to be the page as the settling Frames left it -- and
+    // because nothing earlier is photographed, a settled page cannot be stood
+    // in for by a picture of it taken before it settled.
+    await stepper.next();
+
     const repeatedWhileSettling = stepper.repeatedFrames;
 
     // Asked once the page has settled, so what is read is the page the Frames

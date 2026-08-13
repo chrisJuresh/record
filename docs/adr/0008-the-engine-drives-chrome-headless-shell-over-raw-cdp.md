@@ -42,6 +42,10 @@ owned by the driver and callers can only ask for the next frame.
 The compositor reports no damage until it has painted, so a fixed number of
 priming frames runs before capture, and an undamaged frame returns no screenshot
 and must be recorded as a repeat of the previous one rather than dropped.
+`beginFrame` reports its damage whether or not a screenshot was asked for, so a
+frame nothing keeps — the priming ones, and the settling ones capture drives
+after them — is driven without asking for an image at all, and the same report
+is what says the page has painted.
 
 Chromium rounds `scrollTop` to whole CSS pixels, so the finest possible scroll
 step is 1 CSS pixel regardless of device pixel ratio. Slow or short scrolls will

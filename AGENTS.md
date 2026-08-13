@@ -651,6 +651,11 @@ Frames are composited into that Aperture on the way to the Artifacts
 (ADR 0010). Nothing about it is drawn into the page: a surround inside the
 Frames is a surround the page can scroll underneath.
 
+Rendered **once per request** rather than once per Run: the image is a template
+laid out around a clip of a size and nothing of the Frames reaches it, so every
+Run of `record run --all` that agrees on the Mockup and on the size shares the
+one rendering, and a Condition photographed at another width gets its own.
+
 A Project chooses one, and any of its Actions may override it:
 
 ```toml

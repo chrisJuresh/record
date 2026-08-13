@@ -35,7 +35,7 @@ import { ensureRunning, type RunningProject } from "./lifecycle.js";
 import type { Condition } from "./matrix.js";
 import { mockupAsked, mockupFor, noMockup, type Aperture } from "./mockup.js";
 import { readOverrides } from "./overrides.js";
-import { renderMockup, writeMockup, type Composite } from "./render.js";
+import { renderMockup, writeMockup, type Composite, type RenderedMockup } from "./render.js";
 import { headCommit, repositoryOf } from "./repository.js";
 import type { ParameterSetting } from "./settings.js";
 import { textSubstitution, type Substitution } from "./text.js";
@@ -260,6 +260,7 @@ export async function runAction(
   const outcome = await recordOne(
     workspace,
     { project, action: actionName, lease: { outstanding: 1 } },
+    new Map(),
     options.progress,
   );
 
@@ -322,6 +323,9 @@ export async function runActions(
     workspace,
     requested.flat(),
     concurrency,
+    // One set of surrounds for the whole request, so `run --all` renders each
+    // Mockup once rather than once an Action.
+    new Map(),
     options.progress,
   )) {
     if ("report" in outcome) {
@@ -384,6 +388,20 @@ type Lease = {
   running?: Promise<RunningProject>;
 };
 
+/**
+ * The surrounds rendered for one request, kept by the Mockup they are and the
+ * clip they were laid out around.
+ *
+ * A rendered surround is a pure function of its template and that size --
+ * nothing about the Frames reaches it -- so every Run of a request that agrees
+ * on both is composited into the same image rather than launching a browser of
+ * its own to render it again. `run --all` was rendering one window per Action.
+ *
+ * The promise rather than the image is what is kept, so Runs recording at once
+ * share the one rendering instead of racing to make it several times.
+ */
+type Surrounds = Map<string, Promise<RenderedMockup>>;
+
 /** What one Run recorded, or what stopped it. */
 type Outcome =
   | { readonly asked: AskedRun; readonly report: RunReport }
@@ -397,6 +415,7 @@ async function recordEach(
   workspace: string,
   requested: readonly AskedRun[],
   concurrency: number,
+  surrounds: Surrounds,
   watching: RunWatcher | undefined,
 ): Promise<Outcome[]> {
   const outcomes: Outcome[] = [];
@@ -407,7 +426,7 @@ async function recordEach(
 
   const worker = async () => {
     for (const [at, asked] of queue) {
-      outcomes[at] = await recordOne(workspace, asked, watching);
+      outcomes[at] = await recordOne(workspace, asked, surrounds, watching);
     }
   };
 
@@ -420,10 +439,11 @@ async function recordEach(
 async function recordOne(
   workspace: string,
   asked: AskedRun,
+  surrounds: Surrounds,
   watching: RunWatcher | undefined,
 ): Promise<Outcome> {
   try {
-    return { asked, report: await record(workspace, asked, watching) };
+    return { asked, report: await record(workspace, asked, surrounds, watching) };
   } catch (failure) {
     return { asked, failure };
   }
@@ -449,6 +469,7 @@ function concurrencyOf(asked: number | undefined): number {
 async function record(
   workspace: string,
   asked: AskedRun,
+  surrounds: Surrounds,
   watching: RunWatcher | undefined,
 ): Promise<RunReport> {
   const { project, action: actionName, lease, condition } = asked;
@@ -554,11 +575,16 @@ async function record(
     // Rendered after the Frames rather than before them, because a Mockup left
     // to choose itself is chosen by the page the Frames are of. It lands beside
     // them, so it is swept up with them.
-    const surround = await composite(asked, captured.colourScheme, {
-      executable,
-      viewport,
-      file: join(frames, "mockup.png"),
-    });
+    const surround = await composite(
+      asked,
+      captured.colourScheme,
+      {
+        executable,
+        viewport,
+        file: join(frames, "mockup.png"),
+      },
+      surrounds,
+    );
 
     reached("encoding");
 
@@ -661,11 +687,17 @@ async function record(
  * somebody can open rather than drawing instructions the encoder has to be
  * taught. Every preset goes through this, which is what makes adding one adding
  * a template.
+ *
+ * Rendered once per request, though, rather than once per Run: the image is the
+ * template laid out around a clip of a size, and two Runs that agree on both
+ * would render the same pixels twice. Each still writes the surround into its
+ * own directory, where it is swept up with the Frames it was composited around.
  */
 async function composite(
   asked: string,
   scheme: ColourScheme,
   into: { executable: string; viewport: ProjectConfig["viewport"]; file: string },
+  surrounds: Surrounds,
 ): Promise<{ name: string; composite: Composite } | undefined> {
   const mockup = mockupFor(asked, scheme);
 
@@ -673,10 +705,25 @@ async function composite(
     return undefined;
   }
 
-  const rendered = await renderMockup(mockup, {
-    executable: into.executable,
-    viewport: into.viewport,
-  });
+  // Everything the rendering depends on, and nothing else: a Condition that
+  // photographs the page at another width is laid out around another clip, and
+  // gets a surround of its own.
+  const { width, height, deviceScaleFactor } = into.viewport;
+  const key = `${mockup.name} ${width}x${height}@${deviceScaleFactor}`;
+
+  let rendering = surrounds.get(key);
+
+  if (rendering === undefined) {
+    rendering = renderMockup(mockup, { executable: into.executable, viewport: into.viewport });
+    surrounds.set(key, rendering);
+    // A rendering that failed is not this request's answer for every Run after
+    // it: a browser that could not be launched for one Run is one the next Run
+    // may launch, and a template that really cannot be rendered fails each of
+    // them on its own terms exactly as it did before they shared anything.
+    void rendering.catch(() => surrounds.delete(key));
+  }
+
+  const rendered = await rendering;
 
   return { name: rendered.name, composite: await writeMockup(rendered, into.file) };
 }

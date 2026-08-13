@@ -1,9 +1,9 @@
 # A Mockup is a browser-rendered template with an Aperture
 
-A Mockup is an HTML/CSS document, rendered once per Run by the same
-`chrome-headless-shell` that captured the Frames, into a transparent image with
-an Aperture cut through it. The Frames are composited into that Aperture by
-ffmpeg, on the way to the Artifacts.
+A Mockup is an HTML/CSS document, rendered by the same `chrome-headless-shell`
+that captured the Frames, into a transparent image with an Aperture cut through
+it. The Frames are composited into that Aperture by ffmpeg, on the way to the
+Artifacts.
 
 Two rejected alternatives explain the shape of it.
 
@@ -38,6 +38,13 @@ shadow the surround casts.
 
 Compositing is bit-exact like the rest of encoding, and the render is a
 photograph of a static document, so two Runs of an unchanged Action inside an
-unchanged Mockup are still the same bytes. The cost is a second browser launch
-per Run — small beside the capture it follows, and only paid by a Run that
-composites something.
+unchanged Mockup are still the same bytes. The cost is a second browser launch —
+small beside the capture it follows, and only paid by a Run that composites
+something.
+
+Because the image is a template laid out around a clip of a size, and nothing of
+the Frames reaches it, that launch is paid **once for a request** rather than
+once for a Run: the Runs of `record run --all` that agree on the Mockup and on
+the size of the clip share the one rendering, and a Condition photographed at
+another width renders its own. `spikes/run-cost/` is the measurement — 1.45s a
+Run before, and 50ms for every Run after the first.
