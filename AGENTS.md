@@ -809,6 +809,14 @@ session that wrote the change is the one that merges it: it holds the intent
 behind every hunk. A `Stop` hook refuses to end a session still holding
 uncommitted or unpushed work.
 
+**And the branch comes down with it** — `gh pr merge --squash --delete-branch`,
+then `ExitWorktree` (`action: "remove"`), then the local branch. A merged branch
+left standing is a live push target after the PR that reviewed it has closed.
+Two traps, both in `docs/agents/issue-tracker.md`: `--delete-branch` abandons the
+remote delete when the local one fails, which it does while your worktree holds
+the branch; and `--squash` keeps no ancestry, so every local test of mergedness
+reports a merged branch as unmerged. Ask GitHub, then `git branch -D`.
+
 This says what to do once there is a commit; whether there should be one at all
 is the skill pipeline's question, and the answer during a thinking session is
 no.

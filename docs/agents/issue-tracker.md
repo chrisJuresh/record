@@ -61,11 +61,28 @@ the worktree is what keeps two sessions out of one index. A committed
   `Closes #<number>` — so merging closes the issue and GitHub records the link.
   One issue per PR; if a branch resolves several, list a `Closes` line for each.
 - **Read a PR**: `gh pr view <number> --comments`, `gh pr diff <number>`.
-- **Merge it, and do not stop before you have.** `gh pr merge --squash`, by the
-  session that wrote the change — it holds the intent behind every hunk, and a
-  PR waiting on somebody is a branch the next worktree is cut without. A `Stop`
-  hook refuses to end a session still holding unpushed work. The worktree is
-  spent once its PR merges; the next issue takes a new one.
+- **Merge it, and do not stop before you have.** `gh pr merge --squash
+  --delete-branch`, by the session that wrote the change — it holds the intent
+  behind every hunk, and a PR waiting on somebody is a branch the next worktree
+  is cut without. A `Stop` hook refuses to end a session still holding unpushed
+  work. The worktree is spent once its PR merges; the next issue takes a new one.
+- **Take the branch and the worktree down with it.** A merged branch left
+  standing is a live push target after the PR that reviewed it has closed, and a
+  commit pushed there looks like ordinary work while reaching `development`
+  never. `ExitWorktree` (`action: "remove"`) first, since the worktree is what
+  holds the branch, then the local branch.
+
+  Two things bite here, both measured:
+
+  - **`--delete-branch` gives up on the remote if the local delete fails**, and
+    it fails whenever a worktree still has the branch checked out — which yours
+    does at merge time. So check afterwards: `git fetch --prune` and
+    `git push origin --delete <branch>` if it is still listed.
+  - **Ask GitHub whether it merged, not git.** `--squash` replays the diff as one
+    new commit and keeps no ancestry, so `git branch -d`, `git branch --merged`
+    and `git merge-base --is-ancestor` read a merged branch as unmerged — every
+    branch here, not an edge case. `gh pr view <n> --json state --jq .state` for
+    `MERGED`, then `git branch -D <branch>`.
 - **Never `git stash`.** `refs/stash` is one stack for the whole repository,
   shared by every worktree, so a push here renumbers another tree's entries and
   a later `pop` takes the wrong one. Commit instead.
