@@ -122,9 +122,35 @@ export type Preview = {
   trouble: string | null;
 };
 
+/**
+ * The Conditions every record button asks for beyond the Action itself, which
+ * is a Matrix -- one Run per colour scheme, per viewport width, and one of each
+ * where both are asked for.
+ *
+ * Ticked by hand for the request being made rather than declared per Project
+ * and remembered. A Project that always records both themes would be a Setting,
+ * and it would drag staleness in behind it: an Action with no unconditioned Run
+ * is deliberately reported as never run, so declared Conditions would leave
+ * every Action of that Project reading as never recorded until staleness
+ * learned to count them. That is a bigger decision than wanting both themes,
+ * and worth making after living with the boxes.
+ */
+export type Matrix = {
+  /** The colour schemes ticked, and none to record the page as it paints. */
+  readonly schemes: readonly string[];
+  /**
+   * The viewport widths, exactly as they were typed. Kept as the line rather
+   * than as a list, because what a list of widths is -- and what a width is at
+   * all -- is the command's answer, and it takes this same line.
+   */
+  readonly widths: string;
+};
+
 export type App = {
   projects: readonly ProjectState[];
   chosen: Chosen | null;
+  /** What every record button records across, which is nothing until it is ticked. */
+  matrix: Matrix;
   /** The Preview on the stage in place of the clips, or nothing where none is. */
   preview: Preview | null;
   /** What is on the stage, which is a clip unless a Project is being configured. */
@@ -174,6 +200,7 @@ export function nothingYet(railClips: boolean): App {
   return {
     projects: [],
     chosen: null,
+    matrix: { schemes: [], widths: "" },
     preview: null,
     stage: { kind: "action" },
     notConfigured: null,
@@ -307,6 +334,44 @@ export function askedOf(app: App, ask: Ask): readonly ActionState[] {
 /** How many Actions are recording, which is what the topbar counts. */
 export function recording(app: App): number {
   return actionsIn(app).filter((action) => action.doing !== null).length;
+}
+
+/**
+ * The Conditions a request carries, and nothing at all where none is ticked --
+ * which is the plain Run the app has always asked for, in the Action's own
+ * directory under the Action's own name.
+ *
+ * The widths go as they were typed rather than as a list picked apart here: the
+ * command takes exactly this line, so passing it on is the app relaying what
+ * was asked for instead of holding a second opinion about what a width is.
+ */
+export function conditionsAsked(app: App): Pick<Ask, "schemes" | "widths"> {
+  const widths = app.matrix.widths.trim();
+
+  return {
+    ...(app.matrix.schemes.length === 0 ? {} : { schemes: app.matrix.schemes }),
+    ...(widths === "" ? {} : { widths: [widths] }),
+  };
+}
+
+/**
+ * How many times each Action would record, which is what says a Matrix is
+ * several Runs before one is asked for.
+ *
+ * Counted from what was ticked and typed rather than from what the command will
+ * make of it: a width it refuses is a request that records nothing at all, so
+ * this says what is being asked for rather than what will exist.
+ */
+export function runsEach(app: App): number {
+  return Math.max(1, app.matrix.schemes.length) * Math.max(1, widthsIn(app).length);
+}
+
+/** The widths typed, as the command's own option reads the same line. */
+function widthsIn(app: App): readonly string[] {
+  return app.matrix.widths
+    .split(",")
+    .map((width) => width.trim())
+    .filter((width) => width !== "");
 }
 
 /**

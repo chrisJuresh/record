@@ -300,11 +300,22 @@ export type Request = {
   readonly message: string | null;
 };
 
-/** What to record: one Action, every Action of a Project, or everything. */
+/**
+ * What to record: one Action, every Action of a Project, or everything -- and
+ * the Conditions to record each of them across, which is a Matrix.
+ *
+ * The Conditions are relayed as the command's own lists rather than spelled as
+ * options here: `--scheme` and `--width` are the command's words, and what
+ * counts as a colour scheme or a viewport width is its business too.
+ */
 export type Ask = {
   readonly project?: string;
   readonly action?: string;
   readonly all?: boolean;
+  /** Colour schemes, each `light` or `dark`, and none to record as the page paints. */
+  readonly schemes?: readonly string[];
+  /** Viewport widths in CSS pixels, and none to record at the Project's own. */
+  readonly widths?: readonly string[];
 };
 
 /** Told what a Run is doing, and then how it ended. */

@@ -15,6 +15,21 @@ source_repository = 'C:\Users\Chris\Documents\photos'
 # share until it grows a demo mode. Off is also the default -- ADR 0007.
 published = false
 
+# This site decides its own theme: it is one attribute on <html>, remembered in
+# localStorage, and its theme module says outright that there is no
+# prefers-color-scheme fallback -- dark is the default because the ground behind
+# a photograph is a decision about the photograph. Emulating the reader's
+# preference would therefore leave the page exactly as it was and write
+# scroll-peek-light.mp4 over a dark clip, so the hook is declared and used in
+# preference to the media query.
+#
+# Both directions together, because a hook that only goes one way records the
+# second Condition in the first one's theme. The palette is CSS downstream of
+# the attribute, so setting it is the whole of the switch.
+[theme]
+light = "document.documentElement.dataset.theme = 'light'"
+dark = "document.documentElement.dataset.theme = 'dark'"
+
 [viewport]
 width = 1440
 height = 900
