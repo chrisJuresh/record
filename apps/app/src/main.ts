@@ -24,6 +24,8 @@ import {
   stood,
   tuned,
   unread,
+  varyScheme,
+  varyWidths,
   type ActionState,
   type App,
   type ProjectState,
@@ -116,15 +118,15 @@ const handlers: Handlers = {
     void ask({ all: true });
   },
 
-  varySchemes(schemes) {
-    app.matrix = { ...app.matrix, schemes };
+  varyScheme(scheme, on) {
+    varyScheme(app, scheme, on);
     // Only what the Conditions come to: a box ticked changes what the next
     // press asks for and nothing that is on the stage, where a clip is playing.
     paintMatrix(app);
   },
 
   varyWidths(typed) {
-    app.matrix = { ...app.matrix, widths: typed };
+    varyWidths(app, typed);
     paintMatrix(app);
   },
 

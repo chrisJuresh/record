@@ -96,25 +96,25 @@ body {
  * that records everything. Quiet until something is ticked: a Matrix is asked
  * for deliberately, and the rest of the time this is a row of empty boxes.
  */
-.varying {
+.conditions {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
 }
 
-.varying .ticking {
+.conditions .ticking {
   display: flex;
   align-items: center;
   gap: 4px;
   color: var(--ink-dim);
 }
 
-.varying .ticking input {
+.conditions .ticking input {
   accent-color: var(--accent);
 }
 
-.varying input.typed {
+.conditions input.typed {
   width: 84px;
   font: inherit;
   font-size: 12px;

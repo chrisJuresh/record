@@ -500,8 +500,11 @@ and remembered nowhere: a Project that always recorded both themes would be a
 Setting, and staleness counts a Project's Runs rather than its declared
 Conditions, so every Action of it would read as never recorded until that
 changed. The clips on the stage do not move while a Matrix records, because every
-Condition keeps a Latest and a history of its own — which is why the topbar says
-how many Runs each Action is about to take before the button is pressed.
+Condition keeps a Latest and a history of its own — which the topbar says while
+anything is ticked, since a stage that stayed still without saying so would read
+as a Run that produced nothing. **That** and not how many Runs it comes to: how
+a Matrix multiplies is the command's arithmetic, and the summary that carried it
+out is what reports it.
 
 An Action gone **Stale** is flagged in the rail and said on the stage, which is
 the other half of what a re-record button is for. The flag is `record status` and

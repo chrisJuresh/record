@@ -146,6 +146,18 @@ export type Matrix = {
   readonly widths: string;
 };
 
+/**
+ * The colour schemes a Matrix records across, which is the one piece of the
+ * command's vocabulary the app spells for itself: a box has to be drawn per
+ * scheme, and no command answers what there are.
+ *
+ * It is deliberately the only one, and the only one there is room for -- what a
+ * scheme *does* still lives in the tool, which refuses anything else in its own
+ * words. A `record schemes` to read them from would remove even this, and is
+ * worth wanting the moment a third one exists.
+ */
+export const colourSchemes = ["light", "dark"] as const;
+
 export type App = {
   projects: readonly ProjectState[];
   chosen: Chosen | null;
@@ -355,23 +367,35 @@ export function conditionsAsked(app: App): Pick<Ask, "schemes" | "widths"> {
 }
 
 /**
- * How many times each Action would record, which is what says a Matrix is
- * several Runs before one is asked for.
+ * Whether a press would be a Matrix, which is what says the clips on the stage
+ * are not what is about to be recorded.
  *
- * Counted from what was ticked and typed rather than from what the command will
- * make of it: a width it refuses is a request that records nothing at all, so
- * this says what is being asked for rather than what will exist.
+ * Whether, and never how many: how a Matrix multiplies is the command's rule,
+ * and counting the Runs here would mean splitting the widths on the way -- a
+ * second reading of the same line, to print a number that a Condition the
+ * command refuses makes untrue anyway.
  */
-export function runsEach(app: App): number {
-  return Math.max(1, app.matrix.schemes.length) * Math.max(1, widthsIn(app).length);
+export function varied(app: App): boolean {
+  return Object.keys(conditionsAsked(app)).length > 0;
 }
 
-/** The widths typed, as the command's own option reads the same line. */
-function widthsIn(app: App): readonly string[] {
-  return app.matrix.widths
-    .split(",")
-    .map((width) => width.trim())
-    .filter((width) => width !== "");
+/**
+ * Ticks or unticks one colour scheme, leaving the others as they are and
+ * keeping them in the order they are drawn in -- which is the order the
+ * Conditions record in.
+ */
+export function varyScheme(app: App, scheme: string, on: boolean): void {
+  app.matrix = {
+    ...app.matrix,
+    schemes: colourSchemes.filter((one) =>
+      one === scheme ? on : app.matrix.schemes.includes(one),
+    ),
+  };
+}
+
+/** ...and the widths, exactly as they were typed. */
+export function varyWidths(app: App, typed: string): void {
+  app.matrix = { ...app.matrix, widths: typed };
 }
 
 /**

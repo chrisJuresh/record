@@ -314,7 +314,15 @@ export type Ask = {
   readonly all?: boolean;
   /** Colour schemes, each `light` or `dark`, and none to record as the page paints. */
   readonly schemes?: readonly string[];
-  /** Viewport widths in CSS pixels, and none to record at the Project's own. */
+  /**
+   * Viewport widths in CSS pixels, and none to record at the Project's own.
+   *
+   * The server joins these with commas onto `--width`, which the command then
+   * splits, trims and drops the empties of -- so the app sends the line it was
+   * given as the single entry rather than picking it apart first. A list of
+   * widths is one thing wherever it is read, and this is not the second place
+   * that decides what one is.
+   */
   readonly widths?: readonly string[];
 };
 

@@ -37,9 +37,10 @@ import {
   latestOf,
   playing,
   previewing,
+  colourSchemes,
   previousOf,
   recording,
-  runsEach,
+  varied,
   type ActionState,
   type App,
   type Doing,
@@ -54,11 +55,11 @@ export type Handlers = {
   runProject(project: string): void;
   runEverything(): void;
   /**
-   * Records across these colour schemes, which is a Condition each and so a Run
-   * each -- and nothing at all where none is ticked, which is the plain Run
-   * every one of those three buttons asked for before this existed.
+   * Records across this colour scheme as well, or stops doing so -- a Condition
+   * each, and so a Run each. None of them ticked is the plain Run every one of
+   * those three buttons asked for before this existed.
    */
-  varySchemes(schemes: readonly string[]): void;
+  varyScheme(scheme: string, on: boolean): void;
   /** ...and across these viewport widths, exactly as they were typed. */
   varyWidths(typed: string): void;
   showRailClips(showing: boolean): void;
@@ -280,9 +281,11 @@ export function frameShowing(said: Showing | null): void {
  *
  * Its own paint because a box ticked changes only what the buttons will ask
  * for: the clips are playing beside it, and neither a scheme nor a width may
- * put a new video element in the page. The boxes themselves hold what was
- * ticked, so nothing here draws them again either -- typing a width while the
- * control is redrawn under the cursor is exactly what that would come to.
+ * put a new video element in the page. The controls are left alone as well as
+ * the clips -- they already hold what was ticked and typed, and redrawing the
+ * box being typed into would take the caret out of it. A full paint does
+ * rebuild them, from the same state, which is why it is the thing a change
+ * here deliberately is not.
  */
 export function paintMatrix(app: App): void {
   if (live === undefined) {
@@ -430,36 +433,22 @@ function topbar(
     el("span", { class: "wordmark" }, ["record"]),
     tally,
     el("span", { class: "spacer" }),
-    varying(app, handlers, matrix),
+    conditions(app, handlers, matrix),
     railClips,
     button("Run everything", "act primary", () => handlers.runEverything()),
   ]);
 }
 
 /**
- * The colour schemes a Matrix can be asked for, which is the one thing the app
- * spells for itself: a box has to be drawn per scheme, and there is no request
- * that answers what they are. What a colour scheme is remains the command's
- * business -- it refuses anything else in its own words, and this list existing
- * does not make it a second opinion.
- */
-const colourSchemes = ["light", "dark"] as const;
-
-/**
- * What every record button records across, drawn where the button that records
- * everything is -- the three of them ask for one request each, and the
- * Conditions belong to the request rather than to any one of the buttons.
+ * The Conditions every record button records across, drawn where the button
+ * that records everything is -- the three of them ask for one request each, and
+ * the Conditions belong to the request rather than to any one of the buttons.
  *
  * Ticked here rather than declared in a Project's settings, deliberately: see
  * `Matrix`. Nothing is remembered between openings for the same reason, so a
  * Matrix is asked for by somebody who meant to ask for one.
  */
-function varying(app: App, handlers: Handlers, says: HTMLElement): HTMLElement {
-  // Ticking one leaves the others as they are, and keeps them in the order they
-  // are drawn in -- which is the order the Conditions record in.
-  const alsoTicked = (scheme: string, on: boolean): readonly string[] =>
-    colourSchemes.filter((one) => (one === scheme ? on : app.matrix.schemes.includes(one)));
-
+function conditions(app: App, handlers: Handlers, says: HTMLElement): HTMLElement {
   const widths = el("input", {
     id: "matrix-widths",
     class: "typed num",
@@ -472,11 +461,11 @@ function varying(app: App, handlers: Handlers, says: HTMLElement): HTMLElement {
   // anywhere, and what this changes is what the next press would ask for.
   widths.addEventListener("input", () => handlers.varyWidths(widths.value));
 
-  return el("div", { class: "varying" }, [
+  return el("div", { class: "conditions" }, [
     el("span", { class: "faint" }, ["record in"]),
     ...colourSchemes.map((scheme) =>
       schemeBox(scheme, app.matrix.schemes.includes(scheme), (on) =>
-        handlers.varySchemes(alsoTicked(scheme, on)),
+        handlers.varyScheme(scheme, on),
       ),
     ),
     el("label", { class: "faint", for: "matrix-widths" }, ["at widths"]),
@@ -496,19 +485,18 @@ function schemeBox(scheme: string, ticked: boolean, tick: (on: boolean) => void)
 }
 
 /**
- * What the ticked Conditions come to, said before a button is pressed rather
- * than found out from a summary afterwards: a Matrix is several Runs however
- * few Actions it names, and four of them is worth having meant.
+ * That a press is now a Matrix, said before it is pressed rather than found out
+ * from a summary afterwards: it is a Run per Condition however few Actions it
+ * names, and that is worth having meant.
  *
  * ...and that they are kept apart, because every Condition keeps a Latest and a
  * history of its own -- so the clips on the stage stay exactly where they are
  * while a Matrix records, and a stage that did not say so would read as a Run
- * that produced nothing.
+ * that produced nothing. How many Runs that comes to is the command's
+ * arithmetic, and is reported by the summary that carried it out.
  */
 function matrixSays(app: App): string {
-  const each = runsEach(app);
-
-  return each === 1 ? "" : `${many(each, "Run")} of each Action, kept apart from its own`;
+  return varied(app) ? "a Run per Condition, kept apart from each Action's own" : "";
 }
 
 /**
