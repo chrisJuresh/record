@@ -1,0 +1,8 @@
+{
+  "integrationBranch": "main",
+  "guard": {
+    "source": "https://github.com/chrisJuresh/skills worktree-per-change/scripts/worktree_guard.py",
+    "syncedFrom": "139366efa779f6ac0787de3e8a26c7d6e50758bd",
+    "sha256": "04179756ef81c82bdfbd587231ec0a7c74873f6e2b399d3cb48fdee8096f42c7"
+  }
+}

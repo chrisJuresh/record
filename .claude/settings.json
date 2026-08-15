@@ -1,0 +1,51 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-S",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/worktree-guard.py"
+            ],
+            "timeout": 10,
+            "statusMessage": "Checking this change is in its own worktree"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-S",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/worktree-guard.py"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-S",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/worktree-guard.py"
+            ],
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}
