@@ -222,7 +222,15 @@ function formatChain(encoding: Encoding): string {
   );
 }
 
-/** What distinguishes one Artifact's format from the others'. */
+/**
+ * What distinguishes one Artifact's format from the others'.
+ *
+ * The two video Artifacts are the same clip and are held to the same band of
+ * quality (ADR 0006), but the number that asks for it is each encoder's own: 22
+ * of x264 and 32 of VP9 are not the same scale and have nothing to say to each
+ * other. What can be held against each other is what they produce, which is
+ * what spikes/encode-quality measures.
+ */
 function formatArguments(encoding: Encoding): string[] {
   switch (encoding.format) {
     case "mp4":
@@ -232,8 +240,14 @@ function formatArguments(encoding: Encoding): string[] {
         "libx264",
         "-preset",
         "medium",
+        // The fallback for the browsers that cannot play the WebM (ADR 0006),
+        // and nothing else -- so it is encoded to be watched rather than kept.
+        // The 18 that used to stand here is an archival number, and archival is
+        // what no Artifact here is: it spent twice the WebM's bytes to land
+        // within a quarter of a VMAF point of it. 22 stays under a point of the
+        // WebM at both the sizes measured, and is a third smaller than 18 was.
         "-crf",
-        "18",
+        "22",
         // The faststart atom is half of what makes the file play everywhere
         // rather than only in the browser it was made on.
         "-movflags",
@@ -246,6 +260,8 @@ function formatArguments(encoding: Encoding): string[] {
         "libvpx-vp9",
         // A quality target rather than a bitrate: '-b:v 0' is what makes -crf
         // mean quality alone, and row threading is what makes VP9 bearable.
+        // This is the Artifact offered first, so it is the last one worth
+        // trading size on (spikes/run-cost) and 32 has not moved.
         "-crf",
         "32",
         "-b:v",
