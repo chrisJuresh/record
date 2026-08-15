@@ -9,3 +9,11 @@ runs/
 # Compiled output.
 dist/
 *.tsbuildinfo
+
+# Every change gets its own worktree under here, so these are checkouts of this
+# repository inside itself -- a `git add -A` that catches one commits it as a
+# gitlink nobody can resolve. The guard that puts them there stays committed:
+# .claude/settings.json, .claude/hooks/ and .claude/worktree-per-change.json,
+# because a worktree only gets a file if git puts it there.
+.claude/worktrees/
+.claude/settings.local.json
