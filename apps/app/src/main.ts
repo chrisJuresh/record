@@ -12,6 +12,7 @@ import {
   actionOf,
   actionsIn,
   asking,
+  conditionsAsked,
   configuredWith,
   ended,
   misconfigured,
@@ -23,6 +24,8 @@ import {
   stood,
   tuned,
   unread,
+  varyScheme,
+  varyWidths,
   type ActionState,
   type App,
   type ProjectState,
@@ -31,6 +34,7 @@ import { close as closePreview, play, replay, showFrame } from "./player.js";
 import {
   paint,
   paintConfiguration,
+  paintMatrix,
   paintPreview,
   paintProgress,
   paintPublish,
@@ -112,6 +116,18 @@ const handlers: Handlers = {
 
   runEverything() {
     void ask({ all: true });
+  },
+
+  varyScheme(scheme, on) {
+    varyScheme(app, scheme, on);
+    // Only what the Conditions come to: a box ticked changes what the next
+    // press asks for and nothing that is on the stage, where a clip is playing.
+    paintMatrix(app);
+  },
+
+  varyWidths(typed) {
+    varyWidths(app, typed);
+    paintMatrix(app);
   },
 
   showRailClips(showing) {
@@ -639,7 +655,10 @@ function firstAction(projects: readonly ProjectState[]): App["chosen"] {
  * carries the command's whole answer -- the Runs that recorded, which are the
  * new Latest, and what stopped the ones that did not.
  */
-async function ask(asked: api.Ask): Promise<void> {
+async function ask(what: api.Ask): Promise<void> {
+  // Every one of the three record buttons carries the Conditions, because a
+  // Matrix is a way of asking for Runs rather than a fourth kind of request.
+  const asked = { ...what, ...conditionsAsked(app) };
   let begun: api.Request;
 
   try {

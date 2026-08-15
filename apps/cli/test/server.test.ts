@@ -120,6 +120,7 @@ let alsoWatched: Watched;
 let failed: RunRequest;
 let failing: Watched;
 let refused: RunRequest;
+let matrix: RunRequest;
 
 before(async () => {
   site = await startFixtureSite();
@@ -163,6 +164,18 @@ before(async () => {
   const refusedRun = await askFor({ project: "hollow", concurrency: 1 });
   await watch(`api/runs/${refusedRun.id}/events`);
   refused = await read<RunRequest>(`api/runs/${refusedRun.id}`);
+
+  // ...and the same Project across a Matrix, which is what the app asks for
+  // once a scheme or a width is ticked. Asked of the Action that describes no
+  // clip, so that two Conditions cost two refusals rather than two Runs.
+  const matrixRun = await askFor({
+    project: "hollow",
+    schemes: ["light", "dark"],
+    widths: ["480"],
+    concurrency: 1,
+  });
+  await watch(`api/runs/${matrixRun.id}/events`);
+  matrix = await read<RunRequest>(`api/runs/${matrixRun.id}`);
 });
 
 after(async () => {
@@ -516,6 +529,76 @@ test("a request the command refused still carries the answer it gave", () => {
   );
   assert.equal(summary.concurrency, 1, "the request's own concurrency reached the command");
   assert.match(refused.message ?? "", /failed: hollow nothing.*produces no Frames/);
+});
+
+/**
+ * A Matrix is asked for in the words the command takes, which is why the
+ * request carries `schemes` and `widths` rather than a client spelling
+ * `--scheme` for itself -- and why the app asking for one is the app catching
+ * up with the CLI rather than a second place a Condition is decided.
+ */
+test("a request carrying schemes and widths records one Run per Condition", () => {
+  assert.deepEqual(matrix.words, [
+    "run",
+    "hollow",
+    "--scheme",
+    "light,dark",
+    "--width",
+    "480",
+    "--concurrency",
+    "1",
+    "--json",
+    "--progress",
+  ]);
+
+  const summary = matrix.report as RunSummary;
+
+  assert.deepEqual(summary.conditions, ["light-480w", "dark-480w"]);
+  assert.deepEqual(
+    summary.failures.map((failure) => failure.condition),
+    ["light-480w", "dark-480w"],
+    "each Condition is a Run of its own, and answered for as one",
+  );
+});
+
+/** Varying nothing is the plain Run it has always been, in the same words. */
+test("a request that varies nothing asks for no Conditions at all", async () => {
+  const asked = await askFor({ project: "hollow", schemes: [], widths: [] });
+
+  assert.deepEqual(asked.words, ["run", "hollow", "--json", "--progress"]);
+});
+
+/**
+ * What a colour scheme is remains the command's business. The server relays
+ * what it was given and the refusal comes back in the words that say what to
+ * ask for instead.
+ */
+test("a Condition the command refuses is answered in the command's own words", async () => {
+  const asked = await askFor({ project: "hollow", schemes: ["sepia"] });
+  await watch(`api/runs/${asked.id}/events`);
+  const ended = await read<RunRequest>(`api/runs/${asked.id}`);
+
+  assert.equal(ended.state, "failed");
+  assert.match(ended.message ?? "", /'sepia' is not a colour scheme to record in/);
+});
+
+test("a list of Conditions that is not a list is refused rather than run", async () => {
+  for (const body of [
+    { project: "hollow", schemes: "light" },
+    { project: "hollow", widths: [480] },
+  ]) {
+    const response = await fetch(new URL("api/runs", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.match(
+      ((await response.json()) as { error: string }).error,
+      /is the list of Conditions to record across/,
+    );
+  }
 });
 
 test("the requests to record this server has been asked for are readable", async () => {

@@ -37,8 +37,10 @@ import {
   latestOf,
   playing,
   previewing,
+  colourSchemes,
   previousOf,
   recording,
+  varied,
   type ActionState,
   type App,
   type Doing,
@@ -52,6 +54,14 @@ export type Handlers = {
   runAction(project: string, action: string): void;
   runProject(project: string): void;
   runEverything(): void;
+  /**
+   * Records across this colour scheme as well, or stops doing so -- a Condition
+   * each, and so a Run each. None of them ticked is the plain Run every one of
+   * those three buttons asked for before this existed.
+   */
+  varyScheme(scheme: string, on: boolean): void;
+  /** ...and across these viewport widths, exactly as they were typed. */
+  varyWidths(typed: string): void;
   showRailClips(showing: boolean): void;
   /** Overrides one Parameter of one Action, by the value it is to take. */
   tune(project: string, action: string, name: string, value: ParameterSetting): void;
@@ -103,6 +113,8 @@ type Marks = {
 /** The nodes a Run in flight writes into, kept from the last full paint. */
 type Live = {
   readonly tally: HTMLElement;
+  /** How many Runs of each Action the ticked Conditions come to. */
+  readonly matrix: HTMLElement;
   /** The rail's marks, by the Action they belong to. */
   readonly marks: Map<string, Marks>;
   /** Where the rail says a Project is Published, by the Project it says it of. */
@@ -146,6 +158,7 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   const marks = new Map<string, Marks>();
   const published = new Map<string, HTMLElement>();
   const tally = el("span", { class: "faint" }, [tallyOf(app)]);
+  const matrix = el("span", { class: "faint num" });
   const standing = el("div", { class: "standing" });
   const progress = el("div", { class: "progress" });
   const parameters = el("aside", { class: "params" });
@@ -164,7 +177,7 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
       : button("Run Action", "act primary", () => handlers.runAction(chosen.project, chosen.action));
 
   root.replaceChildren(
-    topbar(app, handlers, tally),
+    topbar(app, handlers, tally, matrix),
     el("div", { class: "body" }, [
       rail(app, handlers, marks, published),
       stage(app, handlers, {
@@ -186,6 +199,7 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
 
   live = {
     tally,
+    matrix,
     marks,
     published,
     standing,
@@ -202,6 +216,7 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     handlers,
   };
   paintProgress(app);
+  paintMatrix(app);
   paintStanding(app);
   paintTuning(app);
   // Drawn rather than left empty: these are the two that put a whole panel on
@@ -258,6 +273,26 @@ export function frameShowing(said: Showing | null): void {
   if (scrubbing !== undefined && document.activeElement !== scrubbing) {
     scrubbing.value = String(said.at);
   }
+}
+
+/**
+ * Says how many Runs of each Action the ticked Conditions come to, and nothing
+ * else.
+ *
+ * Its own paint because a box ticked changes only what the buttons will ask
+ * for: the clips are playing beside it, and neither a scheme nor a width may
+ * put a new video element in the page. The controls are left alone as well as
+ * the clips -- they already hold what was ticked and typed, and redrawing the
+ * box being typed into would take the caret out of it. A full paint does
+ * rebuild them, from the same state, which is why it is the thing a change
+ * here deliberately is not.
+ */
+export function paintMatrix(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  live.matrix.textContent = matrixSays(app);
 }
 
 /**
@@ -382,7 +417,12 @@ export function paintProgress(app: App): void {
   live.progress.replaceChildren(...(chosen?.doing == null ? [] : inFlight(chosen.doing)));
 }
 
-function topbar(app: App, handlers: Handlers, tally: HTMLElement): HTMLElement {
+function topbar(
+  app: App,
+  handlers: Handlers,
+  tally: HTMLElement,
+  matrix: HTMLElement,
+): HTMLElement {
   const railClips = button(
     app.railClips ? "Hide clips in rail" : "Show clips in rail",
     "act quiet",
@@ -393,9 +433,70 @@ function topbar(app: App, handlers: Handlers, tally: HTMLElement): HTMLElement {
     el("span", { class: "wordmark" }, ["record"]),
     tally,
     el("span", { class: "spacer" }),
+    conditions(app, handlers, matrix),
     railClips,
     button("Run everything", "act primary", () => handlers.runEverything()),
   ]);
+}
+
+/**
+ * The Conditions every record button records across, drawn where the button
+ * that records everything is -- the three of them ask for one request each, and
+ * the Conditions belong to the request rather than to any one of the buttons.
+ *
+ * Ticked here rather than declared in a Project's settings, deliberately: see
+ * `Matrix`. Nothing is remembered between openings for the same reason, so a
+ * Matrix is asked for by somebody who meant to ask for one.
+ */
+function conditions(app: App, handlers: Handlers, says: HTMLElement): HTMLElement {
+  const widths = el("input", {
+    id: "matrix-widths",
+    class: "typed num",
+    type: "text",
+    placeholder: "480,900",
+    value: app.matrix.widths,
+  });
+
+  // As it is typed rather than when the box is left: nothing is written
+  // anywhere, and what this changes is what the next press would ask for.
+  widths.addEventListener("input", () => handlers.varyWidths(widths.value));
+
+  return el("div", { class: "conditions" }, [
+    el("span", { class: "faint" }, ["record in"]),
+    ...colourSchemes.map((scheme) =>
+      schemeBox(scheme, app.matrix.schemes.includes(scheme), (on) =>
+        handlers.varyScheme(scheme, on),
+      ),
+    ),
+    el("label", { class: "faint", for: "matrix-widths" }, ["at widths"]),
+    widths,
+    says,
+  ]);
+}
+
+/** One colour scheme to record across, ticked by the name it is recorded under. */
+function schemeBox(scheme: string, ticked: boolean, tick: (on: boolean) => void): HTMLElement {
+  const box = el("input", { id: `matrix-${scheme}`, type: "checkbox" });
+
+  box.checked = ticked;
+  box.addEventListener("change", () => tick(box.checked));
+
+  return el("label", { class: "ticking" }, [box, scheme]);
+}
+
+/**
+ * That a press is now a Matrix, said before it is pressed rather than found out
+ * from a summary afterwards: it is a Run per Condition however few Actions it
+ * names, and that is worth having meant.
+ *
+ * ...and that they are kept apart, because every Condition keeps a Latest and a
+ * history of its own -- so the clips on the stage stay exactly where they are
+ * while a Matrix records, and a stage that did not say so would read as a Run
+ * that produced nothing. How many Runs that comes to is the command's
+ * arithmetic, and is reported by the summary that carried it out.
+ */
+function matrixSays(app: App): string {
+  return varied(app) ? "a Run per Condition, kept apart from each Action's own" : "";
 }
 
 /**
