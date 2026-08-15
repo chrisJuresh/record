@@ -1,0 +1,11 @@
+# Untracked files copied into every new worktree.
+#
+# A worktree is a fresh checkout of tracked files and nothing else, so anything
+# .gitignore covers is simply absent from it -- and the failure looks like the
+# tool being broken rather than the file being missing.
+#
+# settings.local.json is this machine's permission mode. Without it a new
+# worktree falls back to the default, and the protocol's own writes start being
+# refused: measured 2026-08-15, `git add` was allowed in one worktree and denied
+# in the next one cut minutes later, for no reason visible from inside either.
+.claude/settings.local.json
