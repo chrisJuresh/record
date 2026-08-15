@@ -892,14 +892,24 @@ as prose. See `docs/agents/issue-tracker.md`.
 branch named `<issue-number>-<slug>`, a PR whose body says `Closes #<number>`,
 and a merge that closes the issue. Nothing is committed to `main` directly.
 
-**Committing is not delivering.** An agent that has committed against an issue
-**pushes the branch and opens the PR itself**, unasked — work left on a local
-branch is work nobody can see, and a PR opened early is where the diff is read
-while it is still cheap to change. This says what to do once there is a commit;
+**Committing is not delivering, and neither is an open PR.** An agent that has
+committed against an issue pushes the branch, opens the PR **and merges it**,
+unasked — `python .claude/scripts/land.py` from the worktree does all three and
+verifies the merge against the forge. Then it takes the worktree down, which is
+still finishing rather than tidying. This says what to do once there is a commit;
 whether there should be one at all is the skill pipeline's question, and the
-answer during a thinking session is no. Only the merge waits: agents open, push to
-and update PRs and answer review comments on them, and never merge or close the
-issue behind the PR's back.
+answer during a thinking session is no.
+
+An open PR is not a delivered change. A branch that exists only on a disk leaves
+the operator a directory nobody will look in, and the next worktree is cut from a
+`main` that is missing the work — so the review a PR left open was waiting for
+costs more than it buys on a repository with one author. The record of what
+landed and why is the PR itself, read after the fact.
+
+`land.py` is the whole grant, and the reason a wider one is not needed: it takes
+no PR number and no branch, so it can only merge the PR whose head is the branch
+in the worktree it was run from, into the branch this repository recorded. See
+`/worktree-per-change`, which is where the protocol and its permissions live.
 
 ### Triage labels
 
