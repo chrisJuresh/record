@@ -29,6 +29,13 @@ export { motion } from "./motion.js";
 export type { Motion, MotionOptions, Travel } from "./motion.js";
 export { readOverrides, readParameters, resetOverrides, setOverrides } from "./overrides.js";
 export type { ParameterReport, ReportedParameter } from "./overrides.js";
+export { previewabilityOf, previewDriver, readTimeline } from "./preview.js";
+export type {
+  Previewability,
+  PreviewReport,
+  TimelineOptions,
+  TimelineReport,
+} from "./preview.js";
 export { planPublish, publishClips, publishedDirectory } from "./publish.js";
 export type {
   PublishedAction,

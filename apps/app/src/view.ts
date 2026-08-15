@@ -36,13 +36,16 @@ import {
   configuring,
   latestOf,
   playing,
+  previewing,
   previousOf,
   recording,
   type ActionState,
   type App,
   type Doing,
+  type Preview,
   type ProjectState,
 } from "./model.js";
+import { playerFor, refit, showing, type Showing } from "./player.js";
 
 export type Handlers = {
   choose(project: string, action: string): void;
@@ -52,8 +55,20 @@ export type Handlers = {
   showRailClips(showing: boolean): void;
   /** Overrides one Parameter of one Action, by the value it is to take. */
   tune(project: string, action: string, name: string, value: ParameterSetting): void;
+  /**
+   * ...and a value that is still being dragged: the Preview is re-evaluated as
+   * if it applied and nothing is written, so that scrubbing a slider does not
+   * leave forty Overrides behind it in the sidecar.
+   */
+  tryValue(project: string, action: string, name: string, value: ParameterSetting): void;
   /** Removes that Override, leaving what the Action declares. */
   reset(project: string, action: string, name: string): void;
+  /** Puts the Action played live against the running Project on the stage, or takes it off. */
+  showPreview(showing: boolean): void;
+  /** Plays the Preview, looping, or holds it where it has been scrubbed to. */
+  playPreview(playing: boolean): void;
+  /** Shows one Frame of it, which is what scrubbing to a moment does. */
+  scrub(at: number): void;
   /** Puts what one Project is configured with on the stage, in place of the clips. */
   showConfiguration(project: string): void;
   /** ...and the form a Project this machine does not have yet is configured from. */
@@ -106,6 +121,15 @@ type Live = {
   readonly where: HTMLElement;
   /** Why a Project the app was asked to add was not configured. */
   readonly notConfigured: HTMLElement;
+  /**
+   * What is drawn above and below the Preview. Two nodes rather than one around
+   * it, because moving an iframe in the document reloads it -- the frame is put
+   * on the stage once and everything that surrounds it is redrawn around it.
+   */
+  readonly previewAbove: HTMLElement;
+  readonly previewBelow: HTMLElement;
+  /** Which Frame is showing, written into sixty times a second and never drawn. */
+  readonly previewFrame: HTMLElement;
   /** What publishing would make public, which reading and confirming both redraw. */
   readonly publish: HTMLElement;
   /** What the controls in there call, since they are drawn again without a paint. */
@@ -113,6 +137,9 @@ type Live = {
 };
 
 let live: Live | undefined;
+
+/** Where a Preview is scrubbed from, so that playing it can move the control. */
+let scrubbing: HTMLInputElement | undefined;
 
 /** Draws the whole app. */
 export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
@@ -126,6 +153,9 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   const where = el("span", { class: "muted" });
   const notConfigured = el("div", { class: "not-configured" });
   const publish = el("div", { class: "publish" });
+  const previewAbove = el("div", { class: "preview-above" });
+  const previewBelow = el("div", { class: "preview-below" });
+  const previewFrame = el("span", { class: "faint num" });
 
   const chosen = playing(app);
   const runAction =
@@ -137,7 +167,16 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     topbar(app, handlers, tally),
     el("div", { class: "body" }, [
       rail(app, handlers, marks, published),
-      stage(app, handlers, { standing, progress, runAction, configuration, where, publish }),
+      stage(app, handlers, {
+        standing,
+        progress,
+        runAction,
+        configuration,
+        where,
+        publish,
+        previewAbove,
+        previewBelow,
+      }),
       parameters,
     ]),
     // The one way out of this machine, at the bottom of the page: everything
@@ -157,6 +196,9 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     where,
     notConfigured,
     publish,
+    previewAbove,
+    previewBelow,
+    previewFrame,
     handlers,
   };
   paintProgress(app);
@@ -166,6 +208,56 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   // the stage rather than writing into one already there.
   paintConfiguration(app);
   paintPublish(app);
+  paintPreview(app);
+}
+
+/**
+ * Draws what surrounds the Preview, and never the Preview itself.
+ *
+ * Its own paint because tuning redraws the Parameter column and the Preview and
+ * nothing else -- and because the frame the Project is played in is created
+ * once and only ever messaged afterwards. A Parameter change must not put a new
+ * frame in the page any more than a slider let go of may put a new video
+ * element in it.
+ */
+export function paintPreview(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  const preview = previewing(app);
+
+  if (preview === undefined) {
+    live.previewAbove.replaceChildren();
+    live.previewBelow.replaceChildren();
+    scrubbing = undefined;
+    return;
+  }
+
+  live.previewAbove.replaceChildren(...previewHead(preview, live.handlers));
+  live.previewBelow.replaceChildren(...previewFoot(preview, live.handlers, live.previewFrame));
+  // Measured now the frame is on the page: an element that has not been drawn
+  // yet has no width for the Project's viewport to be scaled against.
+  refit();
+  frameShowing(showing());
+}
+
+/**
+ * Says which Frame the Preview is showing, and moves the scrub with it. Written
+ * into rather than drawn: a Frame arrives sixty times a second, and redrawing
+ * the stage at that rate would take the Preview out from under whoever is
+ * watching it.
+ */
+export function frameShowing(said: Showing | null): void {
+  if (live === undefined || said === null) {
+    return;
+  }
+
+  live.previewFrame.textContent = `Frame ${said.at + 1} of ${said.of}`;
+
+  if (scrubbing !== undefined && document.activeElement !== scrubbing) {
+    scrubbing.value = String(said.at);
+  }
 }
 
 /**
@@ -456,6 +548,8 @@ type Written = {
   readonly configuration: HTMLElement;
   readonly where: HTMLElement;
   readonly publish: HTMLElement;
+  readonly previewAbove: HTMLElement;
+  readonly previewBelow: HTMLElement;
 };
 
 /** The Action on the stage: what it last produced, and what it can be asked for. */
@@ -515,12 +609,21 @@ function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
     ]);
   }
 
+  const preview = previewing(app);
+
   return el("section", { class: "stage" }, [
     ...trouble,
     el("div", { class: "stage-head" }, [
       el("h2", {}, [action.action]),
       el("span", { class: "muted" }, [project.configured.name]),
       el("span", { class: "spacer" }),
+      // A Preview is the tuning loop and a Run is the clip, so the button that
+      // opens one sits beside the buttons that record.
+      button(
+        preview === undefined ? "Preview" : "Back to the clips",
+        `act${preview === undefined ? "" : " selected"}`,
+        () => handlers.showPreview(preview === undefined),
+      ),
       button("Run Project", "act", () => handlers.runProject(project.configured.name)),
       ...(runAction === null ? [] : [runAction]),
     ]),
@@ -528,8 +631,112 @@ function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
     standing,
     progress,
     ...(action.failure === null ? [] : [troublePanel("The Run failed", action.failure)]),
-    el("div", { class: "stage-body" }, [comparison(action), beside(action)]),
+    // The clips and the Preview are both the thing being looked at, and a stage
+    // holding two videos and a live site at once is a stage nobody can read. So
+    // a Preview takes the stage in place of them, and gives it back.
+    preview === undefined
+      ? el("div", { class: "stage-body" }, [comparison(action), beside(action)])
+      : el("div", { class: "stage-body previewing" }, [
+          written.previewAbove,
+          ...(preview.origin === null || preview.timeline === null
+            ? []
+            : [playerFor(preview.origin, preview.timeline, frameShowing)]),
+          written.previewBelow,
+        ]),
   ]);
+}
+
+/**
+ * What is said above the Preview: what it is, and -- more to the point -- what
+ * it deliberately is not.
+ *
+ * Said on its face rather than in a document somebody has to have read, because
+ * judging a surround, a cursor or a colour scheme by something that never
+ * showed one is exactly the mistake this is here to prevent.
+ */
+function previewHead(preview: Preview, handlers: Handlers): readonly Node[] {
+  const said = showing();
+
+  return [
+    el("div", { class: "preview-head" }, [
+      el("h3", {}, ["Preview"]),
+      el("span", { class: "muted" }, ["played live against the running Project"]),
+      el("span", { class: "spacer" }),
+      ...(preview.timeline === null
+        ? []
+        : [
+            button(said?.playing === true ? "Pause" : "Play", "act", () =>
+              handlers.playPreview(said?.playing !== true),
+            ),
+          ]),
+    ]),
+    el("p", { class: "preview-not" }, [
+      "This is not the clip. It shows no Mockup, no drawn cursor, no keystroke captions, no " +
+        "replacement copy and no Condition, and it produces nothing — no Frames, no Artifacts " +
+        "and no history. It plays at this browser's refresh rate, so framerate is the one " +
+        "Parameter a Preview cannot answer: record it to judge smoothness.",
+    ]),
+    ...(preview.trouble === null ? [] : [troublePanel("There is no Preview", preview.trouble)]),
+    ...(preview.trouble === null && preview.timeline === null
+      ? [el("p", { class: "faint" }, ["asking what this Action's Timeline comes to…"])]
+      : []),
+  ];
+}
+
+/**
+ * ...and what is said below it: where in the Timeline it has reached, the way
+ * to any other moment of it, and what a Run of it would cost.
+ */
+function previewFoot(
+  preview: Preview,
+  handlers: Handlers,
+  frame: HTMLElement,
+): readonly Node[] {
+  const timeline = preview.timeline;
+
+  if (timeline === null) {
+    return [];
+  }
+
+  const said = showing();
+
+  const scrub = el("input", {
+    type: "range",
+    class: "scrub",
+    "aria-label": "Which Frame of the Timeline is showing",
+    min: "0",
+    max: String(Math.max(0, timeline.frames - 1)),
+    step: "1",
+    value: String(said?.at ?? 0),
+  });
+
+  // Scrubbing holds the Preview where it was put: looking hard at the moment a
+  // travel settles is the other half of what watching it loop is for.
+  scrub.addEventListener("input", () => handlers.scrub(Number(scrub.value)));
+  scrubbing = scrub;
+
+  return [
+    el("div", { class: "preview-scrub" }, [scrub]),
+    el("p", { class: "preview-cost" }, [
+      frame,
+      el("span", { class: "spacer" }),
+      el("span", { class: "faint num" }, [costOf(timeline)]),
+    ]),
+  ];
+}
+
+/**
+ * What a Run of this Timeline would cost, so that asking for one is a decision
+ * rather than a surprise -- and the viewport it is being judged at, since a
+ * distance only means the same thing in the clip if the page is the same width.
+ */
+function costOf(timeline: NonNullable<Preview["timeline"]>): string {
+  const { width, height } = timeline.preview.viewport;
+
+  return (
+    `${many(timeline.frames, "Frame")} at ${timeline.framerate}fps · ` +
+    `${(timeline.durationMs / 1000).toFixed(2)}s · ${width}×${height}`
+  );
 }
 
 /**
@@ -838,6 +1045,10 @@ function tuningIn(app: App, handlers: Handlers): readonly Node[] {
 function control(action: ActionState, parameter: Parameter, handlers: Handlers): HTMLElement {
   const tune = (value: ParameterSetting): void =>
     handlers.tune(action.project, action.action, parameter.name, value);
+  // What a value still being dragged does: the Preview is re-evaluated as if it
+  // applied, and the sidecar is left alone until it is let go of.
+  const tried = (value: ParameterSetting): void =>
+    handlers.tryValue(action.project, action.action, parameter.name, value);
 
   const value = el("span", { class: `value num ${parameter.overridden ? "" : "faint"}` }, [
     String(parameter.value),
@@ -861,7 +1072,7 @@ function control(action: ActionState, parameter: Parameter, handlers: Handlers):
         : parameter.describes,
     ]),
     ...(parameter.kind === "number"
-      ? numberControl(parameter, extentOf(parameter), value, tune)
+      ? numberControl(parameter, extentOf(parameter), value, tune, tried)
       : parameter.kind === "flag"
         ? [tickBox(fieldOf(parameter), labelOf(parameter), parameter.value === true, tune)]
         : [menu(fieldOf(parameter), parameter.choices ?? [], parameter.value, tune)]),
@@ -904,14 +1115,15 @@ function extentOf(parameter: Parameter): { readonly min: number; readonly max: n
  * and the box is how a value already known is typed rather than hunted for.
  *
  * The slider writes when it is let go of and not while it is moving, because
- * every write is an Override written to disk -- but the readout follows it, so
- * what is being chosen is legible before it is chosen.
+ * every write is an Override written to disk -- but the readout follows it, and
+ * so does the Preview, so what is being chosen is visible before it is chosen.
  */
 function numberControl(
   parameter: Parameter,
   extent: { readonly min: number; readonly max: number } | undefined,
   readout: HTMLElement,
   tune: (value: ParameterSetting) => void,
+  tried: (value: ParameterSetting) => void,
 ): readonly Node[] {
   const within = extent === undefined ? {} : { min: String(extent.min), max: String(extent.max) };
   const step = extent === undefined ? {} : { step: String(stepOf(extent)) };
@@ -955,6 +1167,9 @@ function numberControl(
   range.addEventListener("input", () => {
     readout.textContent = range.value;
     box.value = range.value;
+    // The change and the motion are the same event: a Preview keeps playing
+    // while this moves, re-evaluated under a value written nowhere.
+    tried(Number(range.value));
   });
   range.addEventListener("change", () => tune(Number(range.value)));
 

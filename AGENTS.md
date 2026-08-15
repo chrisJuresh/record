@@ -9,7 +9,9 @@ anything that names a domain concept.
 A pnpm workspace of TypeScript packages, built with project references.
 
 - `packages/core/` — Timeline evaluation, Project configuration, Project
-  lifecycle, the capture engine and encoding.
+  lifecycle, the capture engine and encoding. The expressions evaluated inside a
+  Project's own page live in `page.ts` and are used by both capture and Preview,
+  so how a scroller is found is written once.
 - `packages/fixture-site/` — the static site every test records against, and the
   harness that serves it on an ephemeral port. It also serves on a port of the
   test's choosing, as its own process, so that a test can configure a Project
@@ -19,7 +21,9 @@ A pnpm workspace of TypeScript packages, built with project references.
   them, so a new operation is a command first.
 - `apps/server/` — the local HTTP server `record serve` starts. It holds no
   capture, encoding or configuration logic of its own: every answer is the
-  `record` command invoked and read back. It imports nothing from
+  `record` command invoked and read back. The one exception is the **Preview
+  origin** (ADR 0011), a proxy of one Project that a Preview is played through —
+  and even its injected driver comes from the command. It imports nothing from
   `@record/core`, and it has **no test seam of its own** — it is asserted at the
   CLI seam, by starting it with the command and asking it over HTTP.
 - `apps/app/` — the app the tool is used through: a page, a stylesheet and
@@ -114,6 +118,14 @@ pnpm record parameters photos scroll-peek
 ```
 
 ```bash
+pnpm record timeline photos scroll-peek
+```
+
+```bash
+pnpm record timeline photos scroll-peek --set distance=600
+```
+
+```bash
 pnpm record status
 ```
 
@@ -162,6 +174,36 @@ be started is started **once** and shared by every Action recording against it,
 and stopped when the last of them is done. **One Action failing does not abandon
 the others**: the rest record, the summary names what failed, and the command
 still fails.
+
+### Reading a Timeline, and previewing it
+
+`record timeline <project> <action>` says what an Action's Timeline evaluates
+to: its framerate, how long it runs, how many Frames a Run of it would capture,
+and where the page is on every one of them — the scroll position, the cursor
+where there is one, the caption where there is one, and what that Frame does to
+the page. It is the **same evaluation a Run captures from**, exposed rather than
+reimplemented.
+
+It records nothing and **writes nothing**, `--set` included: a value named here
+is evaluated *as if* it applied. That is the difference between scrubbing and
+tuning — the app asks for evaluations continuously while a control is moving,
+and writes an Override only when the person settles on one, which is `record
+set` exactly as it is today (ADR 0005).
+
+The same command says whether the Action can be **previewed**, and which
+primitive stops it where it cannot. A Preview drives the *live* Project, so an
+Action containing a `click`, a `press`, a `type`, an `evaluate` or a `waitFor`
+is refused rather than half-played: tuning an Action must never be able to
+triage a real photo library, and a Preview that skipped the part somebody cared
+about would be worse than no Preview. The rule lives with the evaluation, in the
+tool — the app obeys and displays, and never decides.
+
+`--preview` is the same answer with those refusals enforced, and one more: a
+Project that is not answering at its ready URL is named, along with the URL.
+**A Preview never starts a Project.** Only a Project this tool started is ever
+stopped, and a Preview has no reliable moment of ending — a closed tab is not an
+event the tool can act on — so starting one here would leak a process the rules
+say it must eventually stop.
 
 ### Configuring a Project
 
@@ -373,6 +415,8 @@ able to drive a tool that starts processes on this machine.
 | `POST /api/projects/<project>/actions/<action>/parameters` | `record set` |
 | `POST /api/projects/<project>/actions/<action>/parameters/reset` | `record reset` |
 | `GET /api/mockups` | `record mockups` |
+| `GET /api/timeline/<project>/<action>[?set=<name>=<value>]` | `record timeline` |
+| `POST /api/preview` | `record timeline --preview`, and the Preview origin it is played through |
 | `GET /api/publish` | `record publish` — what publishing would make public |
 | `POST /api/publish` | `record publish --confirm`, and only for `{ confirm: true }` |
 | `GET /api/status[?project=<project>]` | `record status` |
@@ -411,6 +455,16 @@ about and what it has reached — `starting`, `capturing` (a Frame at a time),
 
 Artifacts are served from the workspace's `runs/`, with byte ranges answered,
 because playing a clip in a browser is what they are for.
+
+`POST /api/preview` takes `{ project, action }` and is the one place this server
+holds anything of its own (ADR 0011): a **Preview origin**, a proxy of that one
+Project mounted at its root and bound to loopback, allocated the first time a
+Preview of it is asked for. The app cannot script a page served on the Project's
+own port, so the page comes back through an origin the app owns, carrying the
+driver `record timeline` emitted. Even here the command decides everything that
+can be decided — whether the Action can be driven, whether the Project is
+answering, and what the driver is. The origin proxies that Project and nothing
+else, passes every method through, and injects into HTML responses only.
 
 Everything not addressed to `/api` or to `/artifacts` is the app. Those two are
 the reserved names, so a file the app grows needs nothing added to the server,
@@ -487,10 +541,24 @@ publishing is a second press under a list that has been read. It is
 `record publish` and `record publish --confirm` and nothing else: the app
 compares no Projects and copies no files of its own.
 
-Tuning redraws only that column, configuration only its own panel and the
-Published pill beside the Project it belongs to, publishing only its own panel,
-and staleness only the flags it is written into. Clips are playing beside all
-four, and neither a slider let go of nor a Stale flag arriving may put a new
+A **Preview** takes the stage in place of the clips, and gives it back. It is the
+Action played live against the running Project — the app replays the states
+`record timeline` evaluated, over the Project itself, at the Project's own
+viewport transform-scaled to whatever room the stage has. It loops, it scrubs,
+and moving a Parameter re-asks for the evaluated Timeline and replays it without
+writing anything, so a value is found by feel and written down only once it is
+settled on. It says on its face that it is not the clip, and that framerate is
+the one Parameter it cannot answer. The app holds no Timeline logic of its own:
+an easing implemented here would be a second implementation of one.
+
+The frame the Project is played in is created **once** when a Preview is turned
+on and only ever messaged afterwards — moving an iframe in the document reloads
+it, and a slider let go of must not reload the site under whoever is tuning it.
+
+Tuning redraws that column and the Preview, configuration only its own panel and
+the Published pill beside the Project it belongs to, publishing only its own
+panel, and staleness only the flags it is written into. Clips are playing beside
+all four, and neither a slider let go of nor a Stale flag arriving may put a new
 video element in the page.
 
 They are read for the Action on the stage rather than for all of them, because
@@ -766,6 +834,15 @@ So is the app, in `apps/cli/test/app.test.ts`, and as far as the same seam
 reaches: the page the tool is opened at, the modules it loads, and the fact that
 nothing else in that package is readable over loopback. What those modules draw
 is held to by `pnpm build` and by opening it.
+
+The Preview origin is asserted the same way, in `apps/cli/test/preview.test.ts`:
+started by running `record serve`, then asked over HTTP against the fixture
+site — a page carrying the driver, a stylesheet untouched, the site's own
+absolute URLs resolving through it, anything outside the Project refused, and a
+loopback `Host` and nothing else. The app's player gets no seam, for the same
+reason nothing else the app draws has one. If a rule about a Preview needs
+asserting, that is the signal it belongs in `record timeline` instead — which is
+where previewability is, and where it is tested.
 
 `packages/fixture-site/test/` is the one exception, and it tests the harness
 rather than the tool: a fixture site that quietly stopped serving would weaken

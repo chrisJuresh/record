@@ -16,6 +16,7 @@ import {
   ended,
   misconfigured,
   nothingYet,
+  previewing,
   progressed,
   projectOf,
   refused,
@@ -26,9 +27,11 @@ import {
   type App,
   type ProjectState,
 } from "./model.js";
+import { close as closePreview, play, replay, showFrame } from "./player.js";
 import {
   paint,
   paintConfiguration,
+  paintPreview,
   paintProgress,
   paintPublish,
   paintStanding,
@@ -65,6 +68,8 @@ const handlers: Handlers = {
   choose(project, action) {
     app.chosen = { project, action };
     app.stage = { kind: "action" };
+    // A Preview is of one Action, so choosing another gives the stage back to
+    // that one's clips -- which is what a repaint does for itself.
     repaint();
     void readTuning(project, action);
   },
@@ -122,8 +127,32 @@ const handlers: Handlers = {
     void tuning(project, action, () => api.set(project, action, [`${name}=${String(value)}`]));
   },
 
+  tryValue(project, action, name, value) {
+    // Nothing is written: the Timeline is evaluated as if this applied, so that
+    // a slider being dragged is a Preview changing rather than a sidecar
+    // filling up with the forty values it passed through on the way.
+    scrubbed(project, action, [`${name}=${String(value)}`]);
+  },
+
   reset(project, action, name) {
     void tuning(project, action, () => api.reset(project, action, [name]));
+  },
+
+  showPreview(showing) {
+    void previewed(showing);
+  },
+
+  playPreview(playing) {
+    play(playing);
+    paintPreview(app);
+  },
+
+  scrub(at) {
+    // Scrubbing holds it where it was put, so that a travel that has settled
+    // can be looked at rather than waited for to come round again.
+    play(false);
+    showFrame(at);
+    paintPreview(app);
   },
 
   showPublish() {
@@ -312,10 +341,139 @@ function tuning(
       refused(app, project, action, messageOf(failure));
     }
 
-    // Only the Parameters: a clip is playing beside them, and a value nudged
-    // must not put a new video element in the page.
+    // Only the Parameters and the Preview: a clip is playing beside them, and a
+    // value nudged must not put a new video element in the page -- nor a new
+    // frame, where the Preview has taken their place.
     paintTuning(app);
+    scrubbed(project, action, []);
   });
+}
+
+/**
+ * Turns a Preview on, or gives the stage back to the clips.
+ *
+ * Turning it on is one request: the command refuses an Action that clicks,
+ * types, evaluates or waits, and a Project that is not answering -- and the
+ * refusal is said on the stage in the command's own words. Nothing here
+ * decides either.
+ */
+async function previewed(on: boolean): Promise<void> {
+  const chosen = app.chosen;
+
+  if (!on || chosen === null) {
+    takeThePreviewDown();
+    repaint();
+    return;
+  }
+
+  app.preview = {
+    project: chosen.project,
+    action: chosen.action,
+    origin: null,
+    timeline: null,
+    trouble: null,
+  };
+  draw();
+
+  try {
+    const turned = await api.preview(chosen.project, chosen.action);
+    const preview = app.preview;
+
+    if (preview === null || preview.project !== turned.project || preview.action !== turned.action) {
+      return;
+    }
+
+    preview.origin = turned.origin;
+    preview.timeline = turned.timeline;
+  } catch (failure) {
+    // "it clicks in the running Project" and "your site is not up" are
+    // different problems with different next steps, and only the command knows
+    // which of them happened.
+    if (app.preview !== null) {
+      app.preview.trouble = messageOf(failure);
+    }
+  }
+
+  // A paint rather than a write: this is where the frame the Project is played
+  // in reaches the stage, and it is created exactly once.
+  draw();
+}
+
+/** Takes the Preview off the stage, which is what gives the clips it back. */
+function takeThePreviewDown(): void {
+  app.preview = null;
+  closePreview();
+}
+
+/**
+ * What the Preview is waiting on, so that a slider dragged across its range is
+ * one evaluation at a time rather than sixty processes a second. The latest
+ * value wins, because the one being asked about is the one under the cursor.
+ */
+let evaluating = false;
+let toEvaluate: readonly string[] | null = null;
+
+/**
+ * Plays the Preview under a value that has not been settled on -- or under the
+ * sidecar as it now stands, which is what a settled one comes to.
+ *
+ * Nothing is written either way. This is the whole of the difference between
+ * scrubbing and tuning: the app asks for evaluations continuously while a
+ * control is moving, and writes an Override only when the person lets go, which
+ * is the existing write path unchanged (ADR 0005).
+ */
+function scrubbed(project: string, action: string, named: readonly string[]): void {
+  const preview = previewing(app);
+
+  if (preview === undefined || preview.project !== project || preview.action !== action) {
+    return;
+  }
+
+  toEvaluate = named;
+  void evaluatingLatest(project, action);
+}
+
+async function evaluatingLatest(project: string, action: string): Promise<void> {
+  if (evaluating) {
+    return;
+  }
+  evaluating = true;
+
+  try {
+    while (toEvaluate !== null) {
+      const named = toEvaluate;
+      toEvaluate = null;
+      await evaluate(project, action, named);
+    }
+  } finally {
+    evaluating = false;
+  }
+}
+
+async function evaluate(
+  project: string,
+  action: string,
+  named: readonly string[],
+): Promise<void> {
+  const preview = app.preview;
+
+  if (preview === null || preview.project !== project || preview.action !== action) {
+    return;
+  }
+
+  try {
+    const evaluated = await api.timeline(project, action, named);
+
+    preview.timeline = evaluated;
+    preview.trouble = null;
+    // It keeps playing while the states are swapped, because the change and the
+    // motion have to be the same event.
+    replay(evaluated);
+  } catch (failure) {
+    preview.trouble = messageOf(failure);
+  }
+
+  paintPreview(app);
 }
 
 /**
@@ -537,7 +695,29 @@ async function ask(asked: api.Ask): Promise<void> {
   });
 }
 
+/**
+ * Draws the whole app, and takes any Preview down on the way.
+ *
+ * A full paint replaces everything under the stage, and moving the frame a
+ * Preview is played in reloads the Project inside it -- so no Preview survives
+ * one, and pretending otherwise would reload somebody's site under them at the
+ * moment they pressed Run.
+ *
+ * The rule is written here rather than at each of the buttons that cause a
+ * paint, because it is about painting rather than about any of them: a Preview
+ * takes the stage in place of the clips, and anything that redraws the stage
+ * gives it back to them.
+ */
 function repaint(): void {
+  takeThePreviewDown();
+  draw();
+}
+
+/**
+ * ...and a full paint that keeps it, which is only ever turning one on: this is
+ * where the frame reaches the stage, and it is created exactly once.
+ */
+function draw(): void {
   paint(root, app, handlers);
 }
 

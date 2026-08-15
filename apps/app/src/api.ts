@@ -122,6 +122,69 @@ export type ParameterReport = {
   readonly warnings: readonly string[];
 };
 
+/** The viewport a Project is photographed at, which is what a Preview is shown at. */
+export type Viewport = {
+  readonly width: number;
+  readonly height: number;
+  readonly deviceScaleFactor: number;
+};
+
+/**
+ * Where the page is on one Frame. As much of a Frame as a Preview replays --
+ * a Preview shows no drawn cursor and no keystroke captions, so it reads the
+ * scroll position and nothing else.
+ */
+export type FrameState = {
+  readonly scrollTop: number;
+};
+
+/** What a Preview of an Action would need, as the command answers it. */
+export type PreviewReport = {
+  readonly previewable: boolean;
+  /** Which primitive stops it, in the command's own words. */
+  readonly refusal: string | null;
+  readonly baseUrl: string;
+  readonly readyUrl: string;
+  readonly viewport: Viewport;
+  /**
+   * The expression the tool injects into the Project's page, and nothing at all
+   * where a Timeline was merely read. The app never reads it: it is relayed by
+   * the server into the Preview origin, and how a scroller is found is the
+   * tool's business rather than the page's.
+   */
+  readonly driver: string | null;
+};
+
+/**
+ * What an Action's Timeline evaluates to. The app replays this and evaluates
+ * nothing of its own: an easing implemented here would be a second
+ * implementation of one, and two that agree today are two that will silently
+ * disagree later.
+ */
+export type TimelineReport = {
+  readonly project: string;
+  readonly action: string;
+  readonly framerate: number;
+  readonly durationMs: number;
+  readonly frames: number;
+  readonly states: readonly FrameState[];
+  /** Which Parameters did not take their value from the declaration. */
+  readonly overridden: readonly string[];
+  /** ...and which were evaluated as if they applied, and written nowhere. */
+  readonly named: readonly string[];
+  readonly warnings: readonly string[];
+  readonly preview: PreviewReport;
+};
+
+/** A Preview turned on: the Timeline it replays, and where the Project is proxied. */
+export type PreviewTurnedOn = {
+  readonly project: string;
+  readonly action: string;
+  /** The Preview origin, which is what the frame on the stage is opened at. */
+  readonly origin: string;
+  readonly timeline: TimelineReport;
+};
+
 /** How one Action stands against its Project, as the command reports it. */
 export type ActionStatus = {
   readonly action: string;
@@ -344,6 +407,35 @@ function parametersOf(project: string, action: string): readonly string[] {
 }
 
 /**
+ * What an Action's Timeline evaluates to, optionally under values that have not
+ * been settled on.
+ *
+ * Named values are evaluated as if they applied and written nowhere, which is
+ * what makes scrubbing a slider possible without leaving forty Overrides in the
+ * sidecar behind it. Settling on one is `set`, exactly as it is today.
+ */
+export function timeline(
+  project: string,
+  action: string,
+  named: readonly string[] = [],
+): Promise<TimelineReport> {
+  return read<TimelineReport>(["api", "timeline", project, action], { set: named });
+}
+
+/**
+ * Turns a Preview on: the Timeline to replay, and the origin the Project is
+ * proxied at so that the page can be driven from here.
+ *
+ * The command refuses an Action that clicks, types, evaluates or waits, and a
+ * Project that is not answering -- both in its own words. Nothing here decides
+ * either: a Preview drives a live site, and the rule that protects one lives in
+ * the tool.
+ */
+export function preview(project: string, action: string): Promise<PreviewTurnedOn> {
+  return wrote<PreviewTurnedOn>(["api", "preview"], { project, action });
+}
+
+/**
  * Asks for a recording, which is answered as soon as it has been asked for
  * rather than when it is done -- what it does next is watched.
  */
@@ -408,13 +500,30 @@ function runFileUrl(run: Run, path: string): string {
   return url(["artifacts", run.project, run.action, ...under, run.id, file]);
 }
 
-/** A path this server answers, spelled so that no name in it can become part of it. */
-function url(segments: readonly string[]): string {
-  return `/${segments.map(encodeURIComponent).join("/")}`;
+/**
+ * A path this server answers, spelled so that no name in it can become part of
+ * it -- and whatever is asked of it, spelled the same way.
+ */
+function url(segments: readonly string[], named: Named = {}): string {
+  const path = `/${segments.map(encodeURIComponent).join("/")}`;
+  const query = new URLSearchParams();
+
+  for (const [name, values] of Object.entries(named)) {
+    for (const value of values) {
+      query.append(name, value);
+    }
+  }
+
+  return query.size === 0 ? path : `${path}?${query.toString()}`;
 }
 
-async function read<Answer>(segments: readonly string[]): Promise<Answer> {
-  return answered<Answer>(await fetch(url(segments), { headers: { accept: "application/json" } }));
+/** What a request asks of a path beyond naming it, each name taking a list. */
+type Named = Readonly<Record<string, readonly string[]>>;
+
+async function read<Answer>(segments: readonly string[], named: Named = {}): Promise<Answer> {
+  return answered<Answer>(
+    await fetch(url(segments, named), { headers: { accept: "application/json" } }),
+  );
 }
 
 /** Asks the server to write something, and reads back what the command answered. */

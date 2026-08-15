@@ -21,6 +21,7 @@ import type {
   Run,
   StatusReport,
   Summary,
+  TimelineReport,
 } from "./api.js";
 
 /** What an Action is doing, or nothing at all where it is not recording. */
@@ -101,9 +102,31 @@ export type Stage =
   | { readonly kind: "new" }
   | { readonly kind: "publish" };
 
+/**
+ * The Preview on the stage: one Action played live against the running Project,
+ * with no capture and no encoding anywhere in the loop.
+ *
+ * It is not a Run and never becomes one. It produces no Frames and no
+ * Artifacts, keeps no history, is never the Latest, clears no staleness and
+ * cannot be Published -- so nothing here is written into an Action's history
+ * and nothing about it survives the Preview being turned off.
+ */
+export type Preview = {
+  readonly project: string;
+  readonly action: string;
+  /** Where the Project is proxied, once the server has allocated an origin. */
+  origin: string | null;
+  /** The Timeline it replays, as the command evaluated it. */
+  timeline: TimelineReport | null;
+  /** Why there is no Preview, in the command's own words. */
+  trouble: string | null;
+};
+
 export type App = {
   projects: readonly ProjectState[];
   chosen: Chosen | null;
+  /** The Preview on the stage in place of the clips, or nothing where none is. */
+  preview: Preview | null;
   /** What is on the stage, which is a clip unless a Project is being configured. */
   stage: Stage;
   /**
@@ -151,6 +174,7 @@ export function nothingYet(railClips: boolean): App {
   return {
     projects: [],
     chosen: null,
+    preview: null,
     stage: { kind: "action" },
     notConfigured: null,
     railClips,
@@ -238,6 +262,23 @@ export function chosenAction(app: App): ActionState | undefined {
  */
 export function playing(app: App): ActionState | undefined {
   return app.stage.kind === "action" ? chosenAction(app) : undefined;
+}
+
+/**
+ * The Preview on the stage, which is one of the Action being looked at or none
+ * at all: a stage holding two clips and a live site at once is a stage nobody
+ * can read.
+ */
+export function previewing(app: App): Preview | undefined {
+  const action = playing(app);
+  const preview = app.preview;
+
+  return action !== undefined &&
+    preview !== null &&
+    preview.project === action.project &&
+    preview.action === action.action
+    ? preview
+    : undefined;
 }
 
 /** The Project the Action on the stage belongs to. */

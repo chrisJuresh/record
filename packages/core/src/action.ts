@@ -233,6 +233,36 @@ export function overrideFrom(parameters: Parameters, name: string, text: string)
   return value;
 }
 
+/**
+ * A list of `name=value` read against what the Action declares.
+ *
+ * The same reading whether the values are about to be written into the sidecar
+ * or evaluated as if they had been: a value the Action would refuse has to be
+ * refused the same way either way, or a Preview would play a motion no Run
+ * could ever record.
+ */
+export function overridesFrom(
+  parameters: Parameters,
+  assignments: readonly string[],
+): Record<string, ParameterSetting> {
+  const written: Record<string, ParameterSetting> = {};
+
+  for (const assignment of assignments) {
+    const at = assignment.indexOf("=");
+    if (at <= 0) {
+      throw new RecordError(`an Override is written name=value, not '${assignment}'`);
+    }
+
+    written[assignment.slice(0, at)] = overrideFrom(
+      parameters,
+      assignment.slice(0, at),
+      assignment.slice(at + 1),
+    );
+  }
+
+  return written;
+}
+
 /** The Action a module file declares, or a message saying how it fails to declare one. */
 export async function loadAction(file: string): Promise<Action> {
   const module: unknown = await import(pathToFileURL(file).href);

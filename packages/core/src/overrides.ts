@@ -16,7 +16,7 @@ import {
   choicesOf,
   effectiveParameters,
   loadAction,
-  overrideFrom,
+  overridesFrom,
   type Overrides,
   type ParameterDeclaration,
   type Parameters,
@@ -114,14 +114,7 @@ export async function setOverrides(
 ): Promise<ParameterReport> {
   const { declared, overrides } = await tuning(workspace, project, action);
 
-  for (const assignment of assignments) {
-    const at = assignment.indexOf("=");
-    if (at <= 0) {
-      throw new RecordError(`an Override is written name=value, not '${assignment}'`);
-    }
-    const name = assignment.slice(0, at);
-    overrides[name] = overrideFrom(declared, name, assignment.slice(at + 1));
-  }
+  Object.assign(overrides, overridesFrom(declared, assignments));
 
   await writeOverrides(workspace, project, action, overrides);
 
