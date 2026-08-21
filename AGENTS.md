@@ -521,12 +521,15 @@ What those Runs produced is watched on **the same two players**, pointed at
 whichever histories are being compared: one picker chooses the history whose
 Latest is judged — the Action's own Runs, or one of the Conditions it keeps Runs
 of — and a second chooses what that is judged against, which is *the Run before
-it* while it names the same history. So the stage's two slots mean *this Run and
-the one before it* by default and *this Condition and that one* when they are
-pointed apart, both comparisons on two players rather than four: a stage holding
-two clips and a live site at once is already the most it can hold, and a second
-pair would be the thing nobody can read. An Action that keeps no Conditions never
-draws the pickers, and its stage is the stage it always was.
+it* while it names the same history. Both unpicked, that is the Action's own
+Latest beside the Run before it, exactly as the stage has always read. Picking a
+Condition moves only the first, so its Latest lands **beside the Action's own** —
+the comparison a Matrix is recorded for, in one press — and judging it against
+the Run before it, or against another Condition, is the second picker. Both
+comparisons on two players rather than four: a stage holding two clips and a
+live site at once is already the most it can hold, and a second pair would be
+the thing nobody can read. An Action that keeps no Conditions never draws the
+pickers, and its stage is the stage it always was.
 
 The histories are read when the Action reaches the stage rather than when the app
 opens, the way its tuning is: a Condition is declared nowhere, so finding out is
@@ -611,9 +614,14 @@ Tuning redraws that column and the Preview, configuration only its own panel and
 the Published pill beside the Project it belongs to, publishing only its own
 panel, and staleness only the flags it is written into. Clips are playing beside
 all four, and neither a slider let go of nor a Stale flag arriving may put a new
-video element in the page. Picking a history is the one change that is meant to:
-it is a change of which clips are playing, so it is a full paint like choosing an
-Action, and a Preview it would move is taken down by it.
+video element in the page — and the histories arriving from the command are no
+exception: they are read a beat after an Action reaches the stage, by which time
+its clips are playing, and learning that there are more streams to choose from
+does not change which two were chosen. So that draws the pickers and what the
+stage says the Action keeps, and nothing else. Picking one of them is the single
+change that is meant to put a new video element in the page, since it is a change
+of which clips are playing — and even that redraws the two clips and the pickers
+above them rather than the page they sit on.
 
 They are read for the Action on the stage rather than for all of them, because
 reading them imports the Action's module.

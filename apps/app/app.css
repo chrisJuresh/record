@@ -879,9 +879,6 @@ button.act.tiny:hover {
 }
 
 .empty .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   margin-top: 12px;
 }
 

@@ -97,6 +97,10 @@ before(async () => {
     await actionIn(workspace, name, "peek", peek);
   }
 
+  // Declared and never recorded across anything, so that "keeps no Conditions"
+  // has an Action to be asserted of.
+  await actionIn(workspace, "preferred", "unvaried", peek);
+
   plain = await recordOne("preferred", "peek");
   schemes = await recordMatrix("preferred", "peek", "--scheme", "light,dark");
   hooked = await recordMatrix("hooked", "peek", "--scheme", "light,dark");
@@ -558,10 +562,12 @@ test("`record conditions` names the Conditions an Action keeps Runs of", async (
  * different answer from an Action nobody declared -- the second is a failure and
  * this is an empty list.
  */
-test("`record conditions` answers nothing for an Action recorded under none", async () => {
-  const named = await conditionsOf("unhooked", "peek");
+test("`record conditions` answers an empty list for an Action recorded under none", async () => {
+  assert.deepEqual(await conditionsOf("preferred", "unvaried"), []);
 
-  assert.deepEqual(named, ["dark"], "the one this test recorded");
+  // ...and one Condition where one Condition is what was recorded, rather than
+  // every Condition this workspace has anywhere in it.
+  assert.deepEqual(await conditionsOf("unhooked", "peek"), ["dark"]);
 
   const { stderr, code } = await record(
     workspace,

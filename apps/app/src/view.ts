@@ -14,7 +14,10 @@
  * reason: they are read again as every request ends, and by then there are two
  * clips playing that a repaint would restart. `paintTuning` and
  * `paintConfiguration` draw the controls a value was just written from, and
- * nothing else on the page they sit on.
+ * nothing else on the page they sit on. `paintHistories` draws the pickers over
+ * an Action's histories when the command has just said what they are, and
+ * leaves the clips playing beneath them: which two Runs are on the stage does
+ * not change by learning that there are more streams to choose from.
  */
 import {
   artifactUrl,
@@ -33,7 +36,7 @@ import {
   actionsIn,
   chosenAction,
   chosenProject,
-  comparesOn,
+  comparedOn,
   configuring,
   historiesOf,
   latestOf,
@@ -44,7 +47,7 @@ import {
   varied,
   type ActionState,
   type App,
-  type Compares,
+  type Compared,
   type Doing,
   type History,
   type Preview,
@@ -134,6 +137,18 @@ type Live = {
   readonly marks: Map<string, Marks>;
   /** Where the rail says a Project is Published, by the Project it says it of. */
   readonly published: Map<string, HTMLElement>;
+  /** Where the stage says where the Project answers, and what the Action keeps. */
+  readonly meta: HTMLElement;
+  /**
+   * The pickers over the Action's histories, and the two clips below them. Two
+   * nodes rather than one, because the histories arrive from the command while
+   * the clips are playing -- and a list of streams to choose from does not
+   * change which two Runs were chosen.
+   */
+  readonly histories: HTMLElement;
+  readonly clips: HTMLElement;
+  /** What the Latest of the judged history produced, which moves with the clips. */
+  readonly artifacts: HTMLElement;
   /** Where the stage says the Action on it has gone Stale. */
   readonly standing: HTMLElement;
   /** Where the Run of the Action on the stage says what it is doing. */
@@ -174,6 +189,10 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   const published = new Map<string, HTMLElement>();
   const tally = el("span", { class: "faint" }, [tallyOf(app)]);
   const matrix = el("span", { class: "faint num" });
+  const meta = el("p", { class: "stage-meta" });
+  const histories = el("div", { class: "pickers" });
+  const clips = el("div", { class: "compared" });
+  const artifacts = el("aside", { class: "beside" });
   const standing = el("div", { class: "standing" });
   const progress = el("div", { class: "progress" });
   const parameters = el("aside", { class: "params" });
@@ -196,6 +215,10 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     el("div", { class: "body" }, [
       rail(app, handlers, marks, published),
       stage(app, handlers, {
+        meta,
+        histories,
+        clips,
+        artifacts,
         standing,
         progress,
         runAction,
@@ -217,6 +240,10 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
     matrix,
     marks,
     published,
+    meta,
+    histories,
+    clips,
+    artifacts,
     standing,
     progress,
     runAction,
@@ -232,6 +259,8 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   };
   paintProgress(app);
   paintMatrix(app);
+  paintHistories(app);
+  paintClips(app);
   paintStanding(app);
   paintTuning(app);
   // Drawn rather than left empty: these are the two that put a whole panel on
@@ -288,6 +317,71 @@ export function frameShowing(said: Showing | null): void {
   if (scrubbing !== undefined && document.activeElement !== scrubbing) {
     scrubbing.value = String(said.at);
   }
+}
+
+/**
+ * Draws the pickers over the Action's histories, and what the stage says the
+ * Action keeps -- and leaves the clips below them exactly where they are.
+ *
+ * Its own paint because the histories are read when an Action reaches the stage,
+ * a beat after the clips have started playing on it. Which two Runs are on the
+ * stage is what was picked, and learning that there are more streams to pick
+ * from does not change that -- so a list arriving must not put a new video
+ * element in the page, any more than a Stale flag may.
+ *
+ * The one thing below them it does redraw is a history with no Run in it, which
+ * is where an Action recorded only as a Matrix says so and names the Conditions
+ * it does keep. There is no clip in there to be taken out.
+ */
+export function paintHistories(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  const action = playing(app);
+  const project = chosenProject(app);
+
+  if (action === undefined || project === undefined) {
+    return;
+  }
+
+  const compared = comparedOn(app, action);
+
+  live.meta.textContent = recordedOf(project, action);
+  live.histories.replaceChildren(...pickers(action, compared, live.handlers));
+
+  if (compared.judged.run === null) {
+    paintClips(app);
+  }
+}
+
+/**
+ * ...and the two clips themselves, along with what the judged history's Latest
+ * produced -- which is what picking a history is for. The one change in the app
+ * deliberately meant to put new video elements in the page, because it is a
+ * change of which clips are playing.
+ *
+ * The Artifacts are drawn here rather than by a paint of their own because they
+ * are the same answer: they are the Latest's files, and which Run the Latest is
+ * is exactly what moved.
+ */
+export function paintClips(app: App): void {
+  if (live === undefined) {
+    return;
+  }
+
+  const action = playing(app);
+
+  if (action === undefined) {
+    live.clips.replaceChildren();
+    live.artifacts.replaceChildren();
+    return;
+  }
+
+  const compared = comparedOn(app, action);
+
+  live.clips.replaceChildren(comparison(action, compared));
+  live.artifacts.replaceChildren(...beside(compared));
 }
 
 /**
@@ -658,6 +752,10 @@ function railClip(action: ActionState): HTMLElement {
 
 /** The nodes on the stage that are written into rather than drawn again. */
 type Written = {
+  readonly meta: HTMLElement;
+  readonly histories: HTMLElement;
+  readonly clips: HTMLElement;
+  readonly artifacts: HTMLElement;
   readonly standing: HTMLElement;
   readonly progress: HTMLElement;
   readonly runAction: HTMLButtonElement | null;
@@ -670,7 +768,8 @@ type Written = {
 
 /** The Action on the stage: what it last produced, and what it can be asked for. */
 function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
-  const { standing, progress, runAction, configuration, where, publish } = written;
+  const { meta, histories, clips, artifacts, standing } = written;
+  const { progress, runAction, configuration, where, publish } = written;
   const trouble = app.trouble === null ? [] : [troublePanel("The app", app.trouble)];
 
   // What is about to go public takes the stage too, and for a stronger reason
@@ -743,7 +842,7 @@ function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
       button("Run Project", "act", () => handlers.runProject(project.configured.name)),
       ...(runAction === null ? [] : [runAction]),
     ]),
-    el("p", { class: "stage-meta" }, [recordedOf(project, action)]),
+    meta,
     standing,
     progress,
     ...(action.failure === null ? [] : [troublePanel("The Run failed", action.failure)]),
@@ -752,8 +851,8 @@ function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
     // a Preview takes the stage in place of them, and gives it back.
     preview === undefined
       ? el("div", { class: "stage-body" }, [
-          comparison(app, action, handlers),
-          beside(app, action),
+          el("div", { class: "compare-body" }, [histories, clips]),
+          artifacts,
         ])
       : el("div", { class: "stage-body previewing" }, [
           written.previewAbove,
@@ -928,37 +1027,33 @@ function standingOf(app: App): readonly Node[] {
  * the two are not the same, which is what having two of them on the stage
  * already says.
  */
-function comparison(app: App, action: ActionState, handlers: Handlers): HTMLElement {
+function comparison(action: ActionState, compared: Compared): HTMLElement {
   const streams = historiesOf(action);
-  const compares = comparesOn(app, action);
+  const latest = compared.judged.run;
 
-  return el("div", { class: "compare-body" }, [
-    // Drawn only where there is a choice to make. An Action nobody has recorded
-    // a Matrix of keeps one history, and its stage is the stage it always was.
-    ...(streams.length === 1 ? [] : [comparing(streams, compares, handlers)]),
-    compares.judged.run === null
-      ? nothingKept(streams, compares.judged.history, handlers)
-      : pair(streams, compares),
-  ]);
+  return latest === null
+    ? nothingKept(streams, compared.judged.history)
+    : pair(compared, latest);
 }
 
 /** Both clips, once the history being judged has a Latest to head the pair with. */
-function pair(streams: readonly History[], compares: Compares): HTMLElement {
-  const { judged, against } = compares;
-  // "this Action" beside the only clip there could be says nothing, so the
-  // histories are named on the clips only once there is more than one of them.
-  const named = streams.length > 1;
+function pair(compared: Compared, latest: Run): HTMLElement {
+  const { judged, against } = compared;
   const sameStream = against.history.condition === judged.history.condition;
   const which: Which = sameStream ? "Previous" : "Latest";
+  // Named on the clips only where the two come from different histories: two
+  // slots both reading "Latest" need telling apart, and a "Previous" sitting
+  // under a picker that says which history is being read does not.
+  const named = !sameStream;
 
   return el("div", { class: "compare" }, [
-    runPanel("Latest", judged, against.run, named),
+    runPanel(runHead("Latest", judged, named), latest, against.run),
     against.run === null
       ? el("div", { class: "run" }, [
           runHead(which, against, named),
           el("div", { class: "empty" }, [nothingToJudgeAgainst(against.history, sameStream)]),
         ])
-      : runPanel(which, against, null, named),
+      : runPanel(runHead(which, against, named), against.run, null),
   ]);
 }
 
@@ -973,14 +1068,22 @@ function pair(streams: readonly History[], compares: Compares): HTMLElement {
  * back to, and *this Condition and that one* is the same two players pointed at
  * two streams.
  */
-function comparing(
-  streams: readonly History[],
-  compares: Compares,
+function pickers(
+  action: ActionState,
+  compared: Compared,
   handlers: Handlers,
-): HTMLElement {
-  const judged = compares.judged.history;
+): readonly Node[] {
+  const streams = historiesOf(action);
+  const judged = compared.judged.history;
 
-  return el("div", { class: "comparing" }, [
+  // Nothing at all where there is no choice to make. An Action nobody has
+  // recorded a Matrix of keeps one history, and its stage is the stage it was.
+  if (streams.length === 1) {
+    return [];
+  }
+
+  return [
+    el("div", { class: "comparing" }, [
     el("label", { for: "judged" }, ["Latest of"]),
     pick(
       "judged",
@@ -1002,10 +1105,11 @@ function comparing(
             label: `the Latest of ${nameOfHistory(one)}`,
           })),
       ],
-      keyOfHistory(compares.against.history),
+      keyOfHistory(compared.against.history),
       (value) => handlers.judgeAgainst(conditionIn(value)),
     ),
-  ]);
+    ]),
+  ];
 }
 
 /**
@@ -1036,11 +1140,7 @@ function conditionIn(value: string): string | null {
  * reads it as never run -- so the Conditions it does keep are offered here
  * rather than left to be guessed at.
  */
-function nothingKept(
-  streams: readonly History[],
-  judged: History,
-  handlers: Handlers,
-): HTMLElement {
+function nothingKept(streams: readonly History[], judged: History): HTMLElement {
   const elsewhere = streams.filter(
     (one) => one.condition !== judged.condition && one.runs.length > 0,
   );
@@ -1057,15 +1157,13 @@ function nothingKept(
     judged.condition === null
       ? "This Action has no Run of its own: every Run of it was recorded under a Condition, and " +
         "each of those keeps a Latest and a history of its own. It is why the Action reads as " +
-        "never run — what staleness counts is this stream, and this stream is empty."
-      : `Nothing is kept under '${judged.condition}', though other Conditions of this Action do.`,
-    el(
-      "div",
-      { class: "row" },
-      elsewhere.map((one) =>
-        button(`Watch ${nameOfHistory(one)}`, "act", () => handlers.judge(one.condition)),
-      ),
-    ),
+        "never run — what staleness counts is this stream, and this stream is empty. "
+      : `Nothing is kept under '${judged.condition}'. `,
+    // Named rather than merely counted: what is above this is a menu of every
+    // history there is, including the empty one being read now, and which of
+    // them there is something to watch in is the thing worth saying here.
+    `What this Action keeps a clip of is ${elsewhere.map(nameOfHistory).join(", ")} — pick one `,
+    "above, and it plays here.",
   ]);
 }
 
@@ -1083,12 +1181,12 @@ function nothingToJudgeAgainst(against: History, sameStream: boolean): string {
  * can place is a clip nobody can judge, so the commit it was recorded against
  * and the Parameters it ran with are beside it rather than in a file somewhere.
  */
-function runPanel(which: Which, slot: Slot, against: Run | null, named: boolean): HTMLElement {
-  const run = slot.run;
-
+function runPanel(head: HTMLElement, run: Run, against: Run | null): HTMLElement {
   return el("div", { class: "run" }, [
-    runHead(which, slot, named),
-    ...(run === null ? [] : [clip(run), facts(run, against), recordedWith(run, against)]),
+    head,
+    clip(run),
+    facts(run, against),
+    recordedWith(run, against),
   ]);
 }
 
@@ -1241,8 +1339,8 @@ function clip(run: Run): HTMLElement {
  * README handed `<action>-dark.mp4` in place of `<action>.mp4` is exactly the
  * mistake naming them apart exists to prevent.
  */
-function beside(app: App, action: ActionState): HTMLElement {
-  const judged = comparesOn(app, action).judged;
+function beside(compared: Compared): readonly Node[] {
+  const judged = compared.judged;
   const latest = judged.run;
   const head = el("h3", {}, [
     "Artifacts of the Latest",
@@ -1252,13 +1350,10 @@ function beside(app: App, action: ActionState): HTMLElement {
   ]);
 
   if (latest === null) {
-    return el("aside", { class: "beside" }, [
-      head,
-      el("p", { class: "faint" }, ["A Run produces an MP4, a WebM and a GIF."]),
-    ]);
+    return [head, el("p", { class: "faint" }, ["A Run produces an MP4, a WebM and a GIF."])];
   }
 
-  return el("aside", { class: "beside" }, [
+  return [
     head,
     el("ul", {}, [
       ...latest.artifacts.map((artifact) =>
@@ -1276,7 +1371,7 @@ function beside(app: App, action: ActionState): HTMLElement {
         el("span", { class: "faint num" }, [`${(secondsOf(latest) ?? 0).toFixed(1)}s`]),
       ]),
     ]),
-  ]);
+  ];
 }
 
 /** How long the clip runs, as the video Artifacts were encoded. */

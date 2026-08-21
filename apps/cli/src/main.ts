@@ -660,10 +660,10 @@ async function history(
   const kept = await readHistory(workspace(), project, action, condition);
   // Named only where the Action's own Runs were asked for: a Condition's
   // history is one stream, and pointing from it back at its siblings is noise.
-  const conditions =
+  const alsoUnder =
     condition === undefined ? await readConditions(workspace(), project, action) : [];
 
-  return emit(json, kept, () => asHistory(kept, conditions));
+  return emit(json, kept, () => asHistory(kept, alsoUnder));
 }
 
 /**

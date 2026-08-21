@@ -19,6 +19,7 @@ import {
   judgeAgainst,
   misconfigured,
   nothingYet,
+  picksOneOf,
   previewing,
   progressed,
   projectOf,
@@ -36,7 +37,9 @@ import {
 import { close as closePreview, play, replay, showFrame } from "./player.js";
 import {
   paint,
+  paintClips,
   paintConfiguration,
+  paintHistories,
   paintMatrix,
   paintPreview,
   paintProgress,
@@ -140,15 +143,12 @@ const handlers: Handlers = {
 
   judge(condition) {
     judge(app, condition);
-    // A full paint, and deliberately: this is the one change in the app that is
-    // meant to put new video elements in the page, because it is a change of
-    // which clips are playing.
-    repaint();
+    picked();
   },
 
   judgeAgainst(condition) {
     judgeAgainst(app, condition);
-    repaint();
+    picked();
   },
 
   showRailClips(showing) {
@@ -422,6 +422,7 @@ async function readConditions(project: string, action: string): Promise<void> {
     return;
   }
 
+
   const troubles: string[] = [];
   const histories = await eachAtOnce(named, (condition) =>
     readCondition(project, action, condition, troubles),
@@ -434,12 +435,22 @@ async function readConditions(project: string, action: string): Promise<void> {
   }
 
   settled.conditions = histories;
-  app.trouble = troubles.length === 0 ? app.trouble : troubles.join("\n");
 
-  // Nothing on the stage changes for an Action that keeps none, and a Preview
-  // has the stage in place of the clips -- taking that down is a paint of its
-  // own, and the picker is drawn by it.
-  if (histories.length > 0 && app.preview === null) {
+  // The pickers and what the stage says the Action keeps, and the clips only
+  // where they really moved. This arrives a beat after choosing an Action, by
+  // which time its clips are playing -- so learning that there are more streams
+  // to choose from must not put a new video element in the page, and learning
+  // that one of them is the stream being looked at has to.
+  if (picksOneOf(app, histories)) {
+    picked();
+  } else {
+    paintHistories(app);
+  }
+
+  if (troubles.length > 0) {
+    // ...and a history that could not be read is the app saying what it could
+    // not do, which is drawn where the app's own trouble is drawn.
+    app.trouble = troubles.join("\n");
     repaint();
   }
 }
@@ -817,6 +828,22 @@ async function ask(what: api.Ask): Promise<void> {
       void settle();
     },
   });
+}
+
+/**
+ * What picking a history costs: the two clips, and the pickers above them.
+ *
+ * The clips because this is the one change in the app deliberately meant to put
+ * new video elements in the page -- it is a change of which clips are playing.
+ * The pickers because the second one's choices are named against the first: what
+ * *the Run before it* is depends on which history is being judged.
+ *
+ * Not a full paint. The rail beside it is full of clips a repaint would restart,
+ * and none of them is what changed.
+ */
+function picked(): void {
+  paintHistories(app);
+  paintClips(app);
 }
 
 /**
