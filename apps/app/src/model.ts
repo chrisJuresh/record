@@ -32,6 +32,21 @@ export type Doing = {
   readonly frames: { readonly captured: number; readonly of: number } | null;
 };
 
+/**
+ * One stream of Runs with one Latest: an Action's own, or one of its Conditions'.
+ *
+ * They are never folded together. Each keeps its own ten and its own newest, so
+ * "the Latest" only means anything once it is said which stream's -- an Action
+ * recorded in light alone reading as current would be exactly the quiet
+ * under-reporting the split exists to prevent.
+ */
+export type History = {
+  /** The Condition these are the Runs of, and nothing for the Action's own. */
+  readonly condition: string | null;
+  /** Every Run of it still kept on this machine, newest first. */
+  readonly runs: readonly Run[];
+};
+
 export type ActionState = {
   readonly project: string;
   readonly action: string;
@@ -40,8 +55,23 @@ export type ActionState = {
    * Latest and the second is what the Latest is judged against, which is what
    * makes re-recording worth pressing -- so the history is held rather than the
    * newest of it plucked out of the answer and the rest dropped.
+   *
+   * The Action's own Runs, and no Condition's: this is the stream `record
+   * status` reports it against, so what is in here is what makes it current.
    */
   history: readonly Run[];
+  /**
+   * The Conditions a Matrix has recorded it under and the Runs of each, once
+   * they have been read -- which is when it reaches the stage, since a
+   * Condition is declared nowhere and finding out is a command per Action.
+   *
+   * Nothing where they have not been read, which is a different answer from an
+   * Action that keeps none: only one of those means there is nothing to watch.
+   * A Run recorded under a Condition that is not in here puts it back to
+   * nothing, because which Conditions there are is the command's answer rather
+   * than something to work out from the Run that just landed.
+   */
+  conditions: readonly History[] | null;
   /**
    * Whether the Project has been committed to since it last ran, as
    * `record status` reports it -- and false where that command has not answered
@@ -84,6 +114,43 @@ export type ProjectState = {
 
 /** The Action on the stage, which is the one whose Latest is playing. */
 export type Chosen = { readonly project: string; readonly action: string };
+
+/**
+ * Which history each of the stage's two clips comes from.
+ *
+ * The stage has always held two clips meaning *this Run and the one before it*.
+ * A Matrix wants them to mean *this Condition and that one* as well, and both
+ * comparisons are worth having -- so the two slots are named rather than
+ * doubled: a second pair of players would be four clips playing at once, and the
+ * one thing a stage must stay is readable.
+ *
+ * `judged` picks the history whose Latest is the clip being judged. `against`
+ * picks what it is judged against, and naming the same history is what *the Run
+ * before it* means -- which is why both of them unpicked spell today's stage
+ * exactly, and an Action that keeps no Conditions never draws the control.
+ *
+ * A Condition is named; the Action's own Runs are nothing. A name this Action
+ * does not keep falls back to its own Runs rather than emptying the stage, so
+ * choosing another Action while looking at `dark` keeps looking at `dark`
+ * wherever there is one and lands on the Action itself where there is not.
+ */
+export type Picked = {
+  readonly judged: string | null;
+  readonly against: string | null;
+};
+
+/** One of the stage's two clips: which history it came from, and which Run of it. */
+export type Slot = {
+  readonly history: History;
+  /** The Run playing in it, and nothing where that history keeps none. */
+  readonly run: Run | null;
+};
+
+/** Both of them, resolved against the histories this Action really keeps. */
+export type Compared = {
+  readonly judged: Slot;
+  readonly against: Slot;
+};
 
 /**
  * What the stage is showing: the Action's clips, what one Project is configured
@@ -161,6 +228,8 @@ export const colourSchemes = ["light", "dark"] as const;
 export type App = {
   projects: readonly ProjectState[];
   chosen: Chosen | null;
+  /** Which histories of it the stage's two clips come from, one of them a Latest. */
+  picked: Picked;
   /** What every record button records across, which is nothing until it is ticked. */
   matrix: Matrix;
   /** The Preview on the stage in place of the clips, or nothing where none is. */
@@ -212,6 +281,7 @@ export function nothingYet(railClips: boolean): App {
   return {
     projects: [],
     chosen: null,
+    picked: { judged: null, against: null },
     matrix: { schemes: [], widths: "" },
     preview: null,
     stage: { kind: "action" },
@@ -276,13 +346,81 @@ export function latestOf(action: ActionState): Run | null {
   return action.history[0] ?? null;
 }
 
+/** An Action's own Runs, as one history beside its Conditions'. */
+export function ownRunsOf(action: ActionState): History {
+  return { condition: null, runs: action.history };
+}
+
 /**
- * The Run before the Latest, which is what a change is judged against -- and
- * nothing for an Action that has only ever run once, which is an absence to say
- * rather than a player to leave empty.
+ * Every history this Action keeps, the Action's own first and its Conditions in
+ * the order they are named -- which is what the stage can be asked to show.
+ *
+ * One entry for an Action nobody has recorded a Matrix of, and one for an Action
+ * whose Conditions have not been read yet: until they have been, what there is
+ * to watch is what the app has been told about.
  */
-export function previousOf(action: ActionState): Run | null {
-  return action.history[1] ?? null;
+export function historiesOf(action: ActionState): readonly History[] {
+  return [ownRunsOf(action), ...(action.conditions ?? [])];
+}
+
+/**
+ * Which two Runs the stage is showing, resolved against the histories this
+ * Action really keeps.
+ *
+ * Where both slots name one history the second Run is the one before the first,
+ * which is the stage as it has always read. Where they name two, each is that
+ * history's own Latest -- the comparison a Matrix was recorded for.
+ */
+export function comparedOn(app: App, action: ActionState): Compared {
+  const streams = historiesOf(action);
+  const own = ownRunsOf(action);
+  const judged = streams.find((one) => one.condition === app.picked.judged) ?? own;
+  const against = streams.find((one) => one.condition === app.picked.against) ?? judged;
+  // Compared by the Condition they are of rather than by identity: an Action's
+  // own history is a view over its Runs rather than a kept object.
+  const same = against.condition === judged.condition;
+
+  return {
+    judged: { history: judged, run: judged.runs[0] ?? null },
+    against: {
+      history: against,
+      run: (same ? judged.runs[1] : against.runs[0]) ?? null,
+    },
+  };
+}
+
+/**
+ * Puts one history's Latest on the stage, leaving what it is judged against
+ * exactly as it was.
+ *
+ * So picking a Condition on a stage nobody has touched puts its Latest **beside
+ * the Action's own**, which is the comparison a Matrix was recorded for and the
+ * one worth reaching in a single press. Judging it against the Run before it
+ * instead is the second picker, and a pairing already set up survives picking a
+ * different Condition to look at.
+ */
+export function judge(app: App, condition: string | null): void {
+  app.picked = { ...app.picked, judged: condition };
+}
+
+/** ...and judges what is already there against another history's Latest. */
+export function judgeAgainst(app: App, condition: string | null): void {
+  app.picked = { ...app.picked, against: condition };
+}
+
+/**
+ * Whether either pick names one of these histories, which is whether learning
+ * about them changes which two Runs the stage is showing.
+ *
+ * A pick naming a history the app had not been told about resolves to the
+ * Action's own Runs, so being told about it moves the clips -- and being told
+ * about histories neither pick names moves nothing, which is the difference
+ * between drawing the clips again and restarting one that was already right.
+ */
+export function picksOneOf(app: App, histories: readonly History[]): boolean {
+  return [app.picked.judged, app.picked.against].some(
+    (picked) => picked !== null && histories.some((one) => one.condition === picked),
+  );
 }
 
 /** One Action of one Project, or nothing where neither is configured here. */
@@ -524,7 +662,7 @@ export function ended(app: App, request: Request): void {
   }
 }
 
-/** One Run that recorded, as the Latest of the Action it recorded. */
+/** One Run that recorded, as the Latest of the history it recorded into. */
 function recorded(app: App, run: Run): void {
   const action = actionOf(app, run.project, run.action);
 
@@ -534,13 +672,39 @@ function recorded(app: App, run: Run): void {
 
   action.failure = null;
 
-  // A Condition's Runs are a history of their own with a Latest of their own, so
-  // the clip of the dark theme is not the Action's Latest however new it is.
-  if (run.condition === null) {
+  const condition = run.condition;
+
+  if (condition === null) {
     // The Latest, and what was the Latest is what it is now judged against. The
     // command prunes the far end of the history; nothing here reads that far.
     action.history = [run, ...action.history];
+    return;
   }
+
+  // A Condition's Runs are a history of their own with a Latest of their own, so
+  // the clip of the dark theme goes to the head of that stream rather than
+  // becoming the Action's Latest however new it is.
+  if (action.conditions === null) {
+    // Which Conditions this Action keeps has not been read, so there is no
+    // stream to put it at the head of -- and inventing one from this Run alone
+    // would read as the only Run kept under it. Reading them is what finds it,
+    // which is what reaching the stage does.
+    return;
+  }
+
+  if (!action.conditions.some((one) => one.condition === condition.name)) {
+    // A Condition recorded for the first time. Which Conditions there are and
+    // what order they are named in is the command's answer, so this is marked
+    // unread rather than added to: putting the stream in here would mean
+    // deciding where among the others it goes, which is a rule that already
+    // lives in the tool.
+    action.conditions = null;
+    return;
+  }
+
+  action.conditions = action.conditions.map((one) =>
+    one.condition === condition.name ? { ...one, runs: [run, ...one.runs] } : one,
+  );
 }
 
 function blame(app: App, project: string, action: string, message: string): void {

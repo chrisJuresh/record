@@ -15,8 +15,11 @@ import {
   conditionsAsked,
   configuredWith,
   ended,
+  judge,
+  judgeAgainst,
   misconfigured,
   nothingYet,
+  picksOneOf,
   previewing,
   progressed,
   projectOf,
@@ -28,12 +31,15 @@ import {
   varyWidths,
   type ActionState,
   type App,
+  type History,
   type ProjectState,
 } from "./model.js";
 import { close as closePreview, play, replay, showFrame } from "./player.js";
 import {
   paint,
+  paintClips,
   paintConfiguration,
+  paintHistories,
   paintMatrix,
   paintPreview,
   paintProgress,
@@ -76,6 +82,11 @@ const handlers: Handlers = {
     // that one's clips -- which is what a repaint does for itself.
     repaint();
     void readTuning(project, action);
+    // ...and which Conditions it keeps Runs of, which is what the stage can be
+    // asked to show. Read here rather than when the app opens, for the same
+    // reason its tuning is: it is a command for the Action and one for each
+    // Condition, and the machine has Runs to do.
+    void readConditions(project, action);
   },
 
   showConfiguration(project) {
@@ -128,6 +139,16 @@ const handlers: Handlers = {
   varyWidths(typed) {
     varyWidths(app, typed);
     paintMatrix(app);
+  },
+
+  judge(condition) {
+    judge(app, condition);
+    picked();
+  },
+
+  judgeAgainst(condition) {
+    judgeAgainst(app, condition);
+    picked();
   },
 
   showRailClips(showing) {
@@ -241,6 +262,7 @@ async function settle(): Promise<void> {
   // for the one being looked at rather than for every Action there is.
   if (app.chosen !== null) {
     await readTuning(app.chosen.project, app.chosen.action);
+    await readConditions(app.chosen.project, app.chosen.action);
   }
 }
 
@@ -277,6 +299,9 @@ async function readAction(
   const idle = {
     project,
     action,
+    // Which Conditions it has been recorded under is read when it reaches the
+    // stage, and nothing is a different answer from an Action that keeps none.
+    conditions: null,
     stale: false,
     doing: null,
     failure: null,
@@ -363,6 +388,89 @@ function tuning(
     paintTuning(app);
     scrubbed(project, action, []);
   });
+}
+
+/**
+ * The Conditions the Action on the stage keeps Runs of, and the Runs of each.
+ *
+ * Read when it reaches the stage rather than when the app opens, like its
+ * tuning: a Condition is declared nowhere -- it is whatever a Matrix has been
+ * asked for -- so finding out is one command for the Action and one more for
+ * every Condition it answers with, and asking that of every Action of every
+ * Project to draw one of them is work nobody asked for.
+ *
+ * Read once and kept. What a Run adds is the Run itself, which arrives at the
+ * head of the stream it recorded into when the request ends.
+ */
+async function readConditions(project: string, action: string): Promise<void> {
+  const state = actionOf(app, project, action);
+
+  if (state === undefined || state.conditions !== null) {
+    return;
+  }
+
+  let named: readonly string[];
+
+  try {
+    named = await api.conditions(project, action);
+  } catch (failure) {
+    // Left unread rather than recorded as none: an Action whose Conditions
+    // could not be listed is not an Action without any, and choosing it again
+    // is what asks a second time.
+    app.trouble = `'${project} ${action}': ${messageOf(failure)}`;
+    repaint();
+    return;
+  }
+
+
+  const troubles: string[] = [];
+  const histories = await eachAtOnce(named, (condition) =>
+    readCondition(project, action, condition, troubles),
+  );
+
+  const settled = actionOf(app, project, action);
+
+  if (settled === undefined) {
+    return;
+  }
+
+  settled.conditions = histories;
+
+  // The pickers and what the stage says the Action keeps, and the clips only
+  // where they really moved. This arrives a beat after choosing an Action, by
+  // which time its clips are playing -- so learning that there are more streams
+  // to choose from must not put a new video element in the page, and learning
+  // that one of them is the stream being looked at has to.
+  if (picksOneOf(app, histories)) {
+    picked();
+  } else {
+    paintHistories(app);
+  }
+
+  if (troubles.length > 0) {
+    // ...and a history that could not be read is the app saying what it could
+    // not do, which is drawn where the app's own trouble is drawn.
+    app.trouble = troubles.join("\n");
+    repaint();
+  }
+}
+
+/** One Condition's Runs, newest first, or the Condition with none where they could not be read. */
+async function readCondition(
+  project: string,
+  action: string,
+  condition: string,
+  troubles: string[],
+): Promise<History> {
+  try {
+    return { condition, runs: await api.history(project, action, condition) };
+  } catch (failure) {
+    // Named with nothing to play, which is what it is: the Condition is there,
+    // and what could not be read is what it has kept.
+    troubles.push(`'${project} ${action} ${condition}': ${messageOf(failure)}`);
+
+    return { condition, runs: [] };
+  }
 }
 
 /**
@@ -692,6 +800,14 @@ async function ask(what: api.Ask): Promise<void> {
       // Stale, and which Actions are is the command's answer rather than
       // something worked out from the Run that just landed.
       void readStanding();
+
+      // A Matrix records into streams the app may never have asked about. Runs
+      // of a stream it has read are already at the head of it; this is for the
+      // Action whose Conditions were never read at all, and it asks nothing
+      // where they have been.
+      if (app.chosen !== null) {
+        void readConditions(app.chosen.project, app.chosen.action);
+      }
     },
 
     lost() {
@@ -712,6 +828,22 @@ async function ask(what: api.Ask): Promise<void> {
       void settle();
     },
   });
+}
+
+/**
+ * What picking a history costs: the two clips, and the pickers above them.
+ *
+ * The clips because this is the one change in the app deliberately meant to put
+ * new video elements in the page -- it is a change of which clips are playing.
+ * The pickers because the second one's choices are named against the first: what
+ * *the Run before it* is depends on which history is being judged.
+ *
+ * Not a full paint. The rail beside it is full of clips a repaint would restart,
+ * and none of them is what changed.
+ */
+function picked(): void {
+  paintHistories(app);
+  paintClips(app);
 }
 
 /**

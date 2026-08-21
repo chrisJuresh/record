@@ -430,6 +430,22 @@ test("the Runs an Action still keeps are served, newest first", async () => {
 });
 
 /**
+ * How the app finds a Condition's clip: it asks which histories there are, and
+ * then asks for one of them by name. Its own path rather than a name under
+ * history's, where a Condition called `conditions` would answer for it.
+ */
+test("the Conditions an Action keeps Runs of are served, as the command names them", async () => {
+  const named = await read<string[]>("api/conditions/demo/peek");
+  const { stdout } = await record(workspace, "conditions", "demo", "peek", "--json");
+
+  assert.deepEqual(named, JSON.parse(stdout));
+
+  const offered = await read<{ endpoints: string[] }>("api");
+
+  assert.ok(offered.endpoints.includes("GET  /api/conditions/<project>/<action>"));
+});
+
+/**
  * The reason the server exists rather than the UI shelling out: a ten-second
  * render must not look like a hang. The request to record is answered at once
  * and what the Run is doing arrives as it does it -- so a client that watched

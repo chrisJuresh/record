@@ -206,6 +206,16 @@ button.act.quiet {
   display: none;
 }
 
+/*
+ * A Condition drawn inside a heading that is set in small capitals. Its name is
+ * a directory and half of an Artifact's filename, so it is drawn exactly as it
+ * is written: `DARK-320W` reads as a different Condition from the one on disk.
+ */
+h3 .pill {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* -------------------------------------------------------------------- rail */
 
 .rail {
@@ -382,6 +392,31 @@ button.act.quiet {
   gap: 18px;
   align-items: start;
   margin-top: 14px;
+}
+
+/*
+ * Which histories the two clips come from, above them. Present only where a
+ * Matrix has been recorded: an Action that keeps one history has nothing to pick
+ * between, and a row of pickers over one name is furniture.
+ */
+.comparing {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.comparing select.picking {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
 }
 
 /*
