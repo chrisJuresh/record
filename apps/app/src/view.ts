@@ -33,19 +33,23 @@ import {
   actionsIn,
   chosenAction,
   chosenProject,
+  comparesOn,
   configuring,
+  historiesOf,
   latestOf,
   playing,
   previewing,
   colourSchemes,
-  previousOf,
   recording,
   varied,
   type ActionState,
   type App,
+  type Compares,
   type Doing,
+  type History,
   type Preview,
   type ProjectState,
+  type Slot,
 } from "./model.js";
 import { playerFor, refit, showing, type Showing } from "./player.js";
 
@@ -63,6 +67,17 @@ export type Handlers = {
   /** ...and across these viewport widths, exactly as they were typed. */
   varyWidths(typed: string): void;
   showRailClips(showing: boolean): void;
+  /**
+   * Puts one history's Latest on the stage -- the Action's own Runs, or those of
+   * one Condition it has been recorded under -- judged against the Run before it.
+   */
+  judge(condition: string | null): void;
+  /**
+   * ...and judges it against another history's Latest instead, which is the
+   * comparison a Matrix was recorded for. Naming the same history again is the
+   * Run before it.
+   */
+  judgeAgainst(condition: string | null): void;
   /** Overrides one Parameter of one Action, by the value it is to take. */
   tune(project: string, action: string, name: string, value: ParameterSetting): void;
   /**
@@ -736,7 +751,10 @@ function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
     // holding two videos and a live site at once is a stage nobody can read. So
     // a Preview takes the stage in place of them, and gives it back.
     preview === undefined
-      ? el("div", { class: "stage-body" }, [comparison(action), beside(action)])
+      ? el("div", { class: "stage-body" }, [
+          comparison(app, action, handlers),
+          beside(app, action),
+        ])
       : el("div", { class: "stage-body previewing" }, [
           written.previewAbove,
           ...(preview.origin === null || preview.timeline === null
@@ -844,11 +862,20 @@ function costOf(timeline: NonNullable<Preview["timeline"]>): string {
  * Where the Project answers, and that this Action has never been recorded where
  * it has not. What each Run was recorded under is said beside that Run rather
  * than here, now that there are two of them on the stage.
+ *
+ * An Action with Conditions but no Runs of its own is said as exactly that
+ * rather than as never recorded -- there are clips of it, they are under the
+ * picker, and `record status` reads it as never run because the stream it counts
+ * is the empty one. Saying "never recorded" over a playing clip would be the
+ * one reading that is plainly false.
  */
 function recordedOf(project: ProjectState, action: ActionState): string {
+  const nothing =
+    (action.conditions ?? []).length === 0 ? "never recorded" : "no Run of its own";
+
   return [
     project.configured.baseUrl,
-    ...(latestOf(action) === null ? ["never recorded"] : []),
+    ...(latestOf(action) === null ? [nothing] : []),
   ].join(" · ");
 }
 
@@ -889,40 +916,166 @@ function standingOf(app: App): readonly Node[] {
 }
 
 /**
- * The Latest and the Run before it, side by side.
+ * The two clips, and -- where a Matrix has been recorded -- what they are.
  *
  * One clip says what the site does now; two say what changed, which is the half
- * of re-recording that makes it worth pressing. An Action with nothing to
- * compare says so plainly rather than standing an empty player next to the
- * clip it has.
+ * of re-recording that makes it worth pressing. A history with nothing to
+ * compare says so plainly rather than standing an empty player next to the clip
+ * it has.
  *
- * The Latest is the one drawn against the other, so a difference reads as
- * something this Run has and the one before it did not. Marked on both, it would
- * say only that the two are not the same, which is what having two of them on
- * the stage already says.
+ * The first is the one drawn against the second, so a difference reads as
+ * something it has and the other did not. Marked on both, it would say only that
+ * the two are not the same, which is what having two of them on the stage
+ * already says.
  */
-function comparison(action: ActionState): HTMLElement {
-  const latest = latestOf(action);
-  const previous = previousOf(action);
+function comparison(app: App, action: ActionState, handlers: Handlers): HTMLElement {
+  const streams = historiesOf(action);
+  const compares = comparesOn(app, action);
 
-  if (latest === null) {
+  return el("div", { class: "compare-body" }, [
+    // Drawn only where there is a choice to make. An Action nobody has recorded
+    // a Matrix of keeps one history, and its stage is the stage it always was.
+    ...(streams.length === 1 ? [] : [comparing(streams, compares, handlers)]),
+    compares.judged.run === null
+      ? nothingKept(streams, compares.judged.history, handlers)
+      : pair(streams, compares),
+  ]);
+}
+
+/** Both clips, once the history being judged has a Latest to head the pair with. */
+function pair(streams: readonly History[], compares: Compares): HTMLElement {
+  const { judged, against } = compares;
+  // "this Action" beside the only clip there could be says nothing, so the
+  // histories are named on the clips only once there is more than one of them.
+  const named = streams.length > 1;
+  const sameStream = against.history.condition === judged.history.condition;
+  const which: Which = sameStream ? "Previous" : "Latest";
+
+  return el("div", { class: "compare" }, [
+    runPanel("Latest", judged, against.run, named),
+    against.run === null
+      ? el("div", { class: "run" }, [
+          runHead(which, against, named),
+          el("div", { class: "empty" }, [nothingToJudgeAgainst(against.history, sameStream)]),
+        ])
+      : runPanel(which, against, null, named),
+  ]);
+}
+
+/**
+ * Which histories the two clips come from: the one whose Latest is being judged,
+ * and what it is judged against.
+ *
+ * Two pickers over one pair of players rather than a second pair of them. The
+ * stage's two slots have always meant *this Run and the one before it*, and
+ * leaving the second picker on the history the first names is still exactly
+ * that -- so today's comparison is the default here rather than a mode to get
+ * back to, and *this Condition and that one* is the same two players pointed at
+ * two streams.
+ */
+function comparing(
+  streams: readonly History[],
+  compares: Compares,
+  handlers: Handlers,
+): HTMLElement {
+  const judged = compares.judged.history;
+
+  return el("div", { class: "comparing" }, [
+    el("label", { for: "judged" }, ["Latest of"]),
+    pick(
+      "judged",
+      streams.map((one) => ({ value: keyOfHistory(one), label: nameOfHistory(one) })),
+      keyOfHistory(judged),
+      (value) => handlers.judge(conditionIn(value)),
+    ),
+    el("label", { for: "against" }, ["judged against"]),
+    pick(
+      "against",
+      [
+        // Naming the same history is what "the Run before it" means, so it is
+        // offered in those words rather than as that history's name twice.
+        { value: keyOfHistory(judged), label: "the Run before it" },
+        ...streams
+          .filter((one) => one.condition !== judged.condition)
+          .map((one) => ({
+            value: keyOfHistory(one),
+            label: `the Latest of ${nameOfHistory(one)}`,
+          })),
+      ],
+      keyOfHistory(compares.against.history),
+      (value) => handlers.judgeAgainst(conditionIn(value)),
+    ),
+  ]);
+}
+
+/**
+ * What one history is called where it is picked and where its clip is headed: a
+ * Condition by the name it recorded and was named apart under, and an Action's
+ * own Runs as the Action itself.
+ */
+function nameOfHistory(history: History): string {
+  return history.condition ?? "this Action";
+}
+
+/**
+ * What one history is picked by. A Condition is named for the scheme and the
+ * width it varied and so is never empty, which leaves nothing as the one thing
+ * left to spell an Action's own Runs with.
+ */
+function keyOfHistory(history: History): string {
+  return history.condition ?? "";
+}
+
+function conditionIn(value: string): string | null {
+  return value === "" ? null : value;
+}
+
+/**
+ * A history the stage is pointed at that keeps no Run. For an Action recorded
+ * only as a Matrix that is its own Runs -- which is also why `record status`
+ * reads it as never run -- so the Conditions it does keep are offered here
+ * rather than left to be guessed at.
+ */
+function nothingKept(
+  streams: readonly History[],
+  judged: History,
+  handlers: Handlers,
+): HTMLElement {
+  const elsewhere = streams.filter(
+    (one) => one.condition !== judged.condition && one.runs.length > 0,
+  );
+
+  if (elsewhere.length === 0) {
     return el("div", { class: "empty" }, [
-      "Nothing has been recorded for this Action yet. Run it, and the clip plays here.",
+      judged.condition === null
+        ? "Nothing has been recorded for this Action yet. Run it, and the clip plays here."
+        : `Nothing is kept under '${judged.condition}'. Record it again and the clip plays here.`,
     ]);
   }
 
-  return el("div", { class: "compare" }, [
-    runPanel("Latest", latest, previous),
-    previous === null
-      ? el("div", { class: "run" }, [
-          runHead("Previous", null),
-          el("div", { class: "empty" }, [
-            "This is the only Run of this Action kept on this machine. Run it again and the one " +
-              "before it plays here, to judge the change against.",
-          ]),
-        ])
-      : runPanel("Previous", previous, null),
+  return el("div", { class: "empty" }, [
+    judged.condition === null
+      ? "This Action has no Run of its own: every Run of it was recorded under a Condition, and " +
+        "each of those keeps a Latest and a history of its own. It is why the Action reads as " +
+        "never run — what staleness counts is this stream, and this stream is empty."
+      : `Nothing is kept under '${judged.condition}', though other Conditions of this Action do.`,
+    el(
+      "div",
+      { class: "row" },
+      elsewhere.map((one) =>
+        button(`Watch ${nameOfHistory(one)}`, "act", () => handlers.judge(one.condition)),
+      ),
+    ),
   ]);
+}
+
+/** ...and where it is the second slot that has nothing in it. */
+function nothingToJudgeAgainst(against: History, sameStream: boolean): string {
+  return sameStream
+    ? "This is the only Run of this history kept on this machine. Run it again and the one " +
+        "before it plays here, to judge the change against."
+    : `Nothing is kept under '${nameOfHistory(against)}' to judge it against. Record it, and ` +
+        "its Latest plays here.";
 }
 
 /**
@@ -930,22 +1083,49 @@ function comparison(action: ActionState): HTMLElement {
  * can place is a clip nobody can judge, so the commit it was recorded against
  * and the Parameters it ran with are beside it rather than in a file somewhere.
  */
-function runPanel(which: Which, run: Run, against: Run | null): HTMLElement {
+function runPanel(which: Which, slot: Slot, against: Run | null, named: boolean): HTMLElement {
+  const run = slot.run;
+
   return el("div", { class: "run" }, [
-    runHead(which, run),
-    clip(run),
-    facts(run, against),
-    recordedWith(run, against),
+    runHead(which, slot, named),
+    ...(run === null ? [] : [clip(run), facts(run, against), recordedWith(run, against)]),
   ]);
 }
 
-/** Which of the two a clip is, and when it was recorded. */
-function runHead(which: Which, run: Run | null): HTMLElement {
+/**
+ * Which of the two a clip is, which history it came from, and when it was
+ * recorded.
+ */
+function runHead(which: Which, slot: Slot, named: boolean): HTMLElement {
   return el("div", { class: "run-head" }, [
     el("h3", {}, [which]),
+    ...(named ? [el("span", { class: "pill" }, [nameOfHistory(slot.history)])] : []),
     el("span", { class: "spacer" }),
-    ...(run === null ? [] : [el("span", { class: "faint" }, [ago(run.recordedAt)])]),
+    ...(slot.run === null ? [] : [el("span", { class: "faint" }, [ago(slot.run.recordedAt)])]),
   ]);
+}
+
+/**
+ * One picker over the histories, which is what a Matrix leaves there to choose
+ * between: a short list of names, and no state of its own.
+ */
+function pick(
+  field: string,
+  options: readonly { readonly value: string; readonly label: string }[],
+  chosen: string,
+  chose: (value: string) => void,
+): HTMLElement {
+  const select = el("select", { id: field, class: "picking" });
+
+  for (const option of options) {
+    const drawn = el("option", { value: option.value }, [option.label]);
+    drawn.selected = option.value === chosen;
+    select.append(drawn);
+  }
+
+  select.addEventListener("change", () => chose(select.value));
+
+  return select;
 }
 
 /**
@@ -1055,19 +1235,31 @@ function clip(run: Run): HTMLElement {
  * The width to the right of the clips, which the layout leaves over: what the
  * Latest produced, and where each of its files is. The Latest's rather than the
  * previous Run's, because the Latest is what is embedded and Published.
+ *
+ * The Latest of the history being judged, and the history is named where there
+ * is more than one -- a Condition's Artifacts are named apart on purpose, and a
+ * README handed `<action>-dark.mp4` in place of `<action>.mp4` is exactly the
+ * mistake naming them apart exists to prevent.
  */
-function beside(action: ActionState): HTMLElement {
-  const latest = latestOf(action);
+function beside(app: App, action: ActionState): HTMLElement {
+  const judged = comparesOn(app, action).judged;
+  const latest = judged.run;
+  const head = el("h3", {}, [
+    "Artifacts of the Latest",
+    ...(judged.history.condition === null
+      ? []
+      : [el("span", { class: "pill" }, [judged.history.condition])]),
+  ]);
 
   if (latest === null) {
     return el("aside", { class: "beside" }, [
-      el("h3", {}, ["Artifacts of the Latest"]),
+      head,
       el("p", { class: "faint" }, ["A Run produces an MP4, a WebM and a GIF."]),
     ]);
   }
 
   return el("aside", { class: "beside" }, [
-    el("h3", {}, ["Artifacts of the Latest"]),
+    head,
     el("ul", {}, [
       ...latest.artifacts.map((artifact) =>
         el("li", {}, [

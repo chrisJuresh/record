@@ -518,6 +518,63 @@ test("a Condition keeps a history of its own, and does not answer for the Action
   );
 });
 
+/**
+ * Which Conditions there are is not declared anywhere -- a Condition is whatever
+ * a Matrix has been asked for -- so a client with a history to read has to be
+ * able to learn the names. `history` says them in prose at the foot of the
+ * Action's own Runs, which is for a person; this is the same answer as a list.
+ */
+test("`record conditions` names the Conditions an Action keeps Runs of", async () => {
+  const named = await conditionsOf("preferred", "peek");
+
+  assert.deepEqual(named, [
+    "dark",
+    "dark-320w",
+    "dark-480w",
+    "light",
+    "light-320w",
+    "light-480w",
+  ]);
+
+  // Each of them names a history that really is there, and its own Runs.
+  for (const condition of named) {
+    const kept = await historyOf("preferred", "peek", condition);
+
+    assert.ok(kept.length > 0, `'${condition}' is named with no Run kept under it`);
+    assert.deepEqual(
+      [...new Set(kept.map((run) => run.condition?.name))],
+      [condition],
+      "a Condition's history is its own Runs and no other Condition's",
+    );
+  }
+
+  const { stdout } = await record(workspace, "conditions", "preferred", "peek");
+
+  assert.equal(stdout, `${named.join("\n")}\n`, "and says the same in its own words");
+});
+
+/**
+ * An Action nobody has recorded a Matrix of keeps no Conditions, which is a
+ * different answer from an Action nobody declared -- the second is a failure and
+ * this is an empty list.
+ */
+test("`record conditions` answers nothing for an Action recorded under none", async () => {
+  const named = await conditionsOf("unhooked", "peek");
+
+  assert.deepEqual(named, ["dark"], "the one this test recorded");
+
+  const { stderr, code } = await record(
+    workspace,
+    "conditions",
+    "preferred",
+    "nothing-like-it",
+    "--json",
+  );
+
+  assert.equal(code, 1);
+  assert.match(stderr, /no Action named 'nothing-like-it' is declared by Project 'preferred'/);
+});
+
 test("`--scheme` takes a colour scheme this tool records in, and refuses anything else", async () => {
   const { stderr, code } = await record(workspace, "run", "preferred", "peek", "--scheme", "sepia");
 
@@ -603,6 +660,14 @@ test("naming an Action the Project does not declare fails the Matrix rather than
   assert.equal(code, 1);
   assert.match(stderr, /no Action named 'nothing-like-it' is declared by Project 'preferred'/);
 });
+
+/** The Conditions one Action keeps Runs of, as the command names them. */
+async function conditionsOf(project: string, action: string): Promise<string[]> {
+  const { stdout, stderr, code } = await record(workspace, "conditions", project, action, "--json");
+  assert.equal(code, 0, stderr);
+
+  return JSON.parse(stdout) as string[];
+}
 
 /** What `record history` kept, for an Action or for one of its Conditions. */
 async function historyOf(

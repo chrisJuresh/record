@@ -130,6 +130,10 @@ pnpm record status
 ```
 
 ```bash
+pnpm record conditions photos scroll-peek
+```
+
+```bash
 pnpm record mockups photos scroll-peek
 ```
 
@@ -283,7 +287,11 @@ Action.
 **Each Condition keeps a history of its own**, which
 `record history <project> <action> <condition>` lists —
 `record history <project> <action>` is the Action's own Runs and names the
-Conditions beside them. They are deliberately not merged: every history is one
+Conditions beside them. `record conditions <project> <action>` is that same list
+of names on its own, because a Condition is declared nowhere — it is whatever a
+Matrix has been asked for, so anything picking a history to read has to be able
+to learn the names rather than parse them out of prose.
+They are deliberately not merged: every history is one
 stream with one Latest, and folding them together would let an Action recorded
 in light alone read as current while its dark clip went on being out of date.
 For the same reason `record status` reports an Action against the Runs asked for
@@ -421,6 +429,7 @@ able to drive a tool that starts processes on this machine.
 | `POST /api/publish` | `record publish --confirm`, and only for `{ confirm: true }` |
 | `GET /api/status[?project=<project>]` | `record status` |
 | `GET /api/history/<project>/<action>[/<condition>]` | `record history` |
+| `GET /api/conditions/<project>/<action>` | `record conditions` |
 | `POST /api/runs` | `record run`, answered before the Run is done |
 | `GET /api/runs[/<id>]` | The Runs this server has been asked for |
 | `GET /api/runs/<id>/events` | One Run's progress, as it happens |
@@ -486,7 +495,9 @@ nobody can judge — and what the Latest has that the Run before it did not is
 marked on the Latest, so a difference reads with a direction. An Action recorded
 only once says so where the second clip would be, and one never recorded says
 that instead of standing an empty player there. The width the clips leave over is
-where the Latest's Artifacts are read about rather than blank. Three buttons
+where the Latest's Artifacts are read about rather than blank — the Latest of
+whichever history is being judged, named where that is a Condition, since a
+Condition's Artifacts are named apart on purpose. Three buttons
 record: one Action, every Action of a Project, and everything. Each is one
 `POST /api/runs`, watched at `/events`, so what the app knows about a Run is what
 the command said about it.
@@ -505,6 +516,32 @@ anything is ticked, since a stage that stayed still without saying so would read
 as a Run that produced nothing. **That** and not how many Runs it comes to: how
 a Matrix multiplies is the command's arithmetic, and the summary that carried it
 out is what reports it.
+
+What those Runs produced is watched on **the same two players**, pointed at
+whichever histories are being compared: one picker chooses the history whose
+Latest is judged — the Action's own Runs, or one of the Conditions it keeps Runs
+of — and a second chooses what that is judged against, which is *the Run before
+it* while it names the same history. So the stage's two slots mean *this Run and
+the one before it* by default and *this Condition and that one* when they are
+pointed apart, both comparisons on two players rather than four: a stage holding
+two clips and a live site at once is already the most it can hold, and a second
+pair would be the thing nobody can read. An Action that keeps no Conditions never
+draws the pickers, and its stage is the stage it always was.
+
+The histories are read when the Action reaches the stage rather than when the app
+opens, the way its tuning is: a Condition is declared nowhere, so finding out is
+`record conditions` and then a `record history` per Condition, and asking that of
+every Action of every Project to draw one of them is a machine full of processes
+the Runs are about to want. A Run that recorded goes to the head of the stream it
+recorded into and nowhere else, so a Matrix landing does not move the Action's own
+Latest.
+
+An Action recorded **only** as a Matrix therefore has clips and no Run of its own,
+which is exactly what the stage says: its own history is empty and says why —
+that is the stream `record status` counts, which is why it reads as never run —
+and names the Conditions it does keep as the way to them. The under-claiming stays
+the command's, and what is unfindable stops being unfindable, which are two
+different problems.
 
 An Action gone **Stale** is flagged in the rail and said on the stage, which is
 the other half of what a re-record button is for. The flag is `record status` and
@@ -574,7 +611,9 @@ Tuning redraws that column and the Preview, configuration only its own panel and
 the Published pill beside the Project it belongs to, publishing only its own
 panel, and staleness only the flags it is written into. Clips are playing beside
 all four, and neither a slider let go of nor a Stale flag arriving may put a new
-video element in the page.
+video element in the page. Picking a history is the one change that is meant to:
+it is a change of which clips are playing, so it is a full paint like choosing an
+Action, and a Preview it would move is taken down by it.
 
 They are read for the Action on the stage rather than for all of them, because
 reading them imports the Action's module.

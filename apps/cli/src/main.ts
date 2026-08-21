@@ -63,6 +63,7 @@ const usage = `record -- repeatable clips of locally-running websites
   record status [project]                Say which Actions have gone Stale
   record history <project> <action>      List the Runs of an Action still kept
   record history <project> <action> <condition>    ...of one Matrix Condition
+  record conditions <project> <action>   List the Conditions an Action keeps Runs of
   record mockups                         List every Mockup a clip can be shown in
   record mockups <project> <action>      Render every Mockup around a Frame of an Action
   record publish                         Show what publishing would make public, and do none of it
@@ -325,6 +326,15 @@ async function main(argv: string[]): Promise<number> {
           );
         }
         return await history(project, action, condition, json);
+      }
+      case "conditions": {
+        const [project, action] = operands;
+        if (project === undefined || action === undefined || operands.length > 2) {
+          return fail(
+            `conditions takes the name of one Project and one of its Actions\n\n${usage}`,
+          );
+        }
+        return await conditions(project, action, json);
       }
       case "mockups": {
         const [project, action] = operands;
@@ -654,6 +664,25 @@ async function history(
     condition === undefined ? await readConditions(workspace(), project, action) : [];
 
   return emit(json, kept, () => asHistory(kept, conditions));
+}
+
+/**
+ * The Conditions one Action keeps Runs of, in the order they are named.
+ *
+ * `history` says this in passing, at the foot of the Action's own Runs, which is
+ * where a person reads it. Asked on its own because a client picking one of
+ * those histories to read has to be able to learn the names without parsing
+ * prose -- and there is no list of Conditions anywhere else to read them from:
+ * they are not declared, they are whatever a Matrix has been asked for.
+ */
+async function conditions(project: string, action: string, json: boolean): Promise<number> {
+  // Asked of the Action first, exactly as history is: an Action nobody has run
+  // under any Condition is a different answer from a name nobody declared.
+  await actionModule(workspace(), project, action);
+
+  const recorded = await readConditions(workspace(), project, action);
+
+  return emit(json, recorded, () => `${recorded.join("\n")}\n`);
 }
 
 /**

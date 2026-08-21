@@ -218,6 +218,13 @@ async function handle(
     return get(request, response, () => command(response, serving, ["history", ...under]));
   }
 
+  // ...and which Conditions there are histories of, which is how a client
+  // learns the names it would ask for one by. Its own path rather than a name
+  // under history's, where a Condition called `conditions` would answer for it.
+  if (asked === "conditions" && under.length === 2) {
+    return get(request, response, () => command(response, serving, ["conditions", ...under]));
+  }
+
   return answer(response, 404, { error: "nothing is served at that path" });
 }
 
@@ -605,6 +612,7 @@ function index(serving: Serving): unknown {
       "POST /api/publish",
       "GET  /api/status[?project=<project>]",
       "GET  /api/history/<project>/<action>[/<condition>]",
+      "GET  /api/conditions/<project>/<action>",
       "GET  /api/runs",
       "POST /api/runs",
       "GET  /api/runs/<id>",

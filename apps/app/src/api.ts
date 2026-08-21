@@ -365,9 +365,37 @@ export function add(project: string, settings: readonly string[]): Promise<Proje
   return wrote<ProjectReport>(["api", "projects"], { project, set: settings });
 }
 
-/** Every Run of an Action still kept on this machine, newest first. */
-export function history(project: string, action: string): Promise<readonly Run[]> {
-  return read<readonly Run[]>(["api", "history", project, action]);
+/**
+ * Every Run of one history still kept on this machine, newest first: an Action's
+ * own, or one of its Conditions'.
+ *
+ * Named apart because they are apart. Every history is one stream with one
+ * Latest, so the Runs of a Condition are asked for by naming it rather than
+ * sifted out of the Action's own -- they were never in there to sift.
+ */
+export function history(
+  project: string,
+  action: string,
+  condition?: string,
+): Promise<readonly Run[]> {
+  return read<readonly Run[]>([
+    "api",
+    "history",
+    project,
+    action,
+    ...(condition === undefined ? [] : [condition]),
+  ]);
+}
+
+/**
+ * The Conditions one Action keeps Runs of, in the order they are named.
+ *
+ * There is nowhere else to learn them: a Condition is not declared anywhere, it
+ * is whatever a Matrix has been asked for, so what the app can put on the stage
+ * is what this answers.
+ */
+export function conditions(project: string, action: string): Promise<readonly string[]> {
+  return read<readonly string[]>(["api", "conditions", project, action]);
 }
 
 /**
