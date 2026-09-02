@@ -1,29 +1,68 @@
 /*
- * The app's appearance, in the direction chosen from the prototype sheet: a
- * rail of Projects and their Actions, one clip on the stage, and the width
- * beside it spent rather than left blank.
+ * The app's appearance: the layout chosen from the prototype sheet -- a rail of
+ * Projects and their Actions, one clip on the stage, and the width beside it
+ * spent rather than left blank -- drawn in the palette of
+ * spikes/prototype-sheets/design.jpg.
  *
- * The palette is the sheet's, kept whole. What was judged there was where
- * things sit, so moving them is a decision to reopen and colouring them is not.
+ * The two halves came from different places and are reopened separately. Where
+ * things sit was judged on the sheet, so moving them is still a decision to
+ * reopen. The colours are design.jpg's, taken as a direction and not as a
+ * specification: every surface it renders sits inside the bottom eight percent
+ * of the range, which is an undifferentiated slab that bands on a real display.
+ * So the ground, the hues and the order of the surfaces are its, and the size
+ * of the steps between them is not. What it never showed -- a failed Run, a
+ * Stale Action, a Parameter changed between Runs -- is derived here, holding
+ * the meanings the light palette gave them.
  */
 
 :root {
-  --page: #f4f4f5;
-  --panel: #ffffff;
-  --sunken: #ececee;
-  --line: #dcdce0;
-  --line-strong: #c3c3c9;
-  --ink: #18181b;
-  --ink-dim: #5f5f6a;
-  --ink-faint: #8e8e99;
-  --accent: #2f5fd0;
-  --accent-soft: #e5ecfb;
-  --trouble: #a3232d;
-  --trouble-soft: #fbeaec;
-  /* An Action gone Stale is not a failure, so it is not the colour of one. */
-  --caution: #8a5a00;
-  --caution-soft: #fdf3dc;
-  --caution-line: #eddcae;
+  /*
+   * Scrollbars, checkboxes and every <select> in the Parameters take their
+   * ground from this and from nothing below it. Without it a dark app draws a
+   * white dropdown in the middle of the column it is tuned from.
+   */
+  color-scheme: dark;
+
+  /*
+   * The frame the app is drawn in -- the topbar and the footbar -- which the
+   * render sets darker than anything they enclose. It is the one surface that
+   * is not a panel and not the page, and it is what makes the black band top
+   * and bottom rather than three greys in a row.
+   */
+  --bezel: #050507;
+  --page: #0c0c0e;
+  --panel: #16171b;
+  --sunken: #1e2025;
+  --line: #292b31;
+  --line-strong: #3d4048;
+  --ink: #e8e9ec;
+  --ink-dim: #a5a8b2;
+  --ink-faint: #7a7d87;
+  /*
+   * Teal, and light enough to be read as text: the accent says Published,
+   * chosen by hand, and recording as often as it fills anything. Where it does
+   * fill, it fills under dark letters -- a light fill on a dark ground is read
+   * the other way up from a saturated one on a white page.
+   */
+  --accent: #7ab5bd;
+  /*
+   * Washes, not tints. A pale panel is not available on this ground, so each
+   * soft pair is its colour at low alpha over whatever it happens to land on,
+   * and the line is the same colour held a little stronger.
+   */
+  --accent-soft: rgba(122, 181, 189, 0.2);
+  --accent-line: rgba(122, 181, 189, 0.34);
+  --trouble: #ea8a90;
+  --trouble-soft: rgba(234, 138, 144, 0.14);
+  --trouble-line: rgba(234, 138, 144, 0.3);
+  /*
+   * An Action gone Stale is not a failure, so it is not the colour of one.
+   * Amber against the red above it, and far enough round from it here that the
+   * two are told apart at a glance rather than by being put side by side.
+   */
+  --caution: #e2b46c;
+  --caution-soft: rgba(226, 180, 108, 0.14);
+  --caution-line: rgba(226, 180, 108, 0.32);
   --radius: 8px;
 }
 
@@ -82,7 +121,7 @@ body {
   gap: 12px;
   padding: 9px 14px;
   border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  background: var(--bezel);
   flex: none;
 }
 
@@ -154,14 +193,21 @@ button.act:hover:not(:disabled) {
   background: var(--sunken);
 }
 
+/*
+ * The one filled button, and here it is filled light and lettered dark. On a
+ * white page a fill is the darkest thing in its row; on this one the fill is
+ * the lightest, and white letters on it would be the least legible pairing
+ * available rather than the most.
+ */
 button.act.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: #08181b;
 }
 
 button.act.primary:hover:not(:disabled) {
-  background: #2a55bb;
+  background: #93c8d0;
+  border-color: #93c8d0;
 }
 
 button.act:disabled {
@@ -185,7 +231,7 @@ button.act.quiet {
 
 .pill.published {
   background: var(--accent-soft);
-  border-color: #c6d6f5;
+  border-color: var(--accent-line);
   color: var(--accent);
 }
 
@@ -266,7 +312,7 @@ h3 .pill {
 }
 
 .rail .action:hover {
-  background: #e3e3e6;
+  background: #26282e;
 }
 
 .rail .action.selected {
@@ -506,8 +552,15 @@ h3 .pill {
   color: var(--ink);
 }
 
+/*
+ * Black inside, deliberately, as it was against a white page -- a clip is
+ * judged against nothing rather than against the app. What changed is that the
+ * ground outside is now nearly black too, so a clip that opens on a dark frame
+ * has no edge of its own: the border is the only thing left saying where the
+ * recording stops and the stage starts, and it is drawn to be seen.
+ */
 .clip {
-  border: 1px solid var(--line-strong);
+  border: 1px solid #4b4e57;
   border-radius: var(--radius);
   background: #000;
   overflow: hidden;
@@ -624,20 +677,36 @@ h3 .pill {
   transform-origin: top left;
 }
 
+/*
+ * Held to light while everything around it is dark. What is inside is the
+ * Project's own page, and a Project that sets no background of its own would
+ * otherwise be tuned against a ground it will never be seen on. So the frame
+ * keeps the white the browser would have given it, and says as much to the
+ * page inside rather than only behind it.
+ */
 .preview-frame {
   display: block;
   width: 100%;
   height: 100%;
   border: 0;
-  background: var(--panel);
+  color-scheme: light;
+  background: #fff;
 }
 
 .preview-scrub {
   margin-top: 10px;
 }
 
+/*
+ * The one slider the accent did not reach: it takes the machine's own accent
+ * colour otherwise, which against a blue palette passed for the same idea and
+ * against this one does not. Every other range in the app is already tinted,
+ * and a Preview is scrubbed to judge a Parameter -- the control that does it
+ * should not be the only thing on screen wearing a different colour.
+ */
 .preview-scrub .scrub {
   width: 100%;
+  accent-color: var(--accent);
 }
 
 .preview-cost {
@@ -895,7 +964,7 @@ button.act.tiny:hover {
   gap: 12px;
   padding: 9px 14px;
   border-top: 1px solid var(--line);
-  background: var(--panel);
+  background: var(--bezel);
   flex: none;
   font-size: 12px;
 }
@@ -988,7 +1057,7 @@ button.act.tiny:hover {
 
 /* What came of it, which is the one thing on this page that already happened. */
 .published-as {
-  border: 1px solid #c6d6f5;
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius);
   background: var(--accent-soft);
   color: var(--accent);
@@ -1011,7 +1080,7 @@ button.act.tiny:hover {
  */
 .progress {
   margin-top: 14px;
-  border: 1px solid #c6d6f5;
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius);
   background: var(--accent-soft);
   padding: 9px 12px;
@@ -1034,7 +1103,7 @@ button.act.tiny:hover {
   height: 4px;
   margin-top: 6px;
   border-radius: 2px;
-  background: #c6d6f5;
+  background: var(--accent-line);
   overflow: hidden;
 }
 
@@ -1047,7 +1116,7 @@ button.act.tiny:hover {
 /* Why a Run failed, in the command's own words and never rephrased. */
 .trouble {
   margin-top: 14px;
-  border: 1px solid #eccdd1;
+  border: 1px solid var(--trouble-line);
   border-radius: var(--radius);
   background: var(--trouble-soft);
   padding: 9px 12px;
