@@ -6,13 +6,28 @@
  *
  * The two halves came from different places and are reopened separately. Where
  * things sit was judged on the sheet, so moving them is still a decision to
- * reopen. The colours are design.jpg's, taken as a direction and not as a
- * specification: every surface it renders sits inside the bottom eight percent
- * of the range, which is an undifferentiated slab that bands on a real display.
- * So the ground, the hues and the order of the surfaces are its, and the size
- * of the steps between them is not. What it never showed -- a failed Run, a
- * Stale Action, a Parameter changed between Runs -- is derived here, holding
- * the meanings the light palette gave them.
+ * reopen. The colours are read off design.jpg pixel by pixel and used at the
+ * value measured, and where the render draws one thing at two values the two
+ * are averaged -- the sheet is a render rather than a spec, so its topbar and
+ * its footbar disagree about the frame by six counts, and neither of them is
+ * more right than their middle.
+ *
+ * That means the surfaces really do sit inside the bottom eight percent of the
+ * range, four steps of six or seven counts each. It is a narrow ladder and it
+ * can band on a display that dithers badly; it is the ladder the sheet draws.
+ *
+ * Measuring also settled three things the old reading had guessed at. The
+ * dividers between the columns are DARKER than either column, not lighter --
+ * the sheet seams its panels with near-black and reserves the light 1px rule
+ * for what is drawn on a panel. The sheet's greys are two, not four: white for
+ * a name and one grey for everything said about it, so --ink-faint and
+ * --line-strong are gone rather than set to a second value nobody could tell
+ * from the first. And the accent is two colours doing two jobs -- a dark teal
+ * that is filled under white letters, and a paler one that is itself lettering.
+ *
+ * What the sheet never showed -- a failed Run, the wash behind a Published
+ * pill, a hover -- is still derived, now from the measured colours rather than
+ * the guessed ones.
  */
 
 :root {
@@ -27,42 +42,74 @@
    * The frame the app is drawn in -- the topbar and the footbar -- which the
    * render sets darker than anything they enclose. It is the one surface that
    * is not a panel and not the page, and it is what makes the black band top
-   * and bottom rather than three greys in a row.
+   * and bottom rather than three greys in a row. The sheet draws its topbar at
+   * #030303 and its footbar at #090909; this is the middle of the two.
    */
-  --bezel: #050507;
-  --page: #0c0c0e;
-  --panel: #16171b;
-  --sunken: #1e2025;
-  --line: #292b31;
-  --line-strong: #3d4048;
-  --ink: #e8e9ec;
-  --ink-dim: #a5a8b2;
-  --ink-faint: #7a7d87;
+  --bezel: #060606;
+  /* The stage, and the ground behind the whole app. */
+  --page: #0b0b0b;
+  /* The rail, the Parameters, and anything boxed on the stage -- all one value
+     on the sheet, which draws its two columns at the same level as its panels. */
+  --panel: #121212;
+  /* Raised off a panel: the row under the cursor, the well a Preview sits in.
+     The sheet draws this value three times -- its chosen row and its slider
+     troughs at #1e1e1f, the field a number is typed into at #171717 -- and this
+     is the three averaged. */
+  --sunken: #1c1c1c;
   /*
-   * Teal, and light enough to be read as text: the accent says Published,
-   * chosen by hand, and recording as often as it fills anything. Where it does
-   * fill, it fills under dark letters -- a light fill on a dark ground is read
-   * the other way up from a saturated one on a white page.
+   * The seam between the columns, and the one above the footbar. Darker than
+   * both sides rather than lighter -- the sheet cuts its panels apart with a
+   * near-black line and never with a pale one.
    */
-  --accent: #7ab5bd;
+  --seam: #030303;
+  /* ...and the pale 1px rule, which is only ever drawn ON something: the edge
+     of a panel, a button, a field, a clip. One weight, four readings. */
+  --line: #2f2f30;
+  /* A name, a heading on the stage, a value in a field. */
+  --ink: #fafafa;
+  /* ...and everything said about one. The sheet has no third grey: what the
+     rail's headings are set in is what its captions are set in. */
+  --ink-dim: #ababab;
+  /*
+   * The accent, twice, because the sheet uses it twice. This is the one that
+   * is lettering -- `settings`, `reset`, a Published pill, a Parameter chosen
+   * by hand -- and it is pale enough to be read at 11px on a panel.
+   */
+  --accent: #889ea3;
+  /*
+   * ...and this is the one that is filled: Run everything, Publish, the done
+   * half of a slider, the bar under a Run in progress, the mark down the side
+   * of the chosen Action. Dark, and lettered in --ink rather than in black --
+   * the sheet fills dark and letters light, which is the way round a dark app
+   * reads and the opposite of a fill on a white page.
+   */
+  --accent-fill: #3e676d;
   /*
    * Washes, not tints. A pale panel is not available on this ground, so each
    * soft pair is its colour at low alpha over whatever it happens to land on,
    * and the line is the same colour held a little stronger.
    */
-  --accent-soft: rgba(122, 181, 189, 0.2);
-  --accent-line: rgba(122, 181, 189, 0.34);
+  --accent-soft: rgba(136, 158, 163, 0.2);
+  --accent-line: rgba(136, 158, 163, 0.34);
+  /* What differs between the two Runs on the stage, which the sheet draws as a
+     neutral block behind the number rather than as a tint. */
+  --marked: #2a2b2f;
+  /*
+   * A failed Run is the one state the sheet never renders, so this is the one
+   * colour not measured off it. Kept as it was, and still the only saturated
+   * red in the app.
+   */
   --trouble: #ea8a90;
   --trouble-soft: rgba(234, 138, 144, 0.14);
   --trouble-line: rgba(234, 138, 144, 0.3);
   /*
-   * An Action gone Stale is not a failure, so it is not the colour of one.
-   * Amber against the red above it, and far enough round from it here that the
-   * two are told apart at a glance rather than by being put side by side.
+   * An Action gone Stale is not a failure, so it is not the colour of one. The
+   * sheet does draw this one -- the pill on its Project row -- and draws it
+   * paler and sandier than the amber that was guessed here before.
    */
-  --caution: #e2b46c;
-  --caution-soft: rgba(226, 180, 108, 0.14);
-  --caution-line: rgba(226, 180, 108, 0.32);
+  --caution: #ead8b3;
+  --caution-soft: rgba(234, 216, 179, 0.13);
+  --caution-line: rgba(234, 216, 179, 0.3);
   --radius: 8px;
 }
 
@@ -90,12 +137,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.muted {
-  color: var(--ink-dim);
-}
-
+/* Two names for one grey. They are told apart in the markup and not in the
+   paint: the sheet sets a heading and the caption under it in one value. */
+.muted,
 .faint {
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .spacer {
@@ -104,7 +150,7 @@ body {
 
 .settling {
   padding: 22px;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 /* ------------------------------------------------------------------ layout */
@@ -120,7 +166,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 9px 14px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--seam);
   background: var(--bezel);
   flex: none;
 }
@@ -150,7 +196,7 @@ body {
 }
 
 .conditions .ticking input {
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 
 .conditions input.typed {
@@ -158,7 +204,7 @@ body {
   font: inherit;
   font-size: 12px;
   padding: 2px 6px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--ink);
@@ -182,7 +228,7 @@ button.act {
   font: inherit;
   font-size: 13px;
   padding: 4px 10px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
   color: var(--ink);
@@ -194,20 +240,20 @@ button.act:hover:not(:disabled) {
 }
 
 /*
- * The one filled button, and here it is filled light and lettered dark. On a
- * white page a fill is the darkest thing in its row; on this one the fill is
- * the lightest, and white letters on it would be the least legible pairing
- * available rather than the most.
+ * The one filled button. The sheet fills it dark and letters it light -- the
+ * fill is a step above the bezel it sits on rather than the lightest thing in
+ * the row, so the letters go on top in --ink and not underneath in black.
  */
 button.act.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #08181b;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--ink);
 }
 
+/* A hover the sheet does not draw, so: the same teal, one step up. */
 button.act.primary:hover:not(:disabled) {
-  background: #93c8d0;
-  border-color: #93c8d0;
+  background: #4a787f;
+  border-color: #4a787f;
 }
 
 button.act:disabled {
@@ -224,7 +270,7 @@ button.act.quiet {
 .pill {
   font-size: 11px;
   padding: 1px 6px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--ink-dim);
 }
@@ -265,8 +311,8 @@ h3 .pill {
 /* -------------------------------------------------------------------- rail */
 
 .rail {
-  border-right: 1px solid var(--line);
-  background: var(--sunken);
+  border-right: 1px solid var(--seam);
+  background: var(--panel);
   overflow-y: auto;
   padding: 8px 0 20px;
 }
@@ -280,7 +326,7 @@ h3 .pill {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .rail .project .act {
@@ -312,12 +358,17 @@ h3 .pill {
 }
 
 .rail .action:hover {
-  background: #26282e;
+  background: var(--sunken);
 }
 
+/*
+ * The chosen Action, which the sheet marks with a bar and not with a wash: the
+ * row itself is the same grey a hovered row is, and the teal is two pixels
+ * down its left edge.
+ */
 .rail .action.selected {
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--sunken);
+  box-shadow: inset 2px 0 0 var(--accent-fill);
 }
 
 .rail .action .row {
@@ -345,7 +396,7 @@ h3 .pill {
   width: 100%;
   height: auto;
   margin-top: 4px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
 }
@@ -353,7 +404,7 @@ h3 .pill {
 .rail .absent {
   margin-top: 4px;
   font-size: 11px;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 /* A Project whose Actions have not been written yet, which is a state to read. */
@@ -459,7 +510,7 @@ h3 .pill {
   font: inherit;
   font-size: 12px;
   padding: 2px 6px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--ink);
@@ -489,7 +540,7 @@ h3 .pill {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 /* What a Run was recorded against, so a clip on screen is placeable. */
@@ -512,7 +563,7 @@ h3 .pill {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .recorded-with ul {
@@ -542,11 +593,11 @@ h3 .pill {
  * What differs between the two Runs, which is the whole reason both are on the
  * stage. Highlighted rather than recoloured: the accent already means "chosen by
  * hand" wherever a Parameter is shown, and one colour meaning two things is a
- * mark that says neither.
+ * mark that says neither. The sheet agrees and draws this one neutral.
  */
 .run .facts .changed,
 .recorded-with li.changed .num {
-  background: var(--accent-soft);
+  background: var(--marked);
   border-radius: 3px;
   padding: 0 4px;
   color: var(--ink);
@@ -556,11 +607,13 @@ h3 .pill {
  * Black inside, deliberately, as it was against a white page -- a clip is
  * judged against nothing rather than against the app. What changed is that the
  * ground outside is now nearly black too, so a clip that opens on a dark frame
- * has no edge of its own: the border is the only thing left saying where the
- * recording stops and the stage starts, and it is drawn to be seen.
+ * has no edge of its own: this border is the only thing left saying where the
+ * recording stops and the stage starts. The sheet draws it at the same weight
+ * as every other edge, so it is the same rule and not a stronger one -- against
+ * #000 inside and #0b0b0b outside, one pale line is enough to be seen.
  */
 .clip {
-  border: 1px solid #4b4e57;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #000;
   overflow: hidden;
@@ -574,7 +627,7 @@ h3 .pill {
 }
 
 .empty {
-  border: 1px dashed var(--line-strong);
+  border: 1px dashed var(--line);
   border-radius: var(--radius);
   background: var(--panel);
   padding: 26px 20px;
@@ -593,7 +646,7 @@ h3 .pill {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .beside ul {
@@ -615,8 +668,13 @@ h3 .pill {
   border-bottom: 0;
 }
 
+/*
+ * Underlined and white, as the sheet draws them. The underline is doing the
+ * work the colour would, which leaves the accent meaning only "chosen by hand"
+ * wherever it appears beside a Parameter.
+ */
 .beside a {
-  color: var(--accent);
+  color: var(--ink);
 }
 
 /* --------------------------------------------------------------- Preview */
@@ -663,7 +721,7 @@ h3 .pill {
  */
 .preview-stage {
   overflow: hidden;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--sunken);
 }
@@ -706,7 +764,7 @@ h3 .pill {
  */
 .preview-scrub .scrub {
   width: 100%;
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 
 .preview-cost {
@@ -720,7 +778,7 @@ h3 .pill {
 /* -------------------------------------------------------------- Parameters */
 
 .params {
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--seam);
   overflow-y: auto;
   padding: 14px;
   background: var(--panel);
@@ -731,7 +789,7 @@ h3 .pill {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .param {
@@ -755,7 +813,7 @@ h3 .pill {
 
 .param .describes {
   font-size: 11px;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
   margin-top: 1px;
 }
 
@@ -790,10 +848,20 @@ button.act.tiny:hover {
   margin-top: 4px;
 }
 
+/*
+ * The teal reaches the done half and the thumb through accent-color. It does
+ * not reach the trough behind them: Chromium draws that near-white whatever
+ * color-scheme says, which is the one place the app is lighter than the sheet,
+ * where the trough is #1e1e1f. Colouring it means styling
+ * ::-webkit-slider-runnable-track, and styling the track is what stops Chromium
+ * filling the done half -- so getting the sheet's two shades onto one slider
+ * means drawing the whole control here, metrics included, and that is a
+ * decision about the control rather than about its palette.
+ */
 .param input[type="range"] {
   flex: 1;
   min-width: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 
 /* The value typed rather than hunted for, which a wide range needs. */
@@ -802,7 +870,7 @@ button.act.tiny:hover {
   font: inherit;
   font-size: 12px;
   padding: 2px 4px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--ink);
@@ -835,7 +903,7 @@ button.act.tiny:hover {
 }
 
 .param .ticking input {
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 
 .params .trouble {
@@ -894,7 +962,7 @@ button.act.tiny:hover {
 
 .setting .describes {
   font-size: 11px;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
   margin-top: 1px;
 }
 
@@ -920,7 +988,7 @@ button.act.tiny:hover {
   font: inherit;
   font-size: 12px;
   padding: 3px 6px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--ink);
@@ -944,7 +1012,7 @@ button.act.tiny:hover {
 }
 
 .setting .ticking input {
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 
 .empty .row {
@@ -963,7 +1031,7 @@ button.act.tiny:hover {
   align-items: center;
   gap: 12px;
   padding: 9px 14px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--seam);
   background: var(--bezel);
   flex: none;
   font-size: 12px;
@@ -1110,7 +1178,7 @@ button.act.tiny:hover {
 .progress .bar span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 
 /* Why a Run failed, in the command's own words and never rephrased. */
