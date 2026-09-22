@@ -1,27 +1,15 @@
 /*
  * The app's appearance: the layout chosen from the prototype sheet -- a rail of
  * Projects and their Actions, one clip on the stage, and the width beside it
- * spent rather than left blank -- drawn in the palette of
- * spikes/prototype-sheets/design.jpg, and finished the way a desktop app is
- * rather than the way a web page is.
+ * spent rather than left blank -- finished and coloured the way flask.do is,
+ * which is the desktop app this one was asked to feel like.
  *
- * The three came from different places and are reopened separately. Where
- * things sit was judged on the sheet, so moving them is still a decision to
- * reopen. The colours are read off design.jpg pixel by pixel and used at the
- * value measured, and where the render draws one thing at two values the two
- * are averaged -- the sheet is a render rather than a spec, so its topbar and
- * its footbar disagree about the frame by six counts, and neither of them is
- * more right than their middle.
- *
- * That means the surfaces really do sit inside the bottom eight percent of the
- * range, four steps of six or seven counts each. It is a narrow ladder and it
- * can band on a display that dithers badly; it is the ladder the sheet draws.
- *
- * Measuring also settled three things the old reading had guessed at. The
- * sheet's greys are two, not four: white for a name and one grey for
- * everything said about it. The accent is two colours doing two jobs -- a dark
- * teal that is filled under white letters, and a paler one that is itself
- * lettering. And the pale 1px rule is only ever drawn ON something.
+ * The two came from different places and are reopened separately. Where
+ * things sit was judged on spikes/prototype-sheets/design.jpg, so moving them
+ * is still a decision to reopen. The sheet's colours were its first palette;
+ * what survives of it is the teal accent, doing its two jobs at two values --
+ * a fill, and a paler one that is itself lettering -- and the rule that the
+ * pale 1px line is only ever drawn ON something.
  *
  * The finish is taken from flask.do, which is the desktop app this one was
  * asked to feel like. The window is the ground and the rail sits straight on
@@ -34,10 +22,21 @@
  * Nothing on the chrome can be selected as text, because nothing on a desktop
  * app's chrome can.
  *
- * What the sheet never showed -- a failed Run, the wash behind a Published
- * pill, a hover, a lit edge -- is derived from the measured colours. None of it
- * adds a colour: every one is a measured value, or a measured value at an
- * alpha, so the palette is still the eleven the sheet was read for.
+ * The colours are flask.do's too, measured off a capture of it the same way
+ * design.jpg was measured. design.jpg drew its surfaces in the bottom eight
+ * percent of the range, four steps down to near-black with near-black seams
+ * between them; flask.do lifts the whole ladder to #191919 and above, keeps
+ * its steps close, and divides with pale hairlines rather than dark seams --
+ * which is most of why it reads as clean. It has two greys where the sheet had
+ * one, a cool zinc for what is said about a thing and a fainter one for what
+ * only places it. And its emphasis is white rather than a colour: the one
+ * button that matters is a white pill, a scrub bar fills white, and colour is
+ * kept to small washes. So the teal stays, but as the accent it always also
+ * was -- a value chosen by hand, a switch turned on, a Run in progress -- and
+ * no longer as the fill of every button that records.
+ *
+ * What neither of them shows -- a failed Run, a hover, a lit edge -- is
+ * derived from the measured colours, at an alpha where it is a wash.
  */
 
 :root {
@@ -48,55 +47,56 @@
    */
   color-scheme: dark;
 
-  /* The darkest thing in the app: the letterbox a clip is shown on, and the
-     well a value is typed into. The sheet's topbar and footbar, averaged. */
-  --bezel: #060606;
-  /* The window itself -- the ground the title bar, the rail and the status
-     bar sit straight on. */
-  --page: #0b0b0b;
-  /* The raised panel the stage and the Parameters share. */
-  --panel: #121212;
-  /* Raised off the panel: a button, a card, the chosen row. The sheet draws
-     this value three times -- its chosen row and its slider troughs at
-     #1e1e1f, the field a number is typed into at #171717 -- and this is the
-     three averaged. */
-  --sunken: #1c1c1c;
+  /* The well a value is typed into and a segmented control's track -- the one
+     surface darker than the window, as flask.do's segment track is. */
+  --bezel: #111112;
+  /* The window itself: the ground the title bar, the rail and the status bar
+     sit straight on. flask.do's chrome, measured at #191919. */
+  --page: #191919;
+  /* The raised panel the stage and the Parameters share, a step off the
+     window -- measured between #1b1b1c and #1e1f20, and this is their middle. */
+  --panel: #1d1d1e;
+  /* Raised off the panel: a button, a card, a menu. flask.do's cards. */
+  --sunken: #232425;
+  /* ...and raised again: the chosen row in the rail, a control under the
+     cursor. flask.do's chosen item. */
+  --lifted: #2c2c2c;
   /* The seam under a column's own scroll, where one is needed at all. */
-  --seam: #030303;
-  /* The pale 1px rule, drawn only ON something: the edge of the panel, a
-     field, a clip. */
-  --line: #2f2f30;
+  --seam: #141415;
+  /* The pale 1px rule, drawn only ON something: a card's edge, a field, a
+     clip. flask.do's card edges, #2d2e2f to #323333. */
+  --line: #303133;
   /* A name, a heading on the stage, a value in a field. */
   --ink: #fafafa;
-  /* ...and everything said about one. */
-  --ink-dim: #ababab;
+  /* ...everything said about one, in flask.do's cool zinc... */
+  --ink-dim: #a1a1aa;
+  /* ...and what only places it: a date, an extent, a count, a section's name. */
+  --ink-faint: #74747c;
   /* The accent that is lettering -- `reset`, a Published pill, a Parameter
-     chosen by hand -- pale enough to be read at 11px on a panel. */
-  --accent: #889ea3;
-  /* ...and the one that is filled: the record buttons, Publish, the done part
-     of a slider, a switch turned on. Dark, and lettered in --ink. */
-  --accent-fill: #3e676d;
-  /* Washes, not tints: each soft pair is its colour at low alpha over whatever
-     it lands on, and the line is the same colour held a little stronger. */
-  --accent-soft: rgba(136, 158, 163, 0.16);
-  --accent-line: rgba(136, 158, 163, 0.3);
+     chosen by hand -- lifted to read on the lighter panel. */
+  --accent: #8fb0b5;
+  /* ...and the one that is filled: a switch turned on, a Run in progress, the
+     done part of a slider. Clearer than the sheet's murkier teal. */
+  --accent-fill: #4a7f86;
+  --accent-soft: rgba(143, 176, 181, 0.13);
+  --accent-line: rgba(143, 176, 181, 0.28);
   /* What differs between the two Runs on the stage: a neutral block behind the
-     value, as the sheet draws it. */
-  --marked: #2a2b2f;
-  /* A failed Run is the one state the sheet never renders, so this is the one
-     colour not measured off it -- and the wordmark's recording light. */
-  --trouble: #ea8a90;
-  --trouble-soft: rgba(234, 138, 144, 0.1);
-  --trouble-line: rgba(234, 138, 144, 0.26);
-  /* An Action gone Stale is not a failure, so it is not the colour of one. */
-  --caution: #ead8b3;
-  --caution-soft: rgba(234, 216, 179, 0.09);
-  --caution-line: rgba(234, 216, 179, 0.25);
+     value. */
+  --marked: #37383b;
+  /* A failed Run -- and the wordmark's recording light. */
+  --trouble: #f08c92;
+  --trouble-soft: rgba(240, 140, 146, 0.1);
+  --trouble-line: rgba(240, 140, 146, 0.26);
+  /* An Action gone Stale, in the amber flask.do tags its lighting notes with:
+     not a failure, so not the colour of one. */
+  --caution: #dcb06f;
+  --caution-soft: rgba(220, 176, 111, 0.1);
+  --caution-line: rgba(220, 176, 111, 0.26);
 
   /* --ink at the alphas a surface is lit and divided with. */
   --hairline: rgba(250, 250, 250, 0.06);
   --line-hover: rgba(250, 250, 250, 0.16);
-  --glow: rgba(250, 250, 250, 0.14);
+  --glow: rgba(250, 250, 250, 0.09);
   /*
    * A raised surface, as flask.do draws one: a lit hairline along the top, a
    * hairline all round, and a soft shadow falling below it. It is what every
@@ -104,12 +104,12 @@
    */
   --raise:
     inset 0 1px 0 var(--glow), inset 0 0 0 1px var(--hairline),
-    0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+    0 10px 15px -3px rgba(0, 0, 0, 0.22), 0 4px 6px -4px rgba(0, 0, 0, 0.22);
   /* ...and the same, flatter, for something that sits in a row of others. */
   --raise-flat: inset 0 1px 0 var(--glow), inset 0 0 0 1px var(--hairline),
-    0 1px 2px rgba(0, 0, 0, 0.4);
+    0 1px 2px rgba(0, 0, 0, 0.3);
   /* ...and sunk rather than raised: a field a value is typed into. */
-  --inset: inset 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--line);
+  --inset: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px var(--line);
 
   --radius-panel: 14px;
   --radius-card: 16px;
@@ -198,9 +198,12 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-.muted,
-.faint {
+.muted {
   color: var(--ink-dim);
+}
+
+.faint {
+  color: var(--ink-faint);
 }
 
 .spacer {
@@ -239,8 +242,8 @@ code {
 
 /* ------------------------------------------------------------------ fields */
 
-/* A box a value is typed into is sunk into what it sits on, rather than
-   raised off it: the one surface that is pressed in rather than out. */
+/* A box a value is typed into: a step lighter than the panel and edged in the
+   rule, as flask.do draws its fields -- a near-black well reads as a hole. */
 input.typed {
   height: 28px;
   font: inherit;
@@ -248,7 +251,7 @@ input.typed {
   padding: 0 9px;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--bezel);
+  background: var(--sunken);
   box-shadow: var(--inset);
   color: var(--ink);
   transition: box-shadow var(--ease);
@@ -269,7 +272,7 @@ select:focus {
 }
 
 input.typed::placeholder {
-  color: #5c5c5c;
+  color: var(--ink-faint);
 }
 
 input.typed[type="number"] {
@@ -304,7 +307,7 @@ select {
 }
 
 select:hover {
-  background-color: color-mix(in srgb, var(--sunken), var(--ink) 5%);
+  background-color: var(--lifted);
 }
 
 /*
@@ -328,8 +331,8 @@ input[type="range"]::-webkit-slider-runnable-track {
   border-radius: var(--pill);
   background: linear-gradient(
     to right,
-    var(--accent-fill) var(--filled),
-    var(--line) var(--filled)
+    var(--ink) var(--filled),
+    #45474d var(--filled)
   );
 }
 
@@ -362,13 +365,13 @@ input[type="range"]:active::-webkit-slider-thumb {
 input[type="range"]::-moz-range-track {
   height: 4px;
   border-radius: var(--pill);
-  background: var(--line);
+  background: #45474d;
 }
 
 input[type="range"]::-moz-range-progress {
   height: 4px;
   border-radius: var(--pill);
-  background: var(--accent-fill);
+  background: var(--ink);
 }
 
 input[type="range"]::-moz-range-thumb {
@@ -403,8 +406,8 @@ input[type="checkbox"] {
   height: 18px;
   margin: 0;
   border-radius: var(--pill);
-  background: var(--line);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  background: #3a3b3e;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
   transition: background-color var(--ease);
 }
 
@@ -478,7 +481,7 @@ input[type="checkbox"] {
   height: 10px;
   border-radius: 50%;
   background: var(--trouble);
-  box-shadow: 0 0 0 3px var(--trouble-soft), 0 0 12px rgba(234, 138, 144, 0.35);
+  box-shadow: 0 0 0 3px var(--trouble-soft), 0 0 10px rgba(240, 140, 146, 0.3);
 }
 
 .topbar > .faint {
@@ -498,8 +501,8 @@ input[type="checkbox"] {
   height: 34px;
   padding: 3px;
   border-radius: var(--pill);
-  background: var(--panel);
-  box-shadow: var(--raise-flat);
+  background: var(--bezel);
+  box-shadow: inset 0 0 0 1px var(--hairline);
   font-size: 12.5px;
 }
 
@@ -540,7 +543,7 @@ input[type="checkbox"] {
 }
 
 .conditions .ticking:has(:checked) {
-  background: var(--sunken);
+  background: var(--lifted);
   box-shadow: var(--raise-flat);
   color: var(--ink);
 }
@@ -558,6 +561,8 @@ input[type="checkbox"] {
   width: 92px;
   height: 100%;
   border-radius: var(--pill);
+  background: var(--sunken);
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
 .conditions > span.num {
@@ -588,7 +593,7 @@ input[type="checkbox"] {
   box-shadow:
     inset 0 1px 0 var(--glow),
     0 0 0 1px var(--line),
-    0 24px 48px -16px rgba(0, 0, 0, 0.7);
+    0 24px 48px -16px rgba(0, 0, 0, 0.45);
 }
 
 .stage {
@@ -606,8 +611,8 @@ input[type="checkbox"] {
   margin: 0;
   padding: 10px 18px 6px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-dim);
+  font-weight: 500;
+  color: var(--ink-faint);
 }
 
 /* ----------------------------------------------------------------- buttons */
@@ -648,7 +653,7 @@ button.act:has(.icon) {
 }
 
 button.act:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sunken), var(--ink) 6%);
+  background: var(--lifted);
   color: var(--ink);
 }
 
@@ -667,21 +672,52 @@ button.act.selected {
 }
 
 /*
- * The filled button: the dark teal, lettered light, lit along its top edge so
- * it reads as a raised surface of its own colour.
+ * The one button that matters on the stage -- recording the Action on it --
+ * is a white pill lettered dark, as flask.do draws its one call to action:
+ * emphasis by brightness rather than by colour. It is lit from above with a
+ * faint gradient so it reads as raised rather than as a hole in the panel.
  */
 button.act.primary {
-  background: var(--accent-fill);
-  color: var(--ink);
+  background: linear-gradient(to bottom, #ffffff, #e6e6e8);
+  color: #18181b;
+  font-weight: 600;
   box-shadow:
-    inset 0 1px 0 rgba(250, 250, 250, 0.2),
-    inset 0 0 0 1px rgba(250, 250, 250, 0.06),
-    0 4px 12px -2px rgba(62, 103, 109, 0.45),
-    0 1px 2px rgba(0, 0, 0, 0.5);
+    inset 0 1px 0 #ffffff,
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 4px 12px -2px rgba(0, 0, 0, 0.45);
 }
 
 button.act.primary:hover:not(:disabled) {
-  background: #4a787f;
+  background: linear-gradient(to bottom, #ffffff, #f1f1f3);
+  color: #18181b;
+}
+
+/* The recording light keeps its red on white. */
+button.act.primary .icon-record .filled {
+  fill: #e5484d;
+}
+
+/*
+ * The other buttons that record, and Publish, are on the window's own bars
+ * and are not the one thing to press, so they are raised pills like the rest
+ * -- a white pill in every corner of the window would be emphasis nowhere.
+ */
+.topbar button.act.primary,
+.footbar button.act.primary {
+  background: var(--sunken);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: var(--raise-flat);
+}
+
+.topbar button.act.primary:hover:not(:disabled),
+.footbar button.act.primary:hover:not(:disabled) {
+  background: var(--lifted);
+}
+
+.topbar button.act.primary .icon-record .filled,
+.footbar button.act.primary .icon-record .filled {
+  fill: var(--trouble);
 }
 
 button.act:disabled {
@@ -838,12 +874,12 @@ h3 .pill {
 }
 
 .rail .action:hover {
-  background: rgba(250, 250, 250, 0.04);
+  background: rgba(250, 250, 250, 0.045);
   color: var(--ink);
 }
 
 .rail .action.selected {
-  background: var(--sunken);
+  background: var(--lifted);
   box-shadow: var(--raise);
   color: var(--ink);
 }
@@ -859,7 +895,7 @@ h3 .pill {
 }
 
 .rail .action.selected .row > .icon {
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .rail .action .name {
@@ -1001,7 +1037,7 @@ h3 .pill {
 .stage-head h2 + .muted::before {
   content: "/";
   margin-right: 8px;
-  color: #4a4a4a;
+  color: var(--ink-faint);
 }
 
 .stage-head h2 + .muted + .spacer {
@@ -1117,7 +1153,7 @@ h3 .pill {
   line-height: 0;
   box-shadow:
     0 0 0 1px var(--line),
-    0 16px 32px -12px rgba(0, 0, 0, 0.8);
+    0 16px 32px -12px rgba(0, 0, 0, 0.6);
 }
 
 .clip video {
@@ -1305,8 +1341,8 @@ h3 .pill {
   margin: 0;
   padding: 9px 0 7px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-dim);
+  font-weight: 500;
+  color: var(--ink-faint);
 }
 
 .recorded-with ul {
@@ -1722,13 +1758,18 @@ h3 .pill {
   font-size: 12px;
 }
 
+.footbar > .faint {
+  color: var(--ink-faint);
+}
+
 .footbar .act {
   height: 28px;
 }
 
 .footbar .act.selected {
+  background: var(--lifted);
   box-shadow:
-    inset 0 1px 0 rgba(250, 250, 250, 0.2),
+    var(--raise-flat),
     0 0 0 3px var(--accent-soft);
 }
 
@@ -1831,8 +1872,8 @@ h3 .pill {
   margin-top: 14px;
   padding: 11px 14px;
   border-radius: var(--radius);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent-line);
+  background: var(--sunken);
+  box-shadow: var(--raise-flat);
   font-size: 12.5px;
   color: var(--ink);
 }
@@ -1852,7 +1893,7 @@ h3 .pill {
   height: 4px;
   margin-top: 9px;
   border-radius: var(--pill);
-  background: var(--accent-line);
+  background: #45474d;
   overflow: hidden;
 }
 
@@ -1863,9 +1904,9 @@ h3 .pill {
   height: 100%;
   border-radius: inherit;
   background:
-    linear-gradient(90deg, transparent, rgba(250, 250, 250, 0.25), transparent) 0 0 / 60% 100%
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent) 0 0 / 60% 100%
       no-repeat,
-    var(--accent-fill);
+    var(--accent);
   animation: sweep 1.6s linear infinite;
   transition: width 180ms linear;
 }
