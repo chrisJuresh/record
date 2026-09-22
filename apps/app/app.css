@@ -2,9 +2,10 @@
  * The app's appearance: the layout chosen from the prototype sheet -- a rail of
  * Projects and their Actions, one clip on the stage, and the width beside it
  * spent rather than left blank -- drawn in the palette of
- * spikes/prototype-sheets/design.jpg.
+ * spikes/prototype-sheets/design.jpg, and finished the way a desktop app is
+ * rather than the way a web page is.
  *
- * The two halves came from different places and are reopened separately. Where
+ * The three came from different places and are reopened separately. Where
  * things sit was judged on the sheet, so moving them is still a decision to
  * reopen. The colours are read off design.jpg pixel by pixel and used at the
  * value measured, and where the render draws one thing at two values the two
@@ -17,29 +18,26 @@
  * can band on a display that dithers badly; it is the ladder the sheet draws.
  *
  * Measuring also settled three things the old reading had guessed at. The
- * dividers between the columns are DARKER than either column, not lighter --
- * the sheet seams its panels with near-black and reserves the light 1px rule
- * for what is drawn on a panel. The sheet's greys are two, not four: white for
- * a name and one grey for everything said about it, so --ink-faint and
- * --line-strong are gone rather than set to a second value nobody could tell
- * from the first. And the accent is two colours doing two jobs -- a dark teal
- * that is filled under white letters, and a paler one that is itself lettering.
+ * sheet's greys are two, not four: white for a name and one grey for
+ * everything said about it. The accent is two colours doing two jobs -- a dark
+ * teal that is filled under white letters, and a paler one that is itself
+ * lettering. And the pale 1px rule is only ever drawn ON something.
+ *
+ * The finish is taken from flask.do, which is the desktop app this one was
+ * asked to feel like. The window is the ground and the rail sits straight on
+ * it; the stage and the Parameters are one raised panel inset into it, rounded
+ * at every corner. Anything that can be pressed is a raised surface -- a lit
+ * hairline along its top, a hairline edge, and a soft shadow under it -- so a
+ * control reads by its depth rather than by an outline. Controls are pills,
+ * cards are generously rounded, labels are set in sentence case rather than in
+ * small capitals, and a clip has its own transport rather than a browser's.
+ * Nothing on the chrome can be selected as text, because nothing on a desktop
+ * app's chrome can.
  *
  * What the sheet never showed -- a failed Run, the wash behind a Published
- * pill, a hover -- is still derived, now from the measured colours rather than
- * the guessed ones.
- *
- * So is the finish a still image cannot show: a focus ring, a field's chrome,
- * a hover eased rather than snapped to, a Run that visibly moves while it is in
- * flight. None of it adds a colour. Every one is a measured value, or a measured
- * value at an alpha, so the palette is still the eleven the sheet was read for.
- *
- * And so is the chrome of a tool rather than a page. Every column is a docked
- * panel with a header strip, the strips line up across the app, every control
- * that acts carries a glyph, controls share one height, values sit in figures
- * that line up, and what is an address or a file is set in monospace. It is how an editing
- * suite reads, and it is what makes the stage read as a viewer rather than as a
- * document with videos in it.
+ * pill, a hover, a lit edge -- is derived from the measured colours. None of it
+ * adds a colour: every one is a measured value, or a measured value at an
+ * alpha, so the palette is still the eleven the sheet was read for.
  */
 
 :root {
@@ -50,100 +48,82 @@
    */
   color-scheme: dark;
 
-  /*
-   * The frame the app is drawn in -- the topbar and the footbar -- which the
-   * render sets darker than anything they enclose. It is the one surface that
-   * is not a panel and not the page, and it is what makes the black band top
-   * and bottom rather than three greys in a row. The sheet draws its topbar at
-   * #030303 and its footbar at #090909; this is the middle of the two.
-   */
+  /* The darkest thing in the app: the letterbox a clip is shown on, and the
+     well a value is typed into. The sheet's topbar and footbar, averaged. */
   --bezel: #060606;
-  /* The stage, and the ground behind the whole app. */
+  /* The window itself -- the ground the title bar, the rail and the status
+     bar sit straight on. */
   --page: #0b0b0b;
-  /* The rail, the Parameters, and anything boxed on the stage -- all one value
-     on the sheet, which draws its two columns at the same level as its panels. */
+  /* The raised panel the stage and the Parameters share. */
   --panel: #121212;
-  /* Raised off a panel: the row under the cursor, the well a Preview sits in.
-     The sheet draws this value three times -- its chosen row and its slider
-     troughs at #1e1e1f, the field a number is typed into at #171717 -- and this
-     is the three averaged. */
+  /* Raised off the panel: a button, a card, the chosen row. The sheet draws
+     this value three times -- its chosen row and its slider troughs at
+     #1e1e1f, the field a number is typed into at #171717 -- and this is the
+     three averaged. */
   --sunken: #1c1c1c;
-  /*
-   * The seam between the columns, and the one above the footbar. Darker than
-   * both sides rather than lighter -- the sheet cuts its panels apart with a
-   * near-black line and never with a pale one.
-   */
+  /* The seam under a column's own scroll, where one is needed at all. */
   --seam: #030303;
-  /* ...and the pale 1px rule, which is only ever drawn ON something: the edge
-     of a panel, a button, a field, a clip. One weight, four readings. */
+  /* The pale 1px rule, drawn only ON something: the edge of the panel, a
+     field, a clip. */
   --line: #2f2f30;
   /* A name, a heading on the stage, a value in a field. */
   --ink: #fafafa;
-  /* ...and everything said about one. The sheet has no third grey: what the
-     rail's headings are set in is what its captions are set in. */
+  /* ...and everything said about one. */
   --ink-dim: #ababab;
-  /*
-   * The accent, twice, because the sheet uses it twice. This is the one that
-   * is lettering -- `settings`, `reset`, a Published pill, a Parameter chosen
-   * by hand -- and it is pale enough to be read at 11px on a panel.
-   */
+  /* The accent that is lettering -- `reset`, a Published pill, a Parameter
+     chosen by hand -- pale enough to be read at 11px on a panel. */
   --accent: #889ea3;
-  /*
-   * ...and this is the one that is filled: Run everything, Publish, the done
-   * half of a slider, the bar under a Run in progress, the mark down the side
-   * of the chosen Action. Dark, and lettered in --ink rather than in black --
-   * the sheet fills dark and letters light, which is the way round a dark app
-   * reads and the opposite of a fill on a white page.
-   */
+  /* ...and the one that is filled: the record buttons, Publish, the done part
+     of a slider, a switch turned on. Dark, and lettered in --ink. */
   --accent-fill: #3e676d;
-  /*
-   * Washes, not tints. A pale panel is not available on this ground, so each
-   * soft pair is its colour at low alpha over whatever it happens to land on,
-   * and the line is the same colour held a little stronger.
-   */
-  --accent-soft: rgba(136, 158, 163, 0.2);
-  --accent-line: rgba(136, 158, 163, 0.34);
-  /* What differs between the two Runs on the stage, which the sheet draws as a
-     neutral block behind the number rather than as a tint. */
+  /* Washes, not tints: each soft pair is its colour at low alpha over whatever
+     it lands on, and the line is the same colour held a little stronger. */
+  --accent-soft: rgba(136, 158, 163, 0.16);
+  --accent-line: rgba(136, 158, 163, 0.3);
+  /* What differs between the two Runs on the stage: a neutral block behind the
+     value, as the sheet draws it. */
   --marked: #2a2b2f;
-  /*
-   * A failed Run is the one state the sheet never renders, so this is the one
-   * colour not measured off it. Kept as it was, and still the only saturated
-   * red in the app.
-   */
+  /* A failed Run is the one state the sheet never renders, so this is the one
+     colour not measured off it -- and the wordmark's recording light. */
   --trouble: #ea8a90;
-  --trouble-soft: rgba(234, 138, 144, 0.14);
-  --trouble-line: rgba(234, 138, 144, 0.3);
-  /*
-   * An Action gone Stale is not a failure, so it is not the colour of one. The
-   * sheet does draw this one -- the pill on its Project row -- and draws it
-   * paler and sandier than the amber that was guessed here before.
-   */
+  --trouble-soft: rgba(234, 138, 144, 0.1);
+  --trouble-line: rgba(234, 138, 144, 0.26);
+  /* An Action gone Stale is not a failure, so it is not the colour of one. */
   --caution: #ead8b3;
-  --caution-soft: rgba(234, 216, 179, 0.13);
-  --caution-line: rgba(234, 216, 179, 0.3);
-  /* The pale rule held stronger, for an edge under the cursor: a field or a
-     clip about to be acted on, which should say so before it is pressed. */
+  --caution-soft: rgba(234, 216, 179, 0.09);
+  --caution-line: rgba(234, 216, 179, 0.25);
+
+  /* --ink at the alphas a surface is lit and divided with. */
+  --hairline: rgba(250, 250, 250, 0.06);
   --line-hover: rgba(250, 250, 250, 0.16);
-  --radius: 8px;
-  /* The corner of anything small enough to sit inside a line of text. */
-  --radius-sm: 5px;
-  /* What a clip or a panel stands off the ground with. Black at an alpha, so
-     it deepens whatever it lands on rather than bringing a colour of its own. */
-  --lift: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.6);
-  /* One easing for every hover and press, so the app moves as one thing. */
-  --ease: 140ms cubic-bezier(0.2, 0.7, 0.3, 1);
-  --mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
-  /* The height of every panel's header strip, and of the title bar. */
-  --strip: 44px;
-  /* ...and of every control that sits on one. */
-  --control: 28px;
+  --glow: rgba(250, 250, 250, 0.14);
+  /*
+   * A raised surface, as flask.do draws one: a lit hairline along the top, a
+   * hairline all round, and a soft shadow falling below it. It is what every
+   * pressable thing and every card is drawn with, so depth is one recipe.
+   */
+  --raise:
+    inset 0 1px 0 var(--glow), inset 0 0 0 1px var(--hairline),
+    0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+  /* ...and the same, flatter, for something that sits in a row of others. */
+  --raise-flat: inset 0 1px 0 var(--glow), inset 0 0 0 1px var(--hairline),
+    0 1px 2px rgba(0, 0, 0, 0.4);
+  /* ...and sunk rather than raised: a field a value is typed into. */
+  --inset: inset 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--line);
+
+  --radius-panel: 14px;
+  --radius-card: 16px;
+  --radius: 12px;
+  --radius-item: 10px;
+  --radius-sm: 7px;
+  --pill: 999px;
+  --control: 30px;
+  --ease: 160ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
 
 * {
   box-sizing: border-box;
-  /* The machine's scrollbar is a pale slab down a dark column. A thin one in
-     the rule's own grey is the same affordance at the app's own weight. */
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
 }
@@ -155,24 +135,42 @@ body {
 
 body {
   margin: 0;
-  /*
-   * Inter where it is installed, and otherwise Windows 11's variable Segoe,
-   * which is the face its own tools are set in -- both are drawn for screens at
-   * the small sizes a dense tool is set at, where the older Segoe is not.
-   * Nothing is fetched: the app reaches nothing off this machine.
-   */
+  /* The machine's own face, as a desktop app is set in -- Segoe on Windows,
+     SF on a Mac. Nothing is fetched: the app reaches nothing off this machine. */
   font:
-    13px/1.45 "Inter",
+    13px/1.45 ui-sans-serif,
+    system-ui,
     "Segoe UI Variable Text",
     "Segoe UI",
-    system-ui,
     -apple-system,
     sans-serif;
   background: var(--page);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+  /* Chrome, not a document: nothing on it is text to be selected, and the
+     cursor is the pointer a desktop app keeps everywhere but a link. */
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* ...except what is worth copying out: a value being typed, an address, a
+   commit, a path, and the command's own words when it refuses something. */
+input,
+textarea,
+code,
+pre,
+.stage-meta,
+.facts,
+.path,
+.standing {
+  user-select: text;
+}
+
+img,
+video {
+  -webkit-user-drag: none;
 }
 
 ::selection {
@@ -180,11 +178,6 @@ body {
   color: var(--ink);
 }
 
-/*
- * Where the keyboard is, drawn in the pale accent: it is lettering-weight, so a
- * ring of it reads on the bezel, on a panel and on a filled button alike. Only
- * for the keyboard -- a click already says where it landed.
- */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -192,23 +185,19 @@ body {
 
 a {
   color: inherit;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--line-hover);
-  transition: text-decoration-color var(--ease);
+  cursor: pointer;
 }
 
-a:hover {
-  text-decoration-color: currentColor;
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
 }
 
-/* Figures that line up down a column, in the face the labels are set in --
-   the way an inspector sets its values, rather than in a typewriter's. */
+/* Figures that line up down a column, in the face the labels are set in. */
 .num {
   font-variant-numeric: tabular-nums;
 }
 
-/* Two names for one grey. They are told apart in the markup and not in the
-   paint: the sheet sets a heading and the caption under it in one value. */
 .muted,
 .faint {
   color: var(--ink-dim);
@@ -223,169 +212,10 @@ a:hover {
   color: var(--ink-dim);
 }
 
-/* ------------------------------------------------------------------ fields */
-
-/*
- * Every box a value is typed into and every menu one is picked from, drawn
- * once. The sheet sets its fields a step above the panel they sit on, which is
- * --sunken, and edges them in the one pale rule; what they do under the cursor
- * and under the keyboard is derived from those two.
- */
-input.typed,
-select {
-  font: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  padding: 3px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background-color: var(--sunken);
-  color: var(--ink);
-  transition:
-    border-color var(--ease),
-    box-shadow var(--ease);
-}
-
-input.typed:hover,
-select:hover {
-  border-color: var(--line-hover);
-}
-
-/* A field being typed into is ringed in the wash rather than outlined, so the
-   caret sits inside something that is plainly the one being edited. */
-input.typed:focus,
-select:focus {
-  outline: none;
-  border-color: var(--accent-fill);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-/* The machine's spinners are two pale nubs inside a dark box, and the slider
-   beside every number already does what they do. */
-input.typed[type="number"] {
-  appearance: textfield;
-}
-
-input.typed::-webkit-inner-spin-button,
-input.typed::-webkit-outer-spin-button {
-  appearance: none;
-  margin: 0;
-}
-
-/*
- * A menu drawn as a field with a chevron, rather than as the machine's own
- * control: the native one is a raised grey button in the middle of a flat
- * column. The chevron is the caption grey, written into the image because a
- * background image cannot read a custom property.
- */
-select {
-  appearance: none;
-  padding-right: 26px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ababab' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 9px center;
-  cursor: pointer;
-}
-
-/*
- * The slider, drawn whole. Chromium draws a native trough near-white whatever
- * color-scheme says, and the sheet draws it at --sunken with the done half in
- * the filled teal -- and styling the track is what stops Chromium filling that
- * half, so the fill is painted here as a gradient to --filled, which the view
- * writes onto the control as it moves.
- */
-input[type="range"] {
-  --filled: 0%;
-  appearance: none;
-  height: 16px;
-  margin: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 2px;
-  background: linear-gradient(
-    to right,
-    var(--accent-fill) var(--filled),
-    var(--sunken) var(--filled)
-  );
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--accent-fill);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-  transition:
-    transform var(--ease),
-    box-shadow var(--ease);
-}
-
-input[type="range"]:hover::-webkit-slider-thumb {
-  transform: scale(1.12);
-}
-
-input[type="range"]:active::-webkit-slider-thumb {
-  transform: scale(1.12);
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.6),
-    0 0 0 5px var(--accent-soft);
-}
-
-input[type="range"]::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--sunken);
-}
-
-input[type="range"]::-moz-range-progress {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--accent-fill);
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--accent-fill);
-}
-
-/* A slider has a ring of its own when it is being moved, so the keyboard's is
-   drawn round the thumb's track rather than round the whole box. */
-input[type="range"]:focus-visible {
-  outline-offset: 0;
-  border-radius: 4px;
-}
-
-input[type="checkbox"] {
-  accent-color: var(--accent-fill);
-  cursor: pointer;
-}
-
-/* ------------------------------------------------------------------ layout */
-
-.app {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
 /* ------------------------------------------------------------------- icons */
 
-/*
- * Every glyph is drawn on the same 16-unit grid in the same stroke, and takes
- * the colour of whatever it sits in -- so an icon is never a second colour on a
- * control, only the one colour the control already is.
- */
+/* Every glyph is drawn on one 16-unit grid in one stroke, and takes the colour
+   of whatever it sits in. */
 .icon {
   flex: none;
   width: 14px;
@@ -407,21 +237,221 @@ input[type="checkbox"] {
   fill: var(--trouble);
 }
 
-/* ------------------------------------------------------------------ layout */
+/* ------------------------------------------------------------------ fields */
+
+/* A box a value is typed into is sunk into what it sits on, rather than
+   raised off it: the one surface that is pressed in rather than out. */
+input.typed {
+  height: 28px;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bezel);
+  box-shadow: var(--inset);
+  color: var(--ink);
+  transition: box-shadow var(--ease);
+}
+
+input.typed:hover {
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px var(--line-hover);
+}
+
+input.typed:focus,
+select:focus {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    0 0 0 3px var(--accent-soft);
+}
+
+input.typed::placeholder {
+  color: #5c5c5c;
+}
+
+input.typed[type="number"] {
+  appearance: textfield;
+}
+
+input.typed::-webkit-inner-spin-button,
+input.typed::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* A menu is a raised pill with a chevron, like any other control. The chevron
+   is the caption grey, written into the image because a background image
+   cannot read a custom property. */
+select {
+  appearance: none;
+  height: 28px;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0 28px 0 11px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background-color: var(--sunken);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ababab' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  box-shadow: var(--raise-flat);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color var(--ease);
+}
+
+select:hover {
+  background-color: color-mix(in srgb, var(--sunken), var(--ink) 5%);
+}
 
 /*
- * The title bar: the app's name, the Conditions, and the button that records
- * everything. As tall as every panel's header strip below it plus the pixel of
- * seam, so the bands across the app line up as one grid.
+ * The slider, drawn whole: a thin trough in the rule's grey, the done part in
+ * the filled teal, and a white thumb standing off it with a shadow -- the
+ * scrubber flask.do draws. Styling the track is what stops Chromium filling
+ * the done part itself, so the fill is painted as a gradient to --filled,
+ * which the view writes onto the control as it moves.
+ */
+input[type="range"] {
+  --filled: 0%;
+  appearance: none;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--pill);
+  background: linear-gradient(
+    to right,
+    var(--accent-fill) var(--filled),
+    var(--line) var(--filled)
+  );
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.6),
+    0 0 0 0 var(--accent-soft);
+  transition:
+    transform var(--ease),
+    box-shadow var(--ease);
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.6),
+    0 0 0 6px var(--accent-soft);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: var(--pill);
+  background: var(--line);
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--pill);
+  background: var(--accent-fill);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+input[type="range"]:focus-visible {
+  outline-offset: 0;
+  border-radius: 4px;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent-fill);
+  cursor: pointer;
+}
+
+/*
+ * A flag -- a Parameter or a setting that is on or off -- as a switch, which is
+ * how a desktop app draws on and off. It is still the checkbox underneath, so
+ * the keyboard and assistive technology reach it as one.
+ */
+.param .ticking input,
+.setting .ticking input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  border-radius: var(--pill);
+  background: var(--line);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: background-color var(--ease);
+}
+
+.param .ticking input::before,
+.setting .ticking input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  transition: transform var(--ease);
+}
+
+.param .ticking input:checked,
+.setting .ticking input:checked {
+  background: var(--accent-fill);
+}
+
+.param .ticking input:checked::before,
+.setting .ticking input:checked::before {
+  transform: translateX(12px);
+}
+
+/* ------------------------------------------------------------------ layout */
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * The title bar, straight on the window: the app's name, the Conditions, and
+ * the button that records everything. No rule under it -- the panel below is
+ * raised off the window, and that edge is the division.
  */
 .topbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: var(--strip);
-  padding: 0 12px 0 16px;
-  border-bottom: 1px solid var(--seam);
-  background: var(--bezel);
+  height: 52px;
+  padding: 0 12px 0 18px;
+  background: var(--page);
   flex: none;
 }
 
@@ -434,76 +464,69 @@ input[type="checkbox"] {
 .wordmark {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   padding-right: 14px;
   margin-right: 2px;
-  border-right: 1px solid var(--line);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.02em;
 }
 
 .wordmark::before {
   content: "";
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--trouble);
-  box-shadow: 0 0 0 3px var(--trouble-soft);
+  box-shadow: 0 0 0 3px var(--trouble-soft), 0 0 12px rgba(234, 138, 144, 0.35);
 }
 
-/* How much there is: said the way a status line says it, not as a heading. */
 .topbar > .faint {
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 /*
- * The Conditions every record button records across, drawn beside the button
- * that records everything, as one segmented group: the schemes are toggles and
- * the widths a field, all inside one edge so they read as one request. Quiet
- * until something is ticked -- a Matrix is asked for deliberately.
+ * The Conditions every record button records across, as one segmented pill:
+ * the schemes are toggles and the widths a field, all inside one raised
+ * surface so they read as one request. Quiet until something is ticked -- a
+ * Matrix is asked for deliberately.
  */
 .conditions {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: var(--control);
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  height: 34px;
+  padding: 3px;
+  border-radius: var(--pill);
   background: var(--panel);
-  font-size: 12px;
+  box-shadow: var(--raise-flat);
+  font-size: 12.5px;
 }
 
 .conditions > .faint {
-  padding: 0 6px 0 8px;
+  padding: 0 6px 0 10px;
 }
 
-/* The widths are introduced after the schemes, so they are cut from them. */
 .conditions > label.faint {
-  margin-left: 4px;
   padding-left: 10px;
-  border-left: 1px solid var(--line);
 }
 
-/*
- * A scheme as a toggle rather than a checkbox: the box is still there for the
- * keyboard and for assistive technology, and the chip it sits in is what the
- * eye reads as on or off.
- */
+/* A scheme as a toggle: the box is still there for the keyboard and for
+   assistive technology, and the chip it sits in is what reads as on or off. */
 .conditions .ticking {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 100%;
-  padding: 0 9px;
-  border-radius: 5px;
+  padding: 0 11px;
+  border-radius: var(--pill);
   color: var(--ink-dim);
   cursor: pointer;
   transition:
     background-color var(--ease),
-    color var(--ease);
+    color var(--ease),
+    box-shadow var(--ease);
 }
 
 .conditions .ticking input {
@@ -513,12 +536,12 @@ input[type="checkbox"] {
 }
 
 .conditions .ticking:hover {
-  background: var(--sunken);
   color: var(--ink);
 }
 
 .conditions .ticking:has(:checked) {
-  background: var(--accent-soft);
+  background: var(--sunken);
+  box-shadow: var(--raise-flat);
   color: var(--ink);
 }
 
@@ -532,17 +555,13 @@ input[type="checkbox"] {
 }
 
 .conditions input.typed {
-  width: 88px;
+  width: 92px;
   height: 100%;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-color: transparent;
-  background-color: var(--sunken);
+  border-radius: var(--pill);
 }
 
-/* ...and what that press now amounts to, said beside the group. */
 .conditions > span.num {
-  padding: 0 8px;
+  padding: 0 10px;
 }
 
 .conditions > span.num:empty {
@@ -551,84 +570,86 @@ input[type="checkbox"] {
 
 /*
  * Rail, stage, Parameters: the three columns of the direction chosen from the
- * sheet, with the Parameters pinned right so tuning is beside the clip it tunes
- * rather than somewhere to navigate to.
+ * sheet. The rail sits on the window; the stage and the Parameters are one
+ * raised panel inset into it, divided by a hairline, with the Parameters pinned
+ * right so tuning is beside the clip it tunes.
  */
 .body {
   flex: 1;
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr) 288px;
+  grid-template-columns: 248px minmax(0, 1fr) 292px;
   min-height: 0;
+  padding: 0 10px 0 0;
 }
 
-/*
- * The strip across the top of every column, which is what makes three columns
- * read as docked panels of one tool rather than three pages side by side. It
- * stays put while its column scrolls under it, and it is the same height in
- * all three so their edges run straight across.
- */
-.panel-head,
-.params > h3 {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--strip);
-  margin: 0;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--seam);
+.stage,
+.params {
   background: var(--panel);
+  box-shadow:
+    inset 0 1px 0 var(--glow),
+    0 0 0 1px var(--line),
+    0 24px 48px -16px rgba(0, 0, 0, 0.7);
+}
+
+.stage {
+  border-radius: var(--radius-panel) 0 0 var(--radius-panel);
+}
+
+.params {
+  border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
+  /* One panel, cut in two by a hairline rather than by a seam. */
+  border-left: 1px solid var(--hairline);
+}
+
+/* A section of the rail, named the way a sidebar names one. */
+.panel-head {
+  margin: 0;
+  padding: 10px 18px 6px;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ink);
+  color: var(--ink-dim);
 }
 
 /* ----------------------------------------------------------------- buttons */
 
 /*
- * One height for every control on a strip, and a glyph before the words where
- * there is one. The resting fill is --sunken, a step above the panel it sits
- * on, which is how an editing tool tells a control from a label beside it.
+ * Every button is a raised pill: its fill a step above what it sits on, its
+ * edge the lit hairline, its depth the shadow under it -- no outline, because
+ * a desktop app's controls read by depth. A glyph goes before the words where
+ * there is one.
  */
 button.act {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   height: var(--control);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1;
-  padding: 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--pill);
   background: var(--sunken);
-  color: var(--ink);
+  box-shadow: var(--raise-flat);
+  color: rgba(250, 250, 250, 0.88);
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
   transition:
     background-color var(--ease),
-    border-color var(--ease),
     color var(--ease),
     box-shadow var(--ease),
     transform var(--ease);
 }
 
-/* A glyph leads its words a little tighter than the padding would place it. */
 button.act:has(.icon) {
-  padding-left: 9px;
+  padding-left: 12px;
 }
 
-/* A hover the sheet does not draw: --sunken lifted by a breath of --ink. */
 button.act:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sunken), var(--ink) 5%);
-  border-color: var(--line-hover);
+  background: color-mix(in srgb, var(--sunken), var(--ink) 6%);
+  color: var(--ink);
 }
 
 /* Pressed, it gives a pixel: enough to feel, too little to move a layout. */
@@ -636,61 +657,78 @@ button.act:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-/* The toggled state of a button that opens something in place, like Preview. */
+/* A button that opens something in place, like Preview, while it is open. */
 button.act.selected {
-  border-color: var(--accent-line);
   background: var(--accent-soft);
+  box-shadow:
+    inset 0 0 0 1px var(--accent-line),
+    0 1px 2px rgba(0, 0, 0, 0.4);
+  color: var(--ink);
 }
 
 /*
- * The one filled button. The sheet fills it dark and letters it light -- the
- * fill is a step above the bezel it sits on rather than the lightest thing in
- * the row, so the letters go on top in --ink and not underneath in black.
+ * The filled button: the dark teal, lettered light, lit along its top edge so
+ * it reads as a raised surface of its own colour.
  */
 button.act.primary {
   background: var(--accent-fill);
-  border-color: var(--accent-fill);
   color: var(--ink);
-  /* A lit top edge, the white at an alpha: it reads as filled rather than as
-     a patch of teal laid on the bezel. */
   box-shadow:
-    inset 0 1px 0 rgba(250, 250, 250, 0.12),
+    inset 0 1px 0 rgba(250, 250, 250, 0.2),
+    inset 0 0 0 1px rgba(250, 250, 250, 0.06),
+    0 4px 12px -2px rgba(62, 103, 109, 0.45),
     0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* A hover the sheet does not draw, so: the same teal, one step up. */
 button.act.primary:hover:not(:disabled) {
   background: #4a787f;
-  border-color: #4a787f;
 }
 
 button.act:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
+/* A button that sits on the window rather than on a surface: no fill until
+   the cursor is on it. */
 button.act.quiet {
-  border-color: transparent;
   background: transparent;
-  color: var(--ink-dim);
   box-shadow: none;
+  color: var(--ink-dim);
 }
 
 button.act.quiet:hover:not(:disabled) {
-  border-color: transparent;
-  background: var(--sunken);
+  background: rgba(250, 250, 250, 0.06);
   color: var(--ink);
 }
 
+/* A word that acts inside a line: `reset`, `clear`. */
+button.act.tiny {
+  height: 22px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent);
+}
+
+button.act.tiny:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* A tag, as flask.do draws its tags: the colour at a wash, edged in the same
+   colour held stronger. */
 .pill {
   display: inline-flex;
   align-items: center;
-  height: 18px;
-  font-size: 11px;
+  height: 20px;
+  font-size: 11.5px;
   font-weight: 500;
-  padding: 0 7px;
+  padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--pill);
+  background: rgba(250, 250, 250, 0.04);
   color: var(--ink-dim);
   white-space: nowrap;
 }
@@ -701,28 +739,21 @@ button.act.quiet:hover:not(:disabled) {
   color: var(--accent);
 }
 
-/*
- * An Action whose Project has been committed to since it last ran, which is the
- * reason to press the button beside it. A flag and nothing more: staleness is
- * reported and never acted on.
- */
+/* An Action whose Project has been committed to since it last ran, which is
+   the reason to press the button beside it. A flag and nothing more:
+   staleness is reported and never acted on. */
 .pill.stale {
   background: var(--caution-soft);
   border-color: var(--caution-line);
   color: var(--caution);
 }
 
-/* Nothing at all for an Action the command reports as current, so a rail with
-   nothing to say is quiet rather than a column of empty flags. */
 .pill:empty {
   display: none;
 }
 
-/*
- * A Condition drawn inside a heading that is set in small capitals. Its name is
- * a directory and half of an Artifact's filename, so it is drawn exactly as it
- * is written: `DARK-320W` reads as a different Condition from the one on disk.
- */
+/* A Condition's name is a directory and half of an Artifact's filename, so it
+   is drawn exactly as it is written wherever it appears. */
 h3 .pill {
   text-transform: none;
   letter-spacing: normal;
@@ -731,22 +762,20 @@ h3 .pill {
 /* -------------------------------------------------------------------- rail */
 
 .rail {
-  border-right: 1px solid var(--seam);
-  background: var(--panel);
   overflow-y: auto;
-  padding: 0 0 20px;
+  padding: 4px 0 20px;
 }
 
-/* A Project is a bin its Actions sit in, drawn the way a media bin is: a
-   folder, its name, and its settings behind a glyph at the end of the row. */
+/* A Project is a bin its Actions sit in: a folder, its name, and its
+   settings behind a glyph at the end of the row. */
 .rail .project {
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 36px;
-  margin-top: 6px;
-  padding: 0 8px 0 14px;
-  font-size: 12.5px;
+  gap: 8px;
+  height: 34px;
+  margin: 4px 8px 2px;
+  padding: 0 6px 0 10px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -778,36 +807,29 @@ h3 .pill {
   white-space: nowrap;
 }
 
-/* The Project whose configuration is on the stage, marked as the Action on it is. */
 .rail .project .act.selected {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.rail-foot {
-  margin-top: 10px;
-  padding: 10px 8px 0;
-  border-top: 1px solid var(--line);
-}
-
-/* Adding a Project is the rail's own last row, so it is drawn as one: its
-   width, a plus in front, and the hover every row above it has. */
-.rail-foot .act {
-  width: 100%;
-  justify-content: flex-start;
-  padding-left: 8px;
-}
-
+/*
+ * An Action is a row that floats when chosen: a rounded item inset from the
+ * rail's edges, which on the cursor takes a wash and when chosen becomes a
+ * raised surface of its own -- the way a desktop sidebar marks where you are.
+ */
 .rail .action {
   display: block;
-  width: 100%;
+  width: calc(100% - 16px);
+  margin: 1px 8px;
   border: 0;
+  border-radius: var(--radius-item);
   background: none;
   color: var(--ink-dim);
   font: inherit;
   font-size: 13px;
+  font-weight: 500;
   text-align: left;
-  padding: 7px 12px 7px 22px;
+  padding: 7px 10px 7px 26px;
   cursor: pointer;
   transition:
     background-color var(--ease),
@@ -816,23 +838,14 @@ h3 .pill {
 }
 
 .rail .action:hover {
-  background: var(--sunken);
+  background: rgba(250, 250, 250, 0.04);
   color: var(--ink);
 }
 
-/*
- * The chosen Action, which the sheet marks with a bar and not with a wash: the
- * row itself is the same grey a hovered row is, and the teal is two pixels
- * down its left edge.
- */
 .rail .action.selected {
   background: var(--sunken);
+  box-shadow: var(--raise);
   color: var(--ink);
-  box-shadow: inset 2px 0 0 var(--accent-fill);
-}
-
-.rail .action.selected .name {
-  font-weight: 550;
 }
 
 .rail .action .row {
@@ -856,50 +869,50 @@ h3 .pill {
   white-space: nowrap;
 }
 
-/*
- * A clip of each Action under its name, which is how the rail is read as
- * "which of these is the one I meant" rather than as a list of words. Off is a
- * real state: eight Actions playing at once is a busy sidebar.
- */
+/* A clip of each Action under its name, which is how the rail is read as
+   "which of these is the one I meant". Off is a real state: eight Actions
+   playing at once is a busy sidebar. */
 .rail .gif {
   display: block;
-  /* The clip's own ratio at the rail's width: the GIF is encoded wider than the
-     rail is, and its height is the height that width comes to. */
+  /* The clip's own ratio at the rail's width. */
   width: 100%;
   height: auto;
-  margin-top: 7px;
-  border: 1px solid var(--line);
+  margin-top: 8px;
   border-radius: var(--radius-sm);
-  background: #000;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  transition: border-color var(--ease);
-}
-
-.rail .action:hover .gif,
-.rail .action.selected .gif {
-  border-color: var(--line-hover);
+  background: var(--bezel);
+  box-shadow: 0 0 0 1px var(--hairline), 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
 .rail .absent {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--ink-dim);
 }
 
-/* A Project whose Actions have not been written yet, which is a state to read. */
 .rail .none {
   margin: 0;
-  padding: 2px 22px 6px;
+  padding: 2px 34px 6px;
 }
 
-/* The stage of a Run, and nothing at all when the Action is not recording. */
+.rail-foot {
+  margin-top: 8px;
+  padding: 0 8px;
+}
+
+.rail-foot .act {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: var(--radius-item);
+  padding-left: 10px;
+}
+
 /* A dot that breathes while the Run is in flight, so a rail glanced at says
    which of its Actions is busy before any of its words are read. */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--accent);
   white-space: nowrap;
 }
@@ -914,8 +927,16 @@ h3 .pill {
   animation: breathe 1.4s ease-in-out infinite;
 }
 
+.badge.failed {
+  color: var(--trouble);
+}
+
 .badge.failed::before {
   animation: none;
+}
+
+.badge:empty {
+  display: none;
 }
 
 @keyframes breathe {
@@ -924,101 +945,84 @@ h3 .pill {
   }
 }
 
-/* ...or that the last Run of it failed, which a rail nobody is looking at
-   otherwise leaves to be guessed at one Action at a time. */
-.badge.failed {
-  color: var(--trouble);
-}
-
-.badge:empty {
-  display: none;
-}
-
 /* ------------------------------------------------------------------- stage */
 
 .stage {
   overflow-y: auto;
-  padding: 0 24px 32px;
+  padding: 0 22px 28px;
   min-width: 0;
 }
 
-/* Whatever opens a stage that has no header strip -- the stage with nothing
-   configured yet -- still starts clear of the title bar. */
 .stage > :first-child:not(.stage-head) {
   margin-top: 20px;
 }
 
 /*
- * The viewer's own toolbar: what is on it, and the buttons that act on it.
- * The stage's header strip, level with the rail's and the Parameters', and
- * pinned the same way. The buttons wrap below the name rather than squeeze it
- * when the stage is narrow -- an Action's name broken over two lines is the one
- * word on the stage that must not be.
+ * The stage's toolbar: what is on it, said as a title and a breadcrumb, and
+ * the buttons that act on it. It stays while the stage scrolls under it, and
+ * its buttons wrap below the name rather than break an Action's name over two
+ * lines.
  */
 .stage-head {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
-  min-height: var(--strip);
-  margin: 0 -24px;
-  padding: 7px 24px;
-  border-bottom: 1px solid var(--seam);
+  gap: 8px 8px;
+  min-height: 60px;
+  margin: 0 -22px;
+  padding: 12px 22px;
+  border-radius: var(--radius-panel) 0 0 0;
   background: var(--panel);
 }
 
 .stage-head h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   white-space: nowrap;
 }
 
-/*
- * What the name belongs to, said as a breadcrumb after it -- a Project, or the
- * file a Project is configured in. It gives way before the buttons do: a long
- * path is cut short with an ellipsis rather than pushing them onto a row of
- * their own.
- */
+/* What the name belongs to -- a Project, or the file a Project is configured
+   in -- which gives way before the buttons do. */
 .stage-head h2 + .muted {
   flex: 1 1 0;
   min-width: 48px;
-  padding-left: 10px;
-  border-left: 1px solid var(--line);
-  font-size: 12.5px;
-  line-height: 14px;
+  padding-left: 4px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ...and it takes the room the spacer would, so it is cut only when it must. */
+.stage-head h2 + .muted::before {
+  content: "/";
+  margin-right: 8px;
+  color: #4a4a4a;
+}
+
 .stage-head h2 + .muted + .spacer {
   flex: none;
 }
 
-/* Where the Project answers: an address, so it is set as one. */
 .stage-meta {
-  margin: 14px 0 0;
+  margin: 2px 0 0;
   font-family: var(--mono);
   font-size: 11.5px;
   color: var(--ink-dim);
 }
 
 /*
- * How the Action on the stage stands: that its Project has been committed to
- * since the clip was recorded, and whatever staleness the command could not tell
- * either way. Present whether or not there is anything to say, because it is
- * written into rather than drawn again -- staleness is read as every request ends,
- * and there are clips playing by then.
+ * How the Action on the stage stands. Present whether or not there is anything
+ * to say, because it is written into rather than drawn again -- staleness is
+ * read as every request ends, and there are clips playing by then.
  */
 .standing {
-  margin-top: 8px;
-  font-size: 13px;
+  margin-top: 12px;
+  font-size: 12.5px;
 }
 
 .standing:empty {
@@ -1029,51 +1033,47 @@ h3 .pill {
   margin: 0;
 }
 
+/* Stale, said as a note with a light in front of it rather than as a line of
+   coloured prose. */
 .standing .gone-stale {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  background: var(--caution-soft);
+  box-shadow: inset 0 0 0 1px var(--caution-line);
   color: var(--caution);
 }
 
-/* The warning sign the sheet does not draw, in the colour of what it warns. */
 .standing .gone-stale::before {
   content: "";
-  display: inline-block;
+  flex: none;
   width: 6px;
   height: 6px;
-  margin: 0 8px 1px 1px;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 0 3px var(--caution-soft);
+  transform: translateY(-1px);
 }
 
-/*
- * The clips, and the width to the right of them. A GIF at its default width
- * leaves a third of the stage over, which is where the Latest is read about.
- */
 .stage-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 264px;
   gap: 20px;
   align-items: start;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
-/*
- * Which histories the two clips come from, above them. Present only where a
- * Matrix has been recorded: an Action that keeps one history has nothing to pick
- * between, and a row of pickers over one name is furniture.
- */
+/* Which histories the two clips come from. Present only where a Matrix has
+   been recorded. */
 .comparing {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-  font-size: 12px;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
   color: var(--ink-dim);
-}
-
-.comparing select.picking {
-  background-color: var(--panel);
 }
 
 /*
@@ -1084,7 +1084,7 @@ h3 .pill {
 .compare {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  gap: 18px;
   align-items: start;
 }
 
@@ -1092,18 +1092,177 @@ h3 .pill {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
-  font-size: 12px;
+  margin-bottom: 9px;
+  padding: 0 2px;
+  font-size: 12.5px;
 }
 
-/* Which viewer this is, labelled the way a monitor's corner is. */
 .run-head h3 {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-dim);
+  color: var(--ink);
+}
+
+/*
+ * The clip, letterboxed in black inside a rounded frame -- a clip is judged
+ * against nothing rather than against the app, and the hairline is what says
+ * where the recording stops and the panel starts.
+ */
+.clip {
+  position: relative;
+  border-radius: var(--radius);
+  background: #000;
+  overflow: hidden;
+  line-height: 0;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 16px 32px -12px rgba(0, 0, 0, 0.8);
+}
+
+.clip video {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: pointer;
+}
+
+/*
+ * The clip's own transport, floating over its foot as a glass pill: play,
+ * where it is in Frames, the bar it is scrubbed by, full screen. Out of the
+ * way while it plays and the cursor is elsewhere; there whenever the clip is
+ * paused, pointed at or reached by the keyboard.
+ */
+.transport {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 6px 0 5px;
+  border-radius: var(--pill);
+  background: rgba(11, 11, 11, 0.62);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow:
+    inset 0 1px 0 var(--glow),
+    inset 0 0 0 1px var(--hairline),
+    0 8px 20px rgba(0, 0, 0, 0.45);
+  line-height: 1;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--ease),
+    transform var(--ease);
+}
+
+.clip:hover .transport,
+.clip.paused .transport,
+.clip:focus-within .transport {
+  opacity: 1;
+  transform: none;
+}
+
+.transport-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color var(--ease);
+}
+
+.transport-button:hover {
+  background: rgba(250, 250, 250, 0.12);
+}
+
+.timecode {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgba(250, 250, 250, 0.85);
+}
+
+.scrubber {
+  position: relative;
+  flex: 1;
+  height: 20px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.scrubber::before,
+.scrubbed {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 0;
+  height: 4px;
+  border-radius: var(--pill);
+}
+
+.scrubber::before {
+  right: 0;
+  background: rgba(250, 250, 250, 0.22);
+}
+
+.scrubbed {
+  background: var(--ink);
+}
+
+/* The knob, shown where the bar is being reached for. */
+.scrubbed::after {
+  content: "";
+  position: absolute;
+  right: -6px;
+  top: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity var(--ease);
+}
+
+.scrubber:hover .scrubbed::after,
+.scrubber:focus-visible .scrubbed::after {
+  opacity: 1;
+}
+
+.scrubber:focus-visible {
+  outline-offset: 2px;
+  border-radius: var(--pill);
+}
+
+/* Full screen is the clip and nothing else, at whatever size the screen is. */
+.clip:fullscreen {
+  display: flex;
+  align-items: center;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.clip:fullscreen video {
+  height: 100%;
+  object-fit: contain;
+}
+
+.clip:fullscreen .transport {
+  left: 50%;
+  right: auto;
+  bottom: 24px;
+  width: min(720px, calc(100% - 48px));
+  transform: translateX(-50%);
 }
 
 /* What a Run was recorded against, so a clip on screen is placeable. */
@@ -1111,21 +1270,42 @@ h3 .pill {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin: 8px 0 0;
-  font-size: 11.5px;
+  margin: 10px 0 0;
+  padding: 0 2px;
+  font-size: 12px;
   color: var(--ink-dim);
 }
 
+/*
+ * What differs between the two Runs, which is the whole reason both are on the
+ * stage. Highlighted rather than recoloured: the accent already means "chosen by
+ * hand" wherever a Parameter is shown, and one colour meaning two things is a
+ * mark that says neither.
+ */
+.run .facts .changed,
+.recorded-with li.changed .num {
+  background: var(--marked);
+  border-radius: 5px;
+  padding: 1px 6px;
+  color: var(--ink);
+}
+
+/* What a Run ran with, as a card of properties: the name in the caption grey,
+   the value in white, and a hairline between rows so the eye does not have to
+   cross half a clip's width on the level. */
 .recorded-with {
-  margin-top: 16px;
+  margin-top: 14px;
+  padding: 4px 14px 6px;
+  border-radius: var(--radius);
+  background: var(--sunken);
+  box-shadow: var(--raise-flat);
 }
 
 .recorded-with h4 {
-  margin: 0 0 6px;
-  font-size: 11px;
+  margin: 0;
+  padding: 9px 0 7px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--ink-dim);
 }
 
@@ -1135,29 +1315,13 @@ h3 .pill {
   list-style: none;
 }
 
-/*
- * A name at one end of the row and its value at the other, with half a clip's
- * width between them -- so the row under the cursor is lit, and the eye does
- * not have to be trusted to cross the gap on the level.
- */
-/*
- * A property table, as an inspector draws one: the name in the caption grey,
- * the value in white and in figures that line up, and a hairline under every
- * row -- so the eye does not have to be trusted to cross half a clip's width
- * on the level. The row under the cursor is lit as well.
- */
-.recorded-with ul {
-  border-top: 1px solid var(--line);
-}
-
 .recorded-with li {
   display: flex;
   gap: 8px;
   align-items: center;
-  min-height: 25px;
-  padding: 0 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line), transparent 45%);
-  font-size: 12px;
+  min-height: 27px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12.5px;
   color: var(--ink-dim);
 }
 
@@ -1165,93 +1329,52 @@ h3 .pill {
   color: var(--ink);
 }
 
-.recorded-with li:hover {
-  background: var(--panel);
-  color: var(--ink);
-}
-
 /* A value chosen by hand rather than declared, marked as it is in the column
-   that tunes it -- what a Run ran with is never left to be worked out. */
+   that tunes it. */
 .recorded-with li.overridden .name::after {
   content: "\2022";
   color: var(--accent);
   margin-left: 5px;
 }
 
-/*
- * What differs between the two Runs, which is the whole reason both are on the
- * stage. Highlighted rather than recoloured: the accent already means "chosen by
- * hand" wherever a Parameter is shown, and one colour meaning two things is a
- * mark that says neither. The sheet agrees and draws this one neutral.
- */
-.run .facts .changed,
-.recorded-with li.changed .num {
-  background: var(--marked);
-  border-radius: 3px;
-  padding: 1px 5px;
-  color: var(--ink);
-}
-
-/*
- * Black inside, deliberately, as it was against a white page -- a clip is
- * judged against nothing rather than against the app. What changed is that the
- * ground outside is now nearly black too, so a clip that opens on a dark frame
- * has no edge of its own: this border is the only thing left saying where the
- * recording stops and the stage starts. The sheet draws it at the same weight
- * as every other edge, so it is the same rule and not a stronger one -- against
- * #000 inside and #0b0b0b outside, one pale line is enough to be seen.
- */
-.clip {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #000;
-  overflow: hidden;
-  line-height: 0;
-  box-shadow: var(--lift);
-  transition: border-color var(--ease);
-}
-
-.clip:hover {
-  border-color: var(--line-hover);
-}
-
-.clip video {
-  display: block;
-  width: 100%;
-  height: auto;
+.recorded-with p {
+  margin: 4px 0 8px;
 }
 
 .empty {
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  padding: 28px 22px;
+  border-radius: var(--radius-card);
+  background: rgba(250, 250, 250, 0.02);
+  box-shadow: inset 0 0 0 1px var(--line);
+  padding: 26px 22px;
   color: var(--ink-dim);
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
+.empty .row {
+  margin-top: 14px;
+}
+
+/* The Latest's Artifacts, as a card beside the clips. */
 .beside {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  padding: 0 14px 6px;
-  box-shadow: var(--lift);
+  padding: 4px 16px 8px;
+  border-radius: var(--radius-card);
+  background: var(--sunken);
+  box-shadow: var(--raise);
 }
 
-/* The card's own header strip, the panel heads' at a card's size. */
 .beside h3 {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
-  margin: 0 -14px 4px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--line);
-  font-size: 11px;
+  margin: 0;
+  padding: 12px 0 8px;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-dim);
+  color: var(--ink);
+}
+
+.beside p {
+  margin: 0 0 8px;
 }
 
 .beside ul {
@@ -1264,54 +1387,43 @@ h3 .pill {
   display: flex;
   gap: 8px;
   align-items: center;
-  min-height: 36px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line), transparent 45%);
+  min-height: 38px;
+  border-top: 1px solid var(--hairline);
   font-size: 12px;
 }
 
 .beside li .faint {
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
-.beside li:last-child {
-  border-bottom: 0;
-}
-
-/*
- * Each file as a chip naming its format, the way a media browser badges what a
- * file is -- white, as the sheet draws them, and edged rather than coloured,
- * which leaves the accent meaning only "chosen by hand" wherever it appears
- * beside a Parameter.
- */
+/* Each file as a chip naming its format -- white and edged rather than
+   coloured, which leaves the accent meaning only "chosen by hand". */
 .beside a {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--sunken);
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--pill);
+  background: rgba(250, 250, 250, 0.06);
+  box-shadow: inset 0 0 0 1px var(--line);
   color: var(--ink);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.02em;
+  font-size: 12px;
+  font-weight: 500;
   text-decoration: none;
   transition:
-    border-color var(--ease),
-    background-color var(--ease);
+    background-color var(--ease),
+    box-shadow var(--ease);
 }
 
 .beside a:hover {
-  border-color: var(--line-hover);
-  background: color-mix(in srgb, var(--sunken), var(--ink) 5%);
+  background: rgba(250, 250, 250, 0.1);
+  box-shadow: inset 0 0 0 1px var(--line-hover);
 }
 
 /* --------------------------------------------------------------- Preview */
 
-/*
- * A Preview takes the whole stage rather than a column of it: the clips are not
- * beside it, and the point of it is looking hard at motion.
- */
+/* A Preview takes the whole stage rather than a column of it: the clips are
+   not beside it, and the point of it is looking hard at motion. */
 .stage-body.previewing {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -1324,55 +1436,43 @@ h3 .pill {
 
 .preview-head h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-/*
- * What it deliberately is not, said on its face. Marked as a caution rather
- * than drawn faint: judging a surround or a cursor by something that never
- * showed one is the mistake this line exists to prevent.
- */
+/* What it deliberately is not, said on its face. Marked as a caution rather
+   than drawn faint: judging a surround or a cursor by something that never
+   showed one is the mistake this line exists to prevent. */
 .preview-not {
-  margin: 8px 0 12px;
-  padding: 8px 10px;
-  border: 1px solid var(--caution-line);
+  margin: 12px 0 14px;
+  padding: 11px 14px;
   border-radius: var(--radius);
   background: var(--caution-soft);
+  box-shadow: inset 0 0 0 1px var(--caution-line);
   color: var(--caution);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
-/*
- * The room the frame is given. Its height is written by the player, from the
- * Project's viewport and whatever room this has -- so a 1440-wide Project is
- * judgeable on a smaller screen.
- */
+/* The room the frame is given. Its height is written by the player, from the
+   Project's viewport and whatever room this has. */
 .preview-stage {
   overflow: hidden;
-  border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--sunken);
-  box-shadow: var(--lift);
+  background: var(--bezel);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 16px 32px -12px rgba(0, 0, 0, 0.8);
 }
 
-/*
- * The Project's own viewport in CSS pixels, scaled to fit. Laid out at its own
- * width, because a Preview at the stage's width would be a Preview of a
- * different page.
- */
+/* The Project's own viewport in CSS pixels, scaled to fit. */
 .preview-page {
   transform-origin: top left;
 }
 
-/*
- * Held to light while everything around it is dark. What is inside is the
- * Project's own page, and a Project that sets no background of its own would
- * otherwise be tuned against a ground it will never be seen on. So the frame
- * keeps the white the browser would have given it, and says as much to the
- * page inside rather than only behind it.
- */
+/* Held to light while everything around it is dark: what is inside is the
+   Project's own page, and a Project that sets no background of its own would
+   otherwise be tuned against a ground it will never be seen on. */
 .preview-frame {
   display: block;
   width: 100%;
@@ -1383,7 +1483,7 @@ h3 .pill {
 }
 
 .preview-scrub {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .preview-scrub .scrub {
@@ -1396,62 +1496,74 @@ h3 .pill {
   gap: 8px;
   align-items: baseline;
   margin: 6px 0 0;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 /* -------------------------------------------------------------- Parameters */
 
 .params {
-  border-left: 1px solid var(--seam);
   overflow-y: auto;
-  padding: 0 16px 16px;
-  background: var(--panel);
+  padding: 0 18px 18px;
 }
 
-/* Its header strip is drawn with the other panels', under layout. */
+/* The panel's title, as the side panel of a desktop app titles itself, held
+   at the top while its Parameters scroll under it. */
 .params > h3 {
-  margin: 0 -16px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  min-height: 60px;
+  margin: 0 -18px;
+  padding: 0 18px;
+  border-radius: 0 var(--radius-panel) 0 0;
+  background: var(--panel);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
-/* Each Parameter is its own block, cut from the next by the pale rule, so a
+/* Each Parameter is its own block, divided from the next by a hairline, so a
    description that runs to two lines is never read as the next one's. */
 .param {
-  padding: 12px 0;
-  border-top: 1px solid var(--line);
+  padding: 13px 0;
+  border-top: 1px solid var(--hairline);
 }
 
 .params h3 + .param,
 .params .trouble + .param {
   border-top: 0;
+  padding-top: 2px;
 }
 
 .param .row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-height: 22px;
 }
 
 .param .name {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 550;
 }
 
 .param .value {
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .param .describes {
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--ink-dim);
   margin-top: 2px;
 }
 
-/* A value chosen by hand rather than declared, marked as one: what an Action
-   will run with is never left to be worked out from what it declares. */
+/* A value chosen by hand rather than declared, marked as one. */
 .param.overridden .name::after {
-  content: "•";
+  content: "\2022";
   color: var(--accent);
   margin-left: 5px;
 }
@@ -1460,30 +1572,13 @@ h3 .pill {
   color: var(--accent);
 }
 
-button.act.tiny {
-  font-size: 11px;
-  line-height: 18px;
-  padding: 0 6px;
-  border-color: transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--accent);
-}
-
-button.act.tiny:hover:not(:disabled) {
-  border-color: transparent;
-  background: var(--accent-soft);
-}
-
 .sliding {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 8px;
+  gap: 12px;
+  margin-top: 10px;
 }
 
-/* Drawn with every other slider, under fields: the sheet's trough and its
-   teal done half, rather than Chromium's near-white one. */
 .param input[type="range"] {
   flex: 1;
   min-width: 0;
@@ -1491,7 +1586,7 @@ button.act.tiny:hover:not(:disabled) {
 
 /* The value typed rather than hunted for, which a wide range needs. */
 .param input.typed {
-  width: 68px;
+  width: 64px;
   text-align: right;
 }
 
@@ -1499,55 +1594,53 @@ button.act.tiny:hover:not(:disabled) {
 .param .extent {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
-  margin-top: 2px;
-  padding-right: 78px;
+  font-size: 10.5px;
+  margin-top: 3px;
+  padding-right: 76px;
 }
 
 .param select {
   width: 100%;
-  margin-top: 5px;
+  margin-top: 8px;
 }
 
-.param .ticking {
+.param .ticking,
+.setting .ticking {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 12px;
+  gap: 9px;
+  margin-top: 8px;
+  font-size: 12.5px;
   color: var(--ink-dim);
 }
 
 .params .trouble {
-  margin: 12px 0;
+  margin: 4px 0 14px;
 }
 
 /* ------------------------------------------------- what a Project is set to */
 
 /*
- * Configuration takes the stage in place of the clips, because it is read and
- * changed a few times in a Project's life and the clips are what the app is
- * open for the rest of the time. Two columns of settings on a wide window, so
- * that all of what a Project is is readable at once.
+ * Configuration takes the stage in place of the clips, as a card of settings
+ * -- two columns of them on a wide window, so that all of what a Project is is
+ * readable at once.
  */
 .settings,
 .new-project {
-  margin-top: 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  padding: 20px 22px;
-  box-shadow: var(--lift);
+  margin-top: 20px;
+  padding: 22px 24px;
+  border-radius: var(--radius-card);
+  background: var(--sunken);
+  box-shadow: var(--raise);
 }
 
 .settings {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 18px 28px;
+  gap: 20px 30px;
   align-content: start;
 }
 
-/* What is said about the panel rather than about one setting spans all of it. */
 .settings > p,
 .settings > .trouble,
 .settings > .new-project {
@@ -1556,18 +1649,19 @@ button.act.tiny:hover:not(:disabled) {
 
 .new-project {
   margin: 0;
-  border: 0;
   padding: 0;
-  box-shadow: none;
   max-width: 520px;
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  background: none;
+  box-shadow: none;
 }
 
 .setting .row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
+  min-height: 22px;
 }
 
 .setting .name {
@@ -1576,108 +1670,92 @@ button.act.tiny:hover:not(:disabled) {
 }
 
 .setting .describes {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-dim);
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 /* A value the file says, marked apart from one the tool is standing in. */
 .setting.written .name::after {
-  content: "•";
+  content: "\2022";
   color: var(--accent);
   margin-left: 5px;
 }
 
 .setting .tag {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 11px;
 }
 
 .typing {
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .setting input.typed {
   width: 100%;
+  margin-top: 8px;
+}
+
+.typing input.typed {
+  margin-top: 0;
 }
 
 .setting select {
   width: 100%;
-  margin-top: 5px;
-}
-
-.setting .ticking {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--ink-dim);
-}
-
-.empty .row {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 /* ---------------------------------------------------------------- publish */
 
 /*
- * The one way out of this machine, at the bottom of the page: everything above
- * it happens here, and this is the button that does not. It sits across the
- * whole width rather than in a column, because it belongs to all of them.
+ * The one way out of this machine, along the foot of the window: everything
+ * above it happens here, and this is the button that does not. A status bar,
+ * set small and straight on the window.
  */
-/* A status bar: slimmer than the title bar, and set small, as one is. */
 .footbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 38px;
-  padding: 4px 8px 4px 16px;
-  border-top: 1px solid var(--seam);
-  background: var(--bezel);
+  height: 46px;
+  padding: 0 12px 0 18px;
+  background: var(--page);
   flex: none;
   font-size: 12px;
 }
 
 .footbar .act {
-  height: 26px;
+  height: 28px;
 }
 
 .footbar .act.selected {
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow:
+    inset 0 1px 0 rgba(250, 250, 250, 0.2),
+    0 0 0 3px var(--accent-soft);
 }
 
-/*
- * What is about to go public, read before it is agreed to. A list of files with
- * their sizes, which is what somebody deciding is deciding about.
- */
+/* What is about to go public, read before it is agreed to. */
 .publish {
-  margin-top: 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  padding: 20px 22px;
+  margin-top: 20px;
+  padding: 22px 24px;
+  border-radius: var(--radius-card);
+  background: var(--sunken);
+  box-shadow: var(--raise);
   max-width: 720px;
-  box-shadow: var(--lift);
 }
 
 .publish > p {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
 }
 
 .publish h3 {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-dim);
-  margin: 18px 0 6px;
+  color: var(--ink);
+  margin: 20px 0 6px;
 }
 
 .published-action {
-  border-top: 1px solid var(--line);
-  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+  padding: 11px 0;
 }
 
 .published-action .row {
@@ -1691,7 +1769,8 @@ button.act.tiny:hover:not(:disabled) {
   font-weight: 550;
 }
 
-.published-action ul {
+.published-action ul,
+.publish-removing ul {
   list-style: none;
   margin: 4px 0 0;
   padding: 0;
@@ -1702,20 +1781,14 @@ button.act.tiny:hover:not(:disabled) {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 1px 0;
-  font-size: 12px;
+  padding: 2px 0;
+  font-size: 12.5px;
 }
 
 .publish .path {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--ink-dim);
-}
-
-.publish-removing ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
 }
 
 /* Taken back out is a Project that stopped being Published, which is a caution
@@ -1725,21 +1798,21 @@ button.act.tiny:hover:not(:disabled) {
 }
 
 .publish-total {
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
-  margin: 14px 0 12px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+  margin: 14px 0 14px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-dim);
 }
 
 /* What came of it, which is the one thing on this page that already happened. */
 .published-as {
-  border: 1px solid var(--accent-line);
   border-radius: var(--radius);
   background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
   color: var(--accent);
-  padding: 8px 12px;
-  margin-bottom: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
 }
 
 .publish .row {
@@ -1752,16 +1825,15 @@ button.act.tiny:hover:not(:disabled) {
 /*
  * What a Run is doing while it is doing it. Present whether or not anything is
  * recording, so that a Frame arriving changes what it says rather than what the
- * page is made of -- a clip must not be taken out from under whoever is
- * watching it sixty times a second.
+ * page is made of.
  */
 .progress {
-  margin-top: 16px;
-  border: 1px solid var(--accent-line);
+  margin-top: 14px;
+  padding: 11px 14px;
   border-radius: var(--radius);
   background: var(--accent-soft);
-  padding: 10px 14px;
-  font-size: 13px;
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  font-size: 12.5px;
   color: var(--ink);
 }
 
@@ -1778,23 +1850,20 @@ button.act.tiny:hover:not(:disabled) {
 
 .progress .bar {
   height: 4px;
-  margin-top: 8px;
-  border-radius: 2px;
+  margin-top: 9px;
+  border-radius: var(--pill);
   background: var(--accent-line);
   overflow: hidden;
 }
 
-/*
- * The done part, eased from one Frame's width to the next rather than stepped,
- * and swept by a paler band so a stage that is encoding -- where the width sits
- * still for a while -- still reads as busy rather than as stuck.
- */
+/* The done part, eased from one Frame's width to the next, and swept by a paler
+   band so an encode -- where the width sits still -- reads as busy. */
 .progress .bar span {
   display: block;
   height: 100%;
   border-radius: inherit;
   background:
-    linear-gradient(90deg, transparent, rgba(250, 250, 250, 0.22), transparent) 0 0 / 60% 100%
+    linear-gradient(90deg, transparent, rgba(250, 250, 250, 0.25), transparent) 0 0 / 60% 100%
       no-repeat,
     var(--accent-fill);
   animation: sweep 1.6s linear infinite;
@@ -1816,19 +1885,17 @@ button.act.tiny:hover:not(:disabled) {
 
 /* Why a Run failed, in the command's own words and never rephrased. */
 .trouble {
-  margin-top: 16px;
-  border: 1px solid var(--trouble-line);
+  margin-top: 14px;
+  padding: 11px 14px;
   border-radius: var(--radius);
   background: var(--trouble-soft);
-  padding: 10px 14px;
+  box-shadow: inset 0 0 0 1px var(--trouble-line);
 }
 
 .trouble h3 {
-  margin: 0 0 4px;
-  font-size: 12px;
+  margin: 0 0 5px;
+  font-size: 12.5px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--trouble);
 }
 
@@ -1836,7 +1903,7 @@ button.act.tiny:hover:not(:disabled) {
   margin: 0;
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--ink);
@@ -1853,21 +1920,15 @@ button.act.tiny:hover:not(:disabled) {
   }
 }
 
-/*
- * ...and narrower still, the two clips stack rather than shrink. Two clips too
- * small to see the difference in are one clip's worth of information twice.
- */
+/* ...and narrower still, the two clips stack rather than shrink. */
 @media (max-width: 1080px) {
   .compare {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-/*
- * Everything that moves on its own -- the breathing dot, the sweep across a
- * Run's bar, a hover easing in -- stands still for somebody who has asked the
- * machine for less motion. What it says is unchanged; only the movement goes.
- */
+/* Everything that moves on its own stands still for somebody who has asked
+   the machine for less motion. What it says is unchanged. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

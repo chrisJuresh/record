@@ -1344,7 +1344,6 @@ function clip(run: Run): HTMLElement {
     el("source", { src: artifactUrl(run, mp4), type: "video/mp4" }),
   ]);
 
-  video.controls = true;
   video.autoplay = true;
   video.loop = true;
   // No browser autoplays a clip that could make a noise, and no Run records one.
@@ -1353,7 +1352,134 @@ function clip(run: Run): HTMLElement {
   video.width = webm.width;
   video.height = webm.height;
 
-  return el("div", { class: "clip" }, [video]);
+  const frame = el("div", { class: "clip" }, [video]);
+
+  frame.append(transport(frame, video, run.framerate));
+
+  return frame;
+}
+
+/**
+ * The clip's own controls, in place of the browser's: play and pause, where it
+ * is in Frames as well as seconds, a bar to scrub it by, and full screen.
+ *
+ * The browser's controls are a web page's, and they say where a clip is in
+ * seconds -- but a Run is Frames, captured on a stepped clock at its own rate,
+ * and judging a travel is judging the Frame it settles on. So the time is a
+ * timecode at the Run's framerate, and the arrow keys on the bar step one Frame.
+ */
+function transport(frame: HTMLElement, video: HTMLVideoElement, framerate: number): HTMLElement {
+  const toggle = button("", "transport-button", () => {
+    if (video.paused) {
+      void video.play();
+    } else {
+      video.pause();
+    }
+  });
+  const time = el("span", { class: "timecode num" });
+  const done = el("span", { class: "scrubbed" });
+  const bar = el("div", {
+    class: "scrubber",
+    role: "slider",
+    tabindex: "0",
+    "aria-label": "Where the clip is",
+  }, [done]);
+  const whole = button("", "transport-button", () => void frame.requestFullscreen(), [
+    icon("expand"),
+  ]);
+
+  whole.setAttribute("aria-label", "Full screen");
+
+  const showing = (): void => {
+    const paused = video.paused;
+
+    toggle.replaceChildren(icon(paused ? "play" : "pause"));
+    toggle.setAttribute("aria-label", paused ? "Play" : "Pause");
+    frame.classList.toggle("paused", paused);
+  };
+
+  const draw = (): void => {
+    const length = Number.isFinite(video.duration) ? video.duration : 0;
+    const along = length > 0 ? video.currentTime / length : 0;
+
+    done.style.width = `${(along * 100).toFixed(2)}%`;
+    time.textContent = `${timecode(video.currentTime, framerate)} / ${timecode(length, framerate)}`;
+    bar.setAttribute("aria-valuetext", timecode(video.currentTime, framerate));
+  };
+
+  // Drawn every frame the browser paints while the clip plays, and not at all
+  // once it has left the page: a clip redrawn off the stage is a loop nobody
+  // stopped.
+  let painting = 0;
+  const paint = (): void => {
+    draw();
+    if (!video.paused && video.isConnected) {
+      painting = requestAnimationFrame(paint);
+    }
+  };
+
+  video.addEventListener("play", () => {
+    showing();
+    cancelAnimationFrame(painting);
+    painting = requestAnimationFrame(paint);
+  });
+  video.addEventListener("pause", () => {
+    showing();
+    draw();
+  });
+  video.addEventListener("loadedmetadata", draw);
+  video.addEventListener("seeked", draw);
+  video.addEventListener("click", () => toggle.click());
+
+  const seekTo = (x: number): void => {
+    const box = bar.getBoundingClientRect();
+    const along = Math.min(1, Math.max(0, (x - box.left) / box.width));
+
+    if (Number.isFinite(video.duration)) {
+      video.currentTime = along * video.duration;
+      draw();
+    }
+  };
+
+  bar.addEventListener("pointerdown", (event) => {
+    bar.setPointerCapture(event.pointerId);
+    seekTo(event.clientX);
+  });
+  bar.addEventListener("pointermove", (event) => {
+    if (bar.hasPointerCapture(event.pointerId)) {
+      seekTo(event.clientX);
+    }
+  });
+
+  // One Frame a press, which is the unit the clip was captured in.
+  bar.addEventListener("keydown", (event) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+
+    if (step === undefined || !Number.isFinite(video.duration)) {
+      return;
+    }
+
+    event.preventDefault();
+    video.pause();
+    video.currentTime = Math.min(
+      video.duration,
+      Math.max(0, video.currentTime + step / framerate),
+    );
+  });
+
+  showing();
+  draw();
+
+  return el("div", { class: "transport" }, [toggle, time, bar, whole]);
+}
+
+/** Seconds as minutes, seconds and Frames at the Run's own framerate. */
+function timecode(seconds: number, framerate: number): string {
+  const whole = Math.floor(seconds);
+  const frames = Math.floor((seconds - whole) * framerate);
+  const two = (n: number): string => String(n).padStart(2, "0");
+
+  return `${two(Math.floor(whole / 60))}:${two(whole % 60)}:${two(frames)}`;
 }
 
 /**
