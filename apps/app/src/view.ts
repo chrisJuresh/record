@@ -316,6 +316,7 @@ export function frameShowing(said: Showing | null): void {
 
   if (scrubbing !== undefined && document.activeElement !== scrubbing) {
     scrubbing.value = String(said.at);
+    filled(scrubbing);
   }
 }
 
@@ -930,7 +931,11 @@ function previewFoot(
 
   // Scrubbing holds the Preview where it was put: looking hard at the moment a
   // travel settles is the other half of what watching it loop is for.
-  scrub.addEventListener("input", () => handlers.scrub(Number(scrub.value)));
+  filled(scrub);
+  scrub.addEventListener("input", () => {
+    filled(scrub);
+    handlers.scrub(Number(scrub.value));
+  });
   scrubbing = scrub;
 
   return [
@@ -1552,7 +1557,9 @@ function numberControl(
     value: String(parameter.value),
   });
 
+  filled(range);
   range.addEventListener("input", () => {
+    filled(range);
     readout.textContent = range.value;
     box.value = range.value;
     // The change and the motion are the same event: a Preview keeps playing
@@ -2191,6 +2198,20 @@ function button(
   element.addEventListener("click", pressed);
 
   return element;
+}
+
+/**
+ * How far along its range a slider stands, written onto it as `--filled` for
+ * the stylesheet to paint the done half to. Chromium stops filling that half
+ * itself once its track is styled, and the track has to be styled to be drawn
+ * dark -- so this is paint, and says nothing the value does not.
+ */
+function filled(range: HTMLInputElement): void {
+  const min = range.min === "" ? 0 : Number(range.min);
+  const max = range.max === "" ? 100 : Number(range.max);
+  const along = max > min ? (Number(range.value) - min) / (max - min) : 0;
+
+  range.style.setProperty("--filled", `${(Math.min(1, Math.max(0, along)) * 100).toFixed(1)}%`);
 }
 
 /** One element, its attributes, and its children -- text as text, never as markup. */
