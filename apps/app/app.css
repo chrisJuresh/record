@@ -33,6 +33,13 @@
  * a hover eased rather than snapped to, a Run that visibly moves while it is in
  * flight. None of it adds a colour. Every one is a measured value, or a measured
  * value at an alpha, so the palette is still the eleven the sheet was read for.
+ *
+ * And so is the chrome of a tool rather than a page. Every column is a docked
+ * panel with a header strip, the strips line up across the app, every control
+ * that acts carries a glyph, controls share one height, values sit in figures
+ * that line up, and what is an address or a file is set in monospace. It is how an editing
+ * suite reads, and it is what makes the stage read as a viewer rather than as a
+ * document with videos in it.
  */
 
 :root {
@@ -127,6 +134,10 @@
   /* One easing for every hover and press, so the app moves as one thing. */
   --ease: 140ms cubic-bezier(0.2, 0.7, 0.3, 1);
   --mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  /* The height of every panel's header strip, and of the title bar. */
+  --strip: 44px;
+  /* ...and of every control that sits on one. */
+  --control: 28px;
 }
 
 * {
@@ -144,10 +155,18 @@ body {
 
 body {
   margin: 0;
+  /*
+   * Inter where it is installed, and otherwise Windows 11's variable Segoe,
+   * which is the face its own tools are set in -- both are drawn for screens at
+   * the small sizes a dense tool is set at, where the older Segoe is not.
+   * Nothing is fetched: the app reaches nothing off this machine.
+   */
   font:
-    14px/1.45 system-ui,
-    -apple-system,
+    13px/1.45 "Inter",
+    "Segoe UI Variable Text",
     "Segoe UI",
+    system-ui,
+    -apple-system,
     sans-serif;
   background: var(--page);
   color: var(--ink);
@@ -182,6 +201,8 @@ a:hover {
   text-decoration-color: currentColor;
 }
 
+/* Figures that line up down a column, in the face the labels are set in --
+   the way an inspector sets its values, rather than in a typewriter's. */
 .num {
   font-variant-numeric: tabular-nums;
 }
@@ -358,12 +379,47 @@ input[type="checkbox"] {
   flex-direction: column;
 }
 
+/* ------------------------------------------------------------------- icons */
+
+/*
+ * Every glyph is drawn on the same 16-unit grid in the same stroke, and takes
+ * the colour of whatever it sits in -- so an icon is never a second colour on a
+ * control, only the one colour the control already is.
+ */
+.icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon .filled {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* The recording light, the wordmark's red wherever a button records. */
+.icon-record .filled {
+  fill: var(--trouble);
+}
+
+/* ------------------------------------------------------------------ layout */
+
+/*
+ * The title bar: the app's name, the Conditions, and the button that records
+ * everything. As tall as every panel's header strip below it plus the pixel of
+ * seam, so the bands across the app line up as one grid.
+ */
 .topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  padding: 8px 16px;
+  gap: 10px;
+  height: var(--strip);
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--seam);
   background: var(--bezel);
   flex: none;
@@ -380,49 +436,117 @@ input[type="checkbox"] {
   align-items: center;
   gap: 8px;
   padding-right: 14px;
+  margin-right: 2px;
   border-right: 1px solid var(--line);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
 }
 
 .wordmark::before {
   content: "";
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--trouble);
   box-shadow: 0 0 0 3px var(--trouble-soft);
 }
 
+/* How much there is: said the way a status line says it, not as a heading. */
+.topbar > .faint {
+  font-size: 12px;
+}
+
 /*
  * The Conditions every record button records across, drawn beside the button
- * that records everything. Quiet until something is ticked: a Matrix is asked
- * for deliberately, and the rest of the time this is a row of empty boxes.
+ * that records everything, as one segmented group: the schemes are toggles and
+ * the widths a field, all inside one edge so they read as one request. Quiet
+ * until something is ticked -- a Matrix is asked for deliberately.
  */
 .conditions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
+  height: var(--control);
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
   font-size: 12px;
 }
 
+.conditions > .faint {
+  padding: 0 6px 0 8px;
+}
+
+/* The widths are introduced after the schemes, so they are cut from them. */
+.conditions > label.faint {
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
+/*
+ * A scheme as a toggle rather than a checkbox: the box is still there for the
+ * keyboard and for assistive technology, and the chip it sits in is what the
+ * eye reads as on or off.
+ */
 .conditions .ticking {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
+  height: 100%;
+  padding: 0 9px;
+  border-radius: 5px;
   color: var(--ink-dim);
   cursor: pointer;
-  transition: color var(--ease);
+  transition:
+    background-color var(--ease),
+    color var(--ease);
 }
 
-.conditions .ticking:hover,
-.conditions .ticking:has(:checked) {
+.conditions .ticking input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.conditions .ticking:hover {
+  background: var(--sunken);
   color: var(--ink);
 }
 
+.conditions .ticking:has(:checked) {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.conditions .ticking:has(:checked) .icon {
+  color: var(--accent);
+}
+
+.conditions .ticking:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .conditions input.typed {
-  width: 96px;
+  width: 88px;
+  height: 100%;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-color: transparent;
+  background-color: var(--sunken);
+}
+
+/* ...and what that press now amounts to, said beside the group. */
+.conditions > span.num {
+  padding: 0 8px;
+}
+
+.conditions > span.num:empty {
+  display: none;
 }
 
 /*
@@ -433,24 +557,61 @@ input[type="checkbox"] {
 .body {
   flex: 1;
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr) 276px;
+  grid-template-columns: 252px minmax(0, 1fr) 288px;
   min-height: 0;
+}
+
+/*
+ * The strip across the top of every column, which is what makes three columns
+ * read as docked panels of one tool rather than three pages side by side. It
+ * stays put while its column scrolls under it, and it is the same height in
+ * all three so their edges run straight across.
+ */
+.panel-head,
+.params > h3 {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--strip);
+  margin: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--seam);
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
 }
 
 /* ----------------------------------------------------------------- buttons */
 
+/*
+ * One height for every control on a strip, and a glyph before the words where
+ * there is one. The resting fill is --sunken, a step above the panel it sits
+ * on, which is how an editing tool tells a control from a label beside it.
+ */
 button.act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--control);
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
-  line-height: 20px;
-  padding: 4px 12px;
+  line-height: 1;
+  padding: 0 11px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--panel);
+  background: var(--sunken);
   color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
   transition:
     background-color var(--ease),
     border-color var(--ease),
@@ -459,14 +620,26 @@ button.act {
     transform var(--ease);
 }
 
+/* A glyph leads its words a little tighter than the padding would place it. */
+button.act:has(.icon) {
+  padding-left: 9px;
+}
+
+/* A hover the sheet does not draw: --sunken lifted by a breath of --ink. */
 button.act:hover:not(:disabled) {
-  background: var(--sunken);
+  background: color-mix(in srgb, var(--sunken), var(--ink) 5%);
   border-color: var(--line-hover);
 }
 
 /* Pressed, it gives a pixel: enough to feel, too little to move a layout. */
 button.act:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+/* The toggled state of a button that opens something in place, like Preview. */
+button.act.selected {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 
 /*
@@ -481,7 +654,7 @@ button.act.primary {
   /* A lit top edge, the white at an alpha: it reads as filled rather than as
      a patch of teal laid on the bezel. */
   box-shadow:
-    inset 0 1px 0 rgba(250, 250, 250, 0.1),
+    inset 0 1px 0 rgba(250, 250, 250, 0.12),
     0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
@@ -492,7 +665,7 @@ button.act.primary:hover:not(:disabled) {
 }
 
 button.act:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: default;
 }
 
@@ -500,6 +673,7 @@ button.act.quiet {
   border-color: transparent;
   background: transparent;
   color: var(--ink-dim);
+  box-shadow: none;
 }
 
 button.act.quiet:hover:not(:disabled) {
@@ -511,9 +685,9 @@ button.act.quiet:hover:not(:disabled) {
 .pill {
   display: inline-flex;
   align-items: center;
+  height: 18px;
   font-size: 11px;
   font-weight: 500;
-  line-height: 16px;
   padding: 0 7px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -560,26 +734,48 @@ h3 .pill {
   border-right: 1px solid var(--seam);
   background: var(--panel);
   overflow-y: auto;
-  padding: 8px 0 20px;
+  padding: 0 0 20px;
 }
 
+/* A Project is a bin its Actions sit in, drawn the way a media bin is: a
+   folder, its name, and its settings behind a glyph at the end of the row. */
 .rail .project {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 12px 6px 16px;
+  gap: 7px;
+  height: 36px;
+  margin-top: 6px;
+  padding: 0 8px 0 14px;
+  font-size: 12.5px;
   font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--ink);
+}
+
+.rail .project > .icon {
   color: var(--ink-dim);
 }
 
+.rail .project > .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Settings as a glyph, with its word kept for whoever is reading it aloud. */
 .rail .project .act {
-  font-size: 11px;
-  padding: 1px 6px;
-  text-transform: none;
-  letter-spacing: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--ink-dim);
+}
+
+.rail .project .act .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* The Project whose configuration is on the stage, marked as the Action on it is. */
@@ -590,7 +786,7 @@ h3 .pill {
 
 .rail-foot {
   margin-top: 10px;
-  padding: 10px 10px 0;
+  padding: 10px 8px 0;
   border-top: 1px solid var(--line);
 }
 
@@ -598,18 +794,8 @@ h3 .pill {
    width, a plus in front, and the hover every row above it has. */
 .rail-foot .act {
   width: 100%;
-  text-align: left;
+  justify-content: flex-start;
   padding-left: 8px;
-}
-
-.rail-foot .act::before {
-  content: "+";
-  display: inline-block;
-  width: 14px;
-  margin-right: 4px;
-  font-size: 15px;
-  line-height: 1;
-  text-align: center;
 }
 
 .rail .action {
@@ -619,8 +805,9 @@ h3 .pill {
   background: none;
   color: var(--ink-dim);
   font: inherit;
+  font-size: 13px;
   text-align: left;
-  padding: 7px 14px 7px 20px;
+  padding: 7px 12px 7px 22px;
   cursor: pointer;
   transition:
     background-color var(--ease),
@@ -641,7 +828,7 @@ h3 .pill {
 .rail .action.selected {
   background: var(--sunken);
   color: var(--ink);
-  box-shadow: inset 3px 0 0 var(--accent-fill);
+  box-shadow: inset 2px 0 0 var(--accent-fill);
 }
 
 .rail .action.selected .name {
@@ -652,6 +839,14 @@ h3 .pill {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.rail .action .row > .icon {
+  color: var(--ink-dim);
+}
+
+.rail .action.selected .row > .icon {
+  color: var(--accent);
 }
 
 .rail .action .name {
@@ -672,7 +867,7 @@ h3 .pill {
      rail is, and its height is the height that width comes to. */
   width: 100%;
   height: auto;
-  margin-top: 6px;
+  margin-top: 7px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: #000;
@@ -694,7 +889,7 @@ h3 .pill {
 /* A Project whose Actions have not been written yet, which is a state to read. */
 .rail .none {
   margin: 0;
-  padding: 2px 20px 6px;
+  padding: 2px 22px 6px;
 }
 
 /* The stage of a Run, and nothing at all when the Action is not recording. */
@@ -743,26 +938,74 @@ h3 .pill {
 
 .stage {
   overflow-y: auto;
-  padding: 20px 24px 32px;
+  padding: 0 24px 32px;
   min-width: 0;
 }
 
+/* Whatever opens a stage that has no header strip -- the stage with nothing
+   configured yet -- still starts clear of the title bar. */
+.stage > :first-child:not(.stage-head) {
+  margin-top: 20px;
+}
+
+/*
+ * The viewer's own toolbar: what is on it, and the buttons that act on it.
+ * The stage's header strip, level with the rail's and the Parameters', and
+ * pinned the same way. The buttons wrap below the name rather than squeeze it
+ * when the stage is narrow -- an Action's name broken over two lines is the one
+ * word on the stage that must not be.
+ */
 .stage-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
+  min-height: var(--strip);
+  margin: 0 -24px;
+  padding: 7px 24px;
+  border-bottom: 1px solid var(--seam);
+  background: var(--panel);
 }
 
 .stage-head h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 14px;
   font-weight: 650;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
+/*
+ * What the name belongs to, said as a breadcrumb after it -- a Project, or the
+ * file a Project is configured in. It gives way before the buttons do: a long
+ * path is cut short with an ellipsis rather than pushing them onto a row of
+ * their own.
+ */
+.stage-head h2 + .muted {
+  flex: 1 1 0;
+  min-width: 48px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ...and it takes the room the spacer would, so it is cut only when it must. */
+.stage-head h2 + .muted + .spacer {
+  flex: none;
+}
+
+/* Where the Project answers: an address, so it is set as one. */
 .stage-meta {
-  margin: 4px 0 0;
-  font-size: 13px;
+  margin: 14px 0 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
   color: var(--ink-dim);
 }
 
@@ -847,17 +1090,19 @@ h3 .pill {
 
 .run-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  font-size: 12px;
 }
 
+/* Which viewer this is, labelled the way a monitor's corner is. */
 .run-head h3 {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--ink-dim);
 }
 
@@ -867,20 +1112,20 @@ h3 .pill {
   align-items: baseline;
   gap: 8px;
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--ink-dim);
 }
 
 .recorded-with {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .recorded-with h4 {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--ink-dim);
 }
 
@@ -895,15 +1140,29 @@ h3 .pill {
  * width between them -- so the row under the cursor is lit, and the eye does
  * not have to be trusted to cross the gap on the level.
  */
+/*
+ * A property table, as an inspector draws one: the name in the caption grey,
+ * the value in white and in figures that line up, and a hairline under every
+ * row -- so the eye does not have to be trusted to cross half a clip's width
+ * on the level. The row under the cursor is lit as well.
+ */
+.recorded-with ul {
+  border-top: 1px solid var(--line);
+}
+
 .recorded-with li {
   display: flex;
   gap: 8px;
-  align-items: baseline;
-  margin: 0 -6px;
-  padding: 1px 6px;
-  border-radius: 3px;
+  align-items: center;
+  min-height: 25px;
+  padding: 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line), transparent 45%);
   font-size: 12px;
   color: var(--ink-dim);
+}
+
+.recorded-with li .num {
+  color: var(--ink);
 }
 
 .recorded-with li:hover {
@@ -929,7 +1188,7 @@ h3 .pill {
 .recorded-with li.changed .num {
   background: var(--marked);
   border-radius: 3px;
-  padding: 0 4px;
+  padding: 1px 5px;
   color: var(--ink);
 }
 
@@ -975,16 +1234,23 @@ h3 .pill {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
-  padding: 14px 16px;
+  padding: 0 14px 6px;
   box-shadow: var(--lift);
 }
 
+/* The card's own header strip, the panel heads' at a card's size. */
 .beside h3 {
-  margin: 0 0 8px;
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  margin: 0 -14px 4px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--ink-dim);
 }
 
@@ -997,10 +1263,14 @@ h3 .pill {
 .beside li {
   display: flex;
   gap: 8px;
-  align-items: baseline;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line), transparent 45%);
+  font-size: 12px;
+}
+
+.beside li .faint {
+  font-size: 11.5px;
 }
 
 .beside li:last-child {
@@ -1008,13 +1278,32 @@ h3 .pill {
 }
 
 /*
- * Underlined and white, as the sheet draws them. The underline is doing the
- * work the colour would, which leaves the accent meaning only "chosen by hand"
- * wherever it appears beside a Parameter.
+ * Each file as a chip naming its format, the way a media browser badges what a
+ * file is -- white, as the sheet draws them, and edged rather than coloured,
+ * which leaves the accent meaning only "chosen by hand" wherever it appears
+ * beside a Parameter.
  */
 .beside a {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
   color: var(--ink);
-  text-decoration-color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition:
+    border-color var(--ease),
+    background-color var(--ease);
+}
+
+.beside a:hover {
+  border-color: var(--line-hover);
+  background: color-mix(in srgb, var(--sunken), var(--ink) 5%);
 }
 
 /* --------------------------------------------------------------- Preview */
@@ -1030,12 +1319,13 @@ h3 .pill {
 .preview-head {
   display: flex;
   gap: 10px;
-  align-items: baseline;
+  align-items: center;
 }
 
 .preview-head h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 /*
@@ -1106,7 +1396,7 @@ h3 .pill {
   gap: 8px;
   align-items: baseline;
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 /* -------------------------------------------------------------- Parameters */
@@ -1114,17 +1404,13 @@ h3 .pill {
 .params {
   border-left: 1px solid var(--seam);
   overflow-y: auto;
-  padding: 16px;
+  padding: 0 16px 16px;
   background: var(--panel);
 }
 
-.params h3 {
-  margin: 0 0 12px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-dim);
+/* Its header strip is drawn with the other panels', under layout. */
+.params > h3 {
+  margin: 0 -16px;
 }
 
 /* Each Parameter is its own block, cut from the next by the pale rule, so a
@@ -1137,7 +1423,6 @@ h3 .pill {
 .params h3 + .param,
 .params .trouble + .param {
   border-top: 0;
-  padding-top: 0;
 }
 
 .param .row {
@@ -1148,7 +1433,7 @@ h3 .pill {
 }
 
 .param .name {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 550;
 }
 
@@ -1234,7 +1519,7 @@ button.act.tiny:hover:not(:disabled) {
 }
 
 .params .trouble {
-  margin: 0 0 12px;
+  margin: 12px 0;
 }
 
 /* ------------------------------------------------- what a Project is set to */
@@ -1342,16 +1627,21 @@ button.act.tiny:hover:not(:disabled) {
  * it happens here, and this is the button that does not. It sits across the
  * whole width rather than in a column, because it belongs to all of them.
  */
+/* A status bar: slimmer than the title bar, and set small, as one is. */
 .footbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 48px;
-  padding: 8px 16px;
+  min-height: 38px;
+  padding: 4px 8px 4px 16px;
   border-top: 1px solid var(--seam);
   background: var(--bezel);
   flex: none;
   font-size: 12px;
+}
+
+.footbar .act {
+  height: 26px;
 }
 
 .footbar .act.selected {

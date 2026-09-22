@@ -54,6 +54,7 @@ import {
   type ProjectState,
   type Slot,
 } from "./model.js";
+import { icon, isIcon, type IconName } from "./icons.js";
 import { playerFor, refit, showing, type Showing } from "./player.js";
 
 export type Handlers = {
@@ -208,7 +209,9 @@ export function paint(root: HTMLElement, app: App, handlers: Handlers): void {
   const runAction =
     chosen === undefined
       ? null
-      : button("Run Action", "act primary", () => handlers.runAction(chosen.project, chosen.action));
+      : tool("record", "Run Action", "act primary", () =>
+          handlers.runAction(chosen.project, chosen.action),
+        );
 
   root.replaceChildren(
     topbar(app, handlers, tally, matrix),
@@ -533,7 +536,8 @@ function topbar(
   tally: HTMLElement,
   matrix: HTMLElement,
 ): HTMLElement {
-  const railClips = button(
+  const railClips = tool(
+    "images",
     app.railClips ? "Hide clips in rail" : "Show clips in rail",
     "act quiet",
     () => handlers.showRailClips(!app.railClips),
@@ -545,7 +549,7 @@ function topbar(
     el("span", { class: "spacer" }),
     conditions(app, handlers, matrix),
     railClips,
-    button("Run everything", "act primary", () => handlers.runEverything()),
+    tool("record", "Run everything", "act primary", () => handlers.runEverything()),
   ]);
 }
 
@@ -591,7 +595,11 @@ function schemeBox(scheme: string, ticked: boolean, tick: (on: boolean) => void)
   box.checked = ticked;
   box.addEventListener("change", () => tick(box.checked));
 
-  return el("label", { class: "ticking" }, [box, scheme]);
+  return el("label", { class: "ticking" }, [
+    box,
+    ...(isIcon(scheme) ? [icon(scheme)] : []),
+    scheme,
+  ]);
 }
 
 /**
@@ -623,7 +631,8 @@ function footbar(app: App, handlers: Handlers): HTMLElement {
         "commits them and pushes it.",
     ]),
     el("span", { class: "spacer" }),
-    button(
+    tool(
+      "upload",
       "Publish",
       `act primary${app.stage.kind === "publish" ? " selected" : ""}`,
       () => handlers.showPublish(),
@@ -650,6 +659,7 @@ function rail(
   published: Map<string, HTMLElement>,
 ): HTMLElement {
   return el("nav", { class: "rail" }, [
+    el("h3", { class: "panel-head" }, ["Projects"]),
     ...app.projects.flatMap((project) => [
       railProject(app, handlers, project, published),
       ...(project.actions.length === 0
@@ -659,7 +669,7 @@ function rail(
     // A Project is configured from here as well as recorded from here, so that
     // adding one is not a file somebody has to remember the shape of.
     el("div", { class: "rail-foot" }, [
-      button("Add a Project", "act quiet", () => handlers.showNewProject()),
+      tool("plus", "Add a Project", "act quiet", () => handlers.showNewProject()),
     ]),
   ]);
 }
@@ -684,11 +694,18 @@ function railProject(
   const chosen =
     app.stage.kind === "configuration" && app.stage.project === name ? " selected" : "";
 
+  const settings = tool("tune", "settings", `act tiny${chosen}`, () =>
+    handlers.showConfiguration(name),
+  );
+
+  settings.title = `What ${name} is configured with`;
+
   return el("div", { class: "project" }, [
-    el("span", {}, [name]),
+    icon("folder"),
+    el("span", { class: "name" }, [name]),
     pill,
     el("span", { class: "spacer" }),
-    button("settings", `act tiny${chosen}`, () => handlers.showConfiguration(name)),
+    settings,
   ]);
 }
 
@@ -710,6 +727,7 @@ function railAction(
     app.chosen?.project === action.project && app.chosen.action === action.action ? " selected" : "";
 
   const row = el("span", { class: "row" }, [
+    icon("film"),
     el("span", { class: "name" }, [action.action]),
     flag,
     badge,
@@ -782,7 +800,7 @@ function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
         el("h2", {}, ["Publish"]),
         el("span", { class: "muted" }, ["this repository, and nothing else"]),
         el("span", { class: "spacer" }),
-        button("Back to the clips", "act", () => handlers.showClips()),
+        tool("back", "Back to the clips", "act", () => handlers.showClips()),
       ]),
       publish,
     ]);
@@ -835,12 +853,13 @@ function stage(app: App, handlers: Handlers, written: Written): HTMLElement {
       el("span", { class: "spacer" }),
       // A Preview is the tuning loop and a Run is the clip, so the button that
       // opens one sits beside the buttons that record.
-      button(
+      tool(
+        preview === undefined ? "eye" : "back",
         preview === undefined ? "Preview" : "Back to the clips",
         `act${preview === undefined ? "" : " selected"}`,
         () => handlers.showPreview(preview === undefined),
       ),
-      button("Run Project", "act", () => handlers.runProject(project.configured.name)),
+      tool("layers", "Run Project", "act", () => handlers.runProject(project.configured.name)),
       ...(runAction === null ? [] : [runAction]),
     ]),
     meta,
@@ -884,8 +903,11 @@ function previewHead(preview: Preview, handlers: Handlers): readonly Node[] {
       ...(preview.timeline === null
         ? []
         : [
-            button(said?.playing === true ? "Pause" : "Play", "act", () =>
-              handlers.playPreview(said?.playing !== true),
+            tool(
+              said?.playing === true ? "pause" : "play",
+              said?.playing === true ? "Pause" : "Play",
+              "act",
+              () => handlers.playPreview(said?.playing !== true),
             ),
           ]),
     ]),
@@ -1664,7 +1686,7 @@ function configuringHead(app: App, handlers: Handlers, where: HTMLElement): HTML
     // into rather than drawn: the file arrives with the settings do.
     where,
     el("span", { class: "spacer" }),
-    button("Back to the clips", "act", () => handlers.showClips()),
+    tool("back", "Back to the clips", "act", () => handlers.showClips()),
   ]);
 }
 
@@ -2198,6 +2220,16 @@ function button(
   element.addEventListener("click", pressed);
 
   return element;
+}
+
+/** A button that says what it does twice: in a glyph, and in words. */
+function tool(
+  glyph: IconName,
+  text: string,
+  className: string,
+  pressed: () => void,
+): HTMLButtonElement {
+  return button("", className, pressed, [icon(glyph), el("span", { class: "label" }, [text])]);
 }
 
 /**
